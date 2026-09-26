@@ -1,0 +1,249 @@
+// Hand-written from 01.share-docx/DATABASE.md, in the same shape `supabase gen types` produces.
+// Replace with the generated file once the migrations exist:
+//   npx supabase gen types typescript --project-id <PROJECT_ID> > src/shared/types/database.types.ts
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  public: {
+    Tables: {
+      roles: {
+        Row: {
+          id: number
+          name: string
+        }
+        Insert: {
+          id: number
+          name: string
+        }
+        Update: {
+          id?: number
+          name?: string
+        }
+        Relationships: []
+      }
+      users: {
+        Row: {
+          id: string
+          role_id: number
+          email: string
+          full_name: string | null
+          avatar_url: string | null
+          streak_count: number
+          last_active_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id: string
+          role_id?: number
+          email: string
+          full_name?: string | null
+          avatar_url?: string | null
+          streak_count?: number
+          last_active_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          role_id?: number
+          email?: string
+          full_name?: string | null
+          avatar_url?: string | null
+          streak_count?: number
+          last_active_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'users_role_id_fkey'
+            columns: ['role_id']
+            isOneToOne: false
+            referencedRelation: 'roles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      decks: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          slug: string
+          description: string | null
+          is_public: boolean
+          tree_type: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          slug: string
+          description?: string | null
+          is_public?: boolean
+          tree_type?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          slug?: string
+          description?: string | null
+          is_public?: boolean
+          tree_type?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'decks_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      mindmap_nodes: {
+        Row: {
+          id: string
+          deck_id: string
+          parent_id: string | null
+          title: string
+          sort_order: number
+        }
+        Insert: {
+          id?: string
+          deck_id: string
+          parent_id?: string | null
+          title: string
+          sort_order?: number
+        }
+        Update: {
+          id?: string
+          deck_id?: string
+          parent_id?: string | null
+          title?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'mindmap_nodes_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'mindmap_nodes_parent_id_deck_id_fkey'
+            columns: ['parent_id', 'deck_id']
+            isOneToOne: false
+            referencedRelation: 'mindmap_nodes'
+            referencedColumns: ['id', 'deck_id']
+          },
+        ]
+      }
+      knowledge_items: {
+        Row: {
+          id: string
+          node_id: string
+          prompt: string
+          correct_stmt: string
+          trap_rules: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          node_id: string
+          prompt: string
+          correct_stmt: string
+          trap_rules?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          node_id?: string
+          prompt?: string
+          correct_stmt?: string
+          trap_rules?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'knowledge_items_node_id_fkey'
+            columns: ['node_id']
+            isOneToOne: false
+            referencedRelation: 'mindmap_nodes'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      user_progress: {
+        Row: {
+          id: string
+          user_id: string
+          knowledge_item_id: string
+          mastery_level: number
+          mistake_count: number
+          last_practiced_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          knowledge_item_id: string
+          mastery_level?: number
+          mistake_count?: number
+          last_practiced_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          knowledge_item_id?: string
+          mastery_level?: number
+          mistake_count?: number
+          last_practiced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_progress_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_progress_knowledge_item_id_fkey'
+            columns: ['knowledge_item_id']
+            isOneToOne: false
+            referencedRelation: 'knowledge_items'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type PublicSchema = Database['public']
+
+export type Tables<T extends keyof PublicSchema['Tables']> = PublicSchema['Tables'][T]['Row']
+export type TablesInsert<T extends keyof PublicSchema['Tables']> = PublicSchema['Tables'][T]['Insert']
+export type TablesUpdate<T extends keyof PublicSchema['Tables']> = PublicSchema['Tables'][T]['Update']
