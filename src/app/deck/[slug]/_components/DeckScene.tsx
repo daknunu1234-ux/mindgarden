@@ -4,14 +4,14 @@ import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { countDeckTree, DeckEditor, type DeckDetail, type DeckEditorData } from '@/features/decks'
 import { GrowthBar, TreeStageSvg, useTreeStage } from '@/features/garden'
-import { RootOutline, type ItemLevels } from '@/features/mindmap'
+import { RootMap, type ItemLevels } from '@/features/mindmap'
 import type { DeckProgress } from '@/features/progress'
 
 // editor is set only for the deck owner.
 type DeckSceneProps = { detail: DeckDetail; progress: DeckProgress | null; editor: DeckEditorData | null }
 
 // Route-level composition for /deck/[slug]: garden (tree surface) above the ground line,
-// mindmap (roots) below. The outline stands in until the SVG RootMap lands.
+// mindmap (roots) below the ground line.
 function DeckScene({ detail, progress, editor }: DeckSceneProps) {
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
@@ -77,9 +77,9 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
           ) : (
             <>
               <p className="mb-4 text-xs text-muted-foreground">
-                Roots glow brighter as you master their items. Mindmap view coming soon.
+                Roots glow brighter as you master them. Hover a root to trace its branch, or drill just that branch.
               </p>
-              <RootOutline nodes={tree} levels={levels} />
+              <RootMap nodes={tree} levels={levels} deckSlug={deck.slug} />
             </>
           )}
         </div>

@@ -29,7 +29,7 @@ src/features/[feature-name]/
 | DO | DON'T |
 |----|-------|
 | `import { DrillCard } from '@/features/drill'` | `import ... from '@/features/drill/components/DrillCard'` |
-| Cross-feature via URL (`/deck/[slug]/drill?node=<id>`) or `src/shared/stores/` | `mindmap` importing `drill/hooks` |
+| Cross-feature via URL (`/deck/[slug]/drill?nodeId=<id>`) or `src/shared/stores/` | `mindmap` importing `drill/hooks` |
 | Compose features only in `app/**/page.tsx` | `garden` rendering `mindmap` components |
 
 ## 4. Component Structure (Imports → Types → Component → Export)
@@ -71,7 +71,7 @@ export default async function DeckPage({ params }: { params: Promise<{ slug: str
   const progress = await getProgressByDecks({ deckIds: [deck.data.deck.id] })   // from '@/features/progress'
   return <DeckScene deck={deck.data} progress={progress.success ? progress.data[0] : null} />
 }
-// Client: const { slug } = useParams<{ slug: string }>(); const nodeId = useSearchParams().get('node')
+// Client: const { slug } = useParams<{ slug: string }>(); const nodeId = useSearchParams().get('nodeId')
 ```
 
 ## 6. Data Fetching (Server Actions + Hooks)
@@ -95,7 +95,7 @@ export function useDrillSession(nodeId: string) {
 |------|-------|---------|
 | Local UI | `useState` in the component/hook | Selected choice, dialog open |
 | Server | RSC props; refresh with `router.refresh()` after a write | Deck tree, progress |
-| URL | `params` / `searchParams` | `/deck/[slug]`, `?node=<id>`, `?page=2` |
+| URL | `params` / `searchParams` | `/deck/[slug]`, `?nodeId=<id>`, `?page=2` |
 | Shared | React Context in `src/shared/stores/` | `StreakProvider`, `LoginDialogProvider` |
 - DON'T copy server data into a global store or `useState` just to "cache" it
 

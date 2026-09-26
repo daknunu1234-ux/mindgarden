@@ -1,3 +1,5 @@
-export { RootOutline } from './components/RootOutline'
-export { nodeMastery, rootOpacity } from './hooks/nodeMastery'
+export { MasteryRing } from './components/MasteryRing'
+export { RootMap } from './components/RootMap'
+export { branchItemIds, displayMastery, isMightyRoot, nodeMastery, rootOpacity } from './hooks/nodeMastery'
+export { ancestorPath, layoutRoots } from './hooks/useRootLayout'
 export type { ItemLevels, RootNodeView } from './types'

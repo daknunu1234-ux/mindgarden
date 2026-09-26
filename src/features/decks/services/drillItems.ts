@@ -20,6 +20,7 @@ export type DrillSourceItem = {
 }
 export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'>
 export type DeckRef = { deckId: string } | { slug: string }
+export type DrillNode = { id: string; parentId: string | null; title: string }
 
 // Malformed trap_rules fall back to {} so the item can still use built-in traps.
 function parseTrapRules(raw: Json, itemId: string): TrapRules {
@@ -33,7 +34,7 @@ function parseTrapRules(raw: Json, itemId: string): TrapRules {
 export async function listDrillItems(
   supabase: SupabaseClient<Database>,
   ref: DeckRef,
-): Promise<ActionResult<{ deck: DrillDeck; items: DrillSourceItem[] }>> {
+): Promise<ActionResult<{ deck: DrillDeck; nodes: DrillNode[]; items: DrillSourceItem[] }>> {
   const deckQuery = supabase.from('decks').select('id, slug, title, tree_type')
   const { data: deck, error: deckError } = await ('deckId' in ref
     ? deckQuery.eq('id', ref.deckId)
@@ -48,7 +49,7 @@ export async function listDrillItems(
 
   const { data: nodes, error: nodesError } = await supabase
     .from('mindmap_nodes')
-    .select('id, title, knowledge_items(id, prompt, correct_stmt, trap_rules, created_at)')
+    .select('id, parent_id, title, knowledge_items(id, prompt, correct_stmt, trap_rules, created_at)')
     .eq('deck_id', deck.id)
     .order('sort_order')
 
@@ -74,6 +75,7 @@ export async function listDrillItems(
 
   return ok({
     deck: { id: deck.id, slug: deck.slug, title: deck.title, treeType: deck.tree_type },
+    nodes: nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })),
     items,
   })
 }

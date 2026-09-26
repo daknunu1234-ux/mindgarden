@@ -37,7 +37,7 @@ deck/[slug]/page.tsx (Server Component: getDeckBySlug + getProgressByDecks)
               └── RootNode × n     opacity = node mastery
                     │ click
                     ▼
-              /deck/[slug]/drill?node=<id> ──► DrillOverlay (drill)
+              /deck/[slug]/drill?nodeId=<id> ──► DrillOverlay (drill)
 ```
 
 ---
@@ -52,7 +52,7 @@ src/
 │   └── deck/[slug]/
 │       ├── page.tsx                # Single tree + root explorer
 │       ├── _components/DeckScene.tsx   # Composes garden + mindmap (route-private)
-│       └── drill/page.tsx          # Focused drill overlay, reads ?node=<id>
+│       └── drill/page.tsx          # Focused drill overlay, reads ?nodeId=<id>
 ├── shared/
 │   ├── components/ui/              # shadcn/ui: Button, Dialog, Card, Skeleton, Alert, Toast
 │   ├── hooks/                      # useReducedMotion, useMediaQuery
@@ -83,8 +83,8 @@ src/
 | Feature | Responsible for | Owns (components / hooks) | Does NOT | Input | Output / talks to |
 |---------|-----------------|---------------------------|----------|-------|-------------------|
 | `garden` | Tree grid + single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
-| `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?node=id')` |
-| `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?node=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
+| `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
+| `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features
@@ -118,7 +118,7 @@ export const getTreeStage = (pct: number): TreeStage => (pct <= 25 ? 1 : pct <= 
 ```
 RootNode clicked
   ▼
-router.push('/deck/[slug]/drill?node=<id>')        sessionId = crypto.randomUUID() on overlay mount
+router.push('/deck/[slug]/drill?nodeId=<id>')        sessionId = crypto.randomUUID() on overlay mount
   ▼
 getDrillQuestion({ nodeId, sessionId })  ──► { itemId, prompt, seed, choices A · B · C }
   ▼

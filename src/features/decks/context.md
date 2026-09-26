@@ -17,7 +17,7 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `CreateDeckForm`, `DeckEditor({ editor })` | Client UI for `/deck/new` and the owner section of the deck page. No trap settings are shown |
 | `index.ts` | `countDeckTree(tree)` | Pure: `{ nodeCount, itemCount }` for a deck header |
 | `index.ts` | `type Deck`, `DeckDetail`, `DeckTreeNode`, `DeckTreeItem` | camelCase shapes from API SPEC.md §6. Items carry only `id` + `prompt` (no `correctStmt`) |
-| `server.ts` | `listDrillItems(supabase, { deckId } \| { slug })` | Server-only. Deck + every item with `correctStmt`, parsed `trapRules` and `siblingStatements` (other statements in its node), for drill |
+| `server.ts` | `listDrillItems(supabase, { deckId } \| { slug })` | Server-only. Deck + `nodes { id, parentId, title }` + every item with `correctStmt`, parsed `trapRules` and `siblingStatements` (other statements in its node), for drill |
 | `server.ts` | `listDeckItemIds(supabase, deckIds)` | Server-only. `{ deckId, items: { itemId, nodeId }[] }[]` in input order, for progress |
 | `server.ts` | `findDrillItem(supabase, itemId)` | Server-only. One item with its answer and `siblingStatements`, for grading. `ITEM_NOT_FOUND` if unreadable |
 

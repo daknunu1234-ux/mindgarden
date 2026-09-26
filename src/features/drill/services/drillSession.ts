@@ -7,10 +7,12 @@ import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
 import type { GetDrillSessionInput } from '../dto/GetDrillSessionDto'
+import { collectBranch } from '../lib/branch'
 import { drillSeed } from '../lib/drillSeed'
 import type { DrillQuestion, DrillSession } from '../types'
 
-// Builds a shuffled practice round for a deck. Answers stay on the server:
+// Builds a shuffled practice round for a deck, or for one branch when input.nodeId is set
+// (that node and all its sub-roots). Answers stay on the server:
 // questions carry only choices + seed, and checkDrillAnswer re-runs the engine to grade.
 export async function buildDrillSession(
   supabase: SupabaseClient<Database>,
@@ -21,9 +23,19 @@ export async function buildDrillSession(
   const res = await listDrillItems(supabase, ref)
   if (!res.success) return res
 
+  let items = res.data.items
+  let focus: DrillSession['focus'] = null
+  if (input.nodeId) {
+    const node = res.data.nodes.find((n) => n.id === input.nodeId)
+    if (!node) return fail('NODE_NOT_FOUND', 'Root not found in this deck')
+    const branch = collectBranch(res.data.nodes, node.id)
+    items = items.filter((item) => branch.has(item.nodeId))
+    focus = { nodeId: node.id, title: node.title }
+  }
+
   const questions: DrillQuestion[] = []
   let skippedCount = 0
-  for (const item of res.data.items) {
+  for (const item of items) {
     const seed = drillSeed(item.id, sessionId)
     // Items of the same node act as siblings: their subjects become the best traps.
     const traps = generateTraps(item.correctStmt, item.trapRules, seed, item.siblingStatements)
@@ -35,9 +47,9 @@ export async function buildDrillSession(
   }
 
   if (questions.length === 0) {
-    return fail('DRILL_NO_ITEMS', 'This deck has no drillable items yet')
+    return fail('DRILL_NO_ITEMS', focus ? 'This branch has no drillable items yet' : 'This deck has no drillable items yet')
   }
 
   const round = seededShuffle(questions, seededRandom(sessionId)).slice(0, input.limit)
-  return ok({ deck: res.data.deck, sessionId, questions: round, skippedCount })
+  return ok({ deck: res.data.deck, sessionId, focus, questions: round, skippedCount })
 }

@@ -14,6 +14,8 @@ export type DrillQuestion = {
 export type DrillSession = {
   deck: { id: string; slug: string; title: string; treeType: string }
   sessionId: string
+  // Set when the round covers one branch (nodeId); null for the whole deck.
+  focus: { nodeId: string; title: string } | null
   questions: DrillQuestion[]
   // Items skipped because the engine found no trap at all (INSUFFICIENT_MUTATIONS).
   skippedCount: number

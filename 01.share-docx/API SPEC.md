@@ -84,7 +84,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
-| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck (1 correct + 1–2 traps per item) | Optional |
+| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item) | Optional |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak | Required |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
@@ -178,19 +178,21 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `getDrillSession` (drill)
 ```typescript
-// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus limit?: number /* 1–50, default 20 */
+// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus nodeId?: string, limit?: number /* 1–50, default 20 */
+// nodeId: only items of that root and all its sub-roots (the page passes ?nodeId=)
 // data
 { deck: { id: string; slug: string; title: string; treeType: string };
   sessionId: string;                          // crypto.randomUUID() per call
+  focus: { nodeId: string; title: string } | null;   // set for a branch round
   questions: { itemId: string; nodeTitle: string; prompt: string;
                seed: string;                  // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
                choices: { tag: 'A' | 'B' | 'C'; text: string }[] }[];   // no correctTag
   skippedCount: number }                      // items that returned INSUFFICIENT_MUTATIONS
-// Errors: VALIDATION_FAILED, DECK_NOT_FOUND, DRILL_NO_ITEMS
+// Errors: VALIDATION_FAILED, DECK_NOT_FOUND, NODE_NOT_FOUND (nodeId not in this deck), DRILL_NO_ITEMS
 ```
 - **Order**: items shuffled with `seededRandom(sessionId)`, then cut to `limit`
 - **Traps**: each item gets the other statements of its node as siblings (sibling concept swaps, backend/ARCHITECTURE.md §7)
-- Deck-wide counterpart of `getDrillQuestion` (per node, still planned for the mindmap)
+- With `nodeId` it covers what `getDrillQuestion` was planned for (per-node practice from the mindmap); `getDrillQuestion` is not built
 
 ### `checkDrillAnswer` (drill)
 ```typescript

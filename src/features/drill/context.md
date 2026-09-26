@@ -8,7 +8,7 @@ None. Reads items through `@/features/decks/server`.
 ## Exports (`index.ts`)
 | Export | Notes |
 |--------|-------|
-| `getDrillSession({ slug } \| { deckId }, limit?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `DRILL_NO_ITEMS`. Auth: Optional |
+| `getDrillSession({ slug } \| { deckId }, nodeId?, limit?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `NODE_NOT_FOUND`, `DRILL_NO_ITEMS`. Auth: Optional. `nodeId` limits the round to that root and its sub-roots (`lib/branch.ts` `collectBranch`); the session carries `focus` |
 | `checkDrillAnswer({ itemId, seed, tag })` | Server Action → `ActionResult<DrillAnswer>`. Grades via `progress/server`, saves nothing. Auth: Public |
 | `DrillOverlay({ session, isSignedIn })` | Client. Question → feedback (gold / amber + `MutationHighlight`, mastery meter when saved) → summary, confetti if any root grew |
 | types | `DrillSession`, `DrillQuestion`, `DrillAnswer`, `DrillChoice`, `DrillTag` |
@@ -25,7 +25,7 @@ None. Reads items through `@/features/decks/server`.
 - No hearts, lives or timers. Correct = gold, wrong = amber
 
 ## Not built yet
-`getDrillQuestion` (per node, for the mindmap)
+`getDrillQuestion` (superseded by `getDrillSession({ nodeId })`)
 
 ## May import
 `@/shared/*`, `@/features/decks/server`, `@/features/progress` (actions, DTO, `MASTERY_NAMES`), `@/features/progress/server`
