@@ -2,16 +2,22 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
-import { countDeckTree, type DeckDetail, type DeckTreeNode } from '@/features/decks'
-import { getTreeIcon } from '@/features/garden'
+import { countDeckTree, DeckEditor, type DeckDetail, type DeckEditorData } from '@/features/decks'
+import { GrowthBar, TreeStageSvg, useTreeStage } from '@/features/garden'
+import { RootOutline, type ItemLevels } from '@/features/mindmap'
+import type { DeckProgress } from '@/features/progress'
 
-type DeckSceneProps = { detail: DeckDetail }
+// editor is set only for the deck owner.
+type DeckSceneProps = { detail: DeckDetail; progress: DeckProgress | null; editor: DeckEditorData | null }
 
-// Route-level composition for /deck/[slug]. The roots section is a placeholder
-// until the mindmap feature (RootMap) lands.
-function DeckScene({ detail }: DeckSceneProps) {
+// Route-level composition for /deck/[slug]: garden (tree surface) above the ground line,
+// mindmap (roots) below. The outline stands in until the SVG RootMap lands.
+function DeckScene({ detail, progress, editor }: DeckSceneProps) {
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
+  const masteryPercent = progress?.masteryPercent ?? 0
+  const { stage, name, emoji } = useTreeStage(masteryPercent)
+  const levels: ItemLevels = Object.fromEntries(progress?.items.map((i) => [i.itemId, i.masteryLevel]) ?? [])
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-12 sm:px-6">
@@ -24,13 +30,19 @@ function DeckScene({ detail }: DeckSceneProps) {
       </Link>
 
       <header className="mt-6 flex items-start gap-4">
-        <span aria-hidden className="text-5xl leading-none">
-          {getTreeIcon(deck.treeType)}
-        </span>
+        <TreeStageSvg
+          stage={stage}
+          treeType={deck.treeType}
+          label={`${name} tree`}
+          className="size-28 shrink-0 transition-opacity duration-700"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-semibold tracking-tight">{deck.title}</h1>
-            <Badge variant="outline" className="capitalize">
+            <Badge variant="outline" className={stage === 4 ? 'border-yellow-500 bg-yellow-50' : undefined}>
+              {emoji} {name}
+            </Badge>
+            <Badge variant="secondary" className="capitalize">
               {deck.treeType}
             </Badge>
             {!deck.isPublic && <Badge variant="secondary">Private</Badge>}
@@ -38,6 +50,7 @@ function DeckScene({ detail }: DeckSceneProps) {
           {deck.description && (
             <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{deck.description}</p>
           )}
+          <GrowthBar percent={masteryPercent} className="mt-4 max-w-sm" />
           <dl className="mt-4 flex gap-6 text-sm">
             <Stat label="Roots" value={nodeCount} />
             <Stat label="Knowledge items" value={itemCount} />
@@ -59,18 +72,30 @@ function DeckScene({ detail }: DeckSceneProps) {
         <div className="mt-3 rounded-xl border border-dashed bg-amber-50/40 p-6">
           {tree.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground">
-              No roots yet. This tree is waiting for its first concept 🌱
+              {editor ? 'No roots yet. Add the first concept below 🌱' : 'No roots yet. This tree is waiting for its first concept 🌱'}
             </p>
           ) : (
             <>
               <p className="mb-4 text-xs text-muted-foreground">
-                Mindmap view coming soon. For now, here is the outline.
+                Roots glow brighter as you master their items. Mindmap view coming soon.
               </p>
-              <RootOutline nodes={tree} />
+              <RootOutline nodes={tree} levels={levels} />
             </>
           )}
         </div>
       </section>
+
+      {editor && (
+        <section aria-labelledby="grow-heading" className="mt-10">
+          <h2 id="grow-heading" className="text-lg font-medium">
+            Grow your roots
+          </h2>
+          <p className="mt-1 mb-4 text-sm text-muted-foreground">
+            Add concepts as roots, then write true statements for each. Traps are made for you.
+          </p>
+          <DeckEditor editor={editor} />
+        </section>
+      )}
     </main>
   )
 }
@@ -81,28 +106,6 @@ function Stat({ label, value }: { label: string; value: number }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="text-xl font-semibold tabular-nums">{value}</dd>
     </div>
-  )
-}
-
-function RootOutline({ nodes, nested = false }: { nodes: DeckTreeNode[]; nested?: boolean }) {
-  return (
-    <ul className={nested ? 'space-y-1 border-l border-amber-800/20 pl-4' : 'space-y-1'}>
-      {nodes.map((node) => (
-        <li key={node.id}>
-          <span className="font-medium">{node.title}</span>
-          {node.items.length > 0 && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              {node.items.length} {node.items.length === 1 ? 'item' : 'items'}
-            </span>
-          )}
-          {node.children.length > 0 && (
-            <div className="mt-1">
-              <RootOutline nodes={node.children} nested />
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
   )
 }
 

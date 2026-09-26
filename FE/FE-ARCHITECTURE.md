@@ -66,7 +66,7 @@ src/
     │   ├── components/             # RootMap, RootPath, RootNode
     │   ├── hooks/                  # useRootLayout (tree → x/y), nodeMastery()
     │   └── types/                  # RootNodeView, RootLayout
-    ├── drill/                      # Trilateral choice cards & feedback (+ getDrillQuestion on the server)
+    ├── drill/                      # 2–3 choice cards & feedback (+ getDrillQuestion on the server)
     │   ├── components/             # DrillOverlay, DrillCard, ChoiceButton, MutationHighlight
     │   ├── hooks/                  # useDrillSession
     │   └── types/                  # DrillState, DrillChoiceView
@@ -84,7 +84,7 @@ src/
 |---------|-----------------|---------------------------|----------|-------|-------------------|
 | `garden` | Tree grid + single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
 | `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?node=id')` |
-| `drill` | Question, 3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?node=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
+| `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?node=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features

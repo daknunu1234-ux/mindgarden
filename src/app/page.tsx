@@ -1,12 +1,28 @@
 import Link from 'next/link'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
 import { Button } from '@/shared/components/ui/button'
-import { getDecks } from '@/features/decks'
-import { GardenGrid } from '@/features/garden'
+import { getDecks, type Deck } from '@/features/decks'
+import { GardenGrid, type DeckCardView } from '@/features/garden'
+import { getProgressByDecks } from '@/features/progress'
+
+// Joins decks with the player's mastery. If progress fails to load, trees show 0% instead of failing the page.
+async function toCardViews(decks: Deck[]): Promise<DeckCardView[]> {
+  const progress = decks.length > 0 ? await getProgressByDecks({ deckIds: decks.map((d) => d.id) }) : null
+  const percentOf = new Map(progress?.success ? progress.data.map((p) => [p.deckId, p.masteryPercent]) : [])
+  return decks.map((d) => ({
+    id: d.id,
+    slug: d.slug,
+    title: d.title,
+    description: d.description,
+    treeType: d.treeType,
+    masteryPercent: percentOf.get(d.id) ?? 0,
+  }))
+}
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
   const { page, login } = await searchParams
   const res = await getDecks({ page: typeof page === 'string' ? page : undefined })
+  const cards = res.success ? await toCardViews(res.data) : []
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-12 sm:px-6">
@@ -26,7 +42,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
 
       {res.success ? (
         <>
-          <GardenGrid decks={res.data} />
+          <GardenGrid decks={cards} />
           <Pagination page={res.meta?.page ?? 1} limit={res.meta?.limit ?? 20} total={res.meta?.total ?? 0} />
         </>
       ) : (

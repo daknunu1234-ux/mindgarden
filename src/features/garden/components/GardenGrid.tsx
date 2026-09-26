@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { Button } from '@/shared/components/ui/button'
 import { Skeleton } from '@/shared/components/ui/skeleton'
 import type { DeckCardView } from '../types'
 import { TreeCard } from './TreeCard'
@@ -15,6 +17,9 @@ function GardenGrid({ decks }: GardenGridProps) {
         <p className="mt-1 text-sm text-muted-foreground">
           Public decks will grow here as soon as someone plants one.
         </p>
+        <Button asChild className="mt-6">
+          <Link href="/deck/new">Plant a Tree 🌱</Link>
+        </Button>
       </div>
     )
   }

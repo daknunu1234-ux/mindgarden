@@ -24,7 +24,7 @@ export default async function DrillPage({ params }: PageProps<'/deck/[slug]/dril
           <AlertTitle>{noItems ? 'Nothing to practice yet 🌱' : 'The drill is resting'}</AlertTitle>
           <AlertDescription>
             {noItems
-              ? 'This tree has no drillable knowledge items yet. Add items with trap swaps to start practicing.'
+              ? 'This tree has no drillable statements yet. Add statements with words like tăng/giảm, trước/sau or là.'
               : `${message}. Try again in a moment.`}
           </AlertDescription>
         </Alert>

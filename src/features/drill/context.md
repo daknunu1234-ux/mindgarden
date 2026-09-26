@@ -21,6 +21,7 @@ None. Reads items through `@/features/decks/server`.
 
 ## Rules
 - The client never receives `correctStmt` or `correctTag` before answering
+- Questions have 3 choices (A/B/C), or 2 (A/B) when the engine finds only one trap; items with no trap are skipped (`skippedCount`)
 - No hearts, lives or timers. Correct = gold, wrong = amber
 
 ## Not built yet

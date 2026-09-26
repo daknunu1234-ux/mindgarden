@@ -30,9 +30,12 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
   return (
     <Card>
       <CardHeader>
-        <Badge variant="secondary" className="w-fit">
-          {question.nodeTitle}
-        </Badge>
+        {/* Items authored in-app use the root title as their prompt; skip the duplicate badge. */}
+        {question.prompt !== question.nodeTitle && (
+          <Badge variant="secondary" className="w-fit">
+            {question.nodeTitle}
+          </Badge>
+        )}
         <CardTitle className="mt-2 text-xl leading-snug whitespace-pre-wrap">{question.prompt}</CardTitle>
         <p className="text-sm text-muted-foreground">Which statement is true?</p>
       </CardHeader>

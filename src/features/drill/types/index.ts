@@ -15,7 +15,7 @@ export type DrillSession = {
   deck: { id: string; slug: string; title: string; treeType: string }
   sessionId: string
   questions: DrillQuestion[]
-  // Items skipped because the engine could not build 2 traps (INSUFFICIENT_MUTATIONS).
+  // Items skipped because the engine found no trap at all (INSUFFICIENT_MUTATIONS).
   skippedCount: number
 }
 

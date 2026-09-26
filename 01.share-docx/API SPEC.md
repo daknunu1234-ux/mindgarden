@@ -59,6 +59,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 |------|------|------|
 | `VALIDATION_FAILED` | 400 | Zod validation failed; `message` = first issue |
 | `AUTH_UNAUTHORIZED` | 401 | No valid session on a Required endpoint |
+| `AUTH_FORBIDDEN` | 403 | Signed in, but not the owner of the deck being edited |
 | `AUTH_RATE_LIMITED` | 429 | Supabase refused to send another sign-in email (built-in mailer limit) |
 | `DECK_NOT_FOUND` | 404 | Deck doesn't exist, or is private and not owned (RLS returns no row) |
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
@@ -78,9 +79,12 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Auth | `getCurrentUser` | Action | Verified user or null (layout, pages) | Optional |
 | Decks | `getDecks` | Action/GET | List public and personal decks | Optional |
 | Decks | `getDeckBySlug` | Action/GET | Deck metadata + full mindmap tree | Optional |
-| Decks | `createDeck` | Action/POST | Create new tree deck | Required |
-| Drill | `getDrillQuestion` | Action/POST | 3 choices (1 correct + 2 traps) for a node | Optional |
-| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck (1 correct + 2 traps per item) | Optional |
+| Decks | `createDeck` | Action/POST | Create new tree deck (slug generated) | Required |
+| Decks | `createMindmapNode` | Action/POST | Add a root to an owned deck | Required |
+| Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
+| Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
+| Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
+| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck (1 correct + 1–2 traps per item) | Optional |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak | Required |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
@@ -131,9 +135,33 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `createDeck` (decks)
 ```typescript
-// Input (CreateDeckDto): { title: string; slug: string; description?: string; isPublic?: boolean; treeType?: string }
-// defaults (DATABASE.md): isPublic = true, treeType = 'oak'; slug must be kebab-case
-// data: created deck (same shape as a getDecks row) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED
+// Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'sakura' }
+// defaults (DATABASE.md): isPublic = true, treeType = 'oak'
+// slug: generated with shared/utils/slugify (diacritics stripped); on a unique clash → -2 … -5, then a random suffix; "new" is reserved
+// data: created deck (same shape as a getDecks row) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+
+### `createMindmapNode` (decks)
+```typescript
+// Input (CreateMindmapNodeDto): { deckId: string; title: string; parentId?: string | null /* null = top level */ }
+// sort_order = number of existing siblings (appends)
+// data: { id: string; title: string } · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (parent not in deck)
+```
+
+### `createKnowledgeItem` (decks)
+```typescript
+// Input (CreateKnowledgeItemDto): { nodeId: string; statement: string /* 1–500 chars, plain text, no \commands like \frac */ }
+// Server sets: correct_stmt = statement, prompt = the root's title, trap_rules = { negate: true }
+// data: { id: string; drillable: boolean /* engine finds ≥ 1 trap */ }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND
+```
+- Authors never see or send trap rules; non-drillable items are saved but skipped by drill sessions
+
+### `getDeckEditor` (decks)
+```typescript
+// Input: { deckId: string }
+// data: { deckId; nodes: { id; title; depth; items: { id; statement; drillable }[] }[] }   // tree order, flattened
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND
 ```
 
 ### `getDrillQuestion` (drill)
@@ -197,6 +225,8 @@ Array<{ deckId: string; masteryPercent: number;            // Σ level / (3 × i
 // Errors: VALIDATION_FAILED
 ```
 - Anonymous → every `masteryPercent` = 0 and `masteryLevel` = 0; unpractised items count as 0
+- `masteryPercent` is rounded to an integer; duplicate `deckIds` are removed; unreadable decks return `itemCount: 0`
+- Item ids come from `decks/server` `listDeckItemIds`; `user_progress` is queried in chunks of 150 ids
 
 ---
 

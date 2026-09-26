@@ -1,0 +1,18 @@
+import { z } from 'zod'
+
+export const TREE_TYPES = ['oak', 'pine', 'sakura'] as const
+
+// The slug is generated from the title on the server (shared/utils/slugify).
+export const CreateDeckDto = z.object({
+  title: z.string().trim().min(1, 'Give your tree a name').max(150, 'Title is too long'),
+  description: z
+    .string()
+    .trim()
+    .max(1000, 'Description is too long')
+    .optional()
+    .transform((v) => v || null),
+  treeType: z.enum(TREE_TYPES).default('oak'),
+  isPublic: z.boolean().default(true),
+})
+
+export type CreateDeckInput = z.infer<typeof CreateDeckDto>

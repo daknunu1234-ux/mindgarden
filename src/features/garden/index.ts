@@ -1,4 +1,6 @@
 export { GardenGrid, GardenGridSkeleton } from './components/GardenGrid'
+export { GrowthBar } from './components/GrowthBar'
 export { TreeCard } from './components/TreeCard'
-export { getTreeIcon } from './lib/treeIcon'
-export type { DeckCardView } from './types'
+export { TreeStageSvg } from './components/TreeStageSvg'
+export { getTreeStage, TREE_STAGES, useTreeStage } from './hooks/useTreeStage'
+export type { DeckCardView, TreeStage } from './types'

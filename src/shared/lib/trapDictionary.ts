@@ -19,6 +19,13 @@ export const OPPOSITE_PAIRS: readonly WordPair[] = [
   ['hấp thụ', 'giải phóng'],
   ['luôn luôn', 'không bao giờ'],
   ['thuận nghịch', 'không thuận nghịch'],
+  ['trước', 'sau'],
+  ['trong', 'ngoài'],
+  ['tạo ra', 'tiêu thụ'],
+  ['đầu tiên', 'cuối cùng'],
+  ['thu nhiệt', 'tỏa nhiệt'],
+  ['đồng hóa', 'dị hóa'],
+  ['hít vào', 'thở ra'],
   // English
   ['increase', 'decrease'],
   ['increases', 'decreases'],
@@ -35,6 +42,14 @@ export const OPPOSITE_PAIRS: readonly WordPair[] = [
   ['positive', 'negative'],
   ['before', 'after'],
   ['inside', 'outside'],
+  ['inhale', 'exhale'],
+  ['inhales', 'exhales'],
+  ['produce', 'consume'],
+  ['produces', 'consumes'],
+  ['first', 'last'],
+  ['input', 'output'],
+  ['internal', 'external'],
+  ['endothermic', 'exothermic'],
 ]
 
 // Negations: only tried when trap_rules.negate is true.

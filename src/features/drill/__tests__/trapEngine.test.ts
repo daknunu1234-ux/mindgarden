@@ -49,13 +49,39 @@ describe('generateTraps', () => {
     expect(tags).toEqual(new Set(['A', 'B', 'C']))
   })
 
-  it('reports INSUFFICIENT_MUTATIONS with fewer than 2 candidates', () => {
-    expect(generateTraps('Mitochondria produce ATP.', {}, 's')).toEqual({
-      ok: false,
-      reason: 'INSUFFICIENT_MUTATIONS',
-    })
-    expect(generateTraps('Nhiệt độ tăng.', {}, 's')).toEqual({ ok: false, reason: 'INSUFFICIENT_MUTATIONS' })
+  it('reports INSUFFICIENT_MUTATIONS only when no trap can be made', () => {
+    expect(generateTraps('Cells need water.', {}, 's')).toEqual({ ok: false, reason: 'INSUFFICIENT_MUTATIONS' })
+    expect(generateTraps('Ty thể là bào quan.', {}, 's')).toEqual({ ok: false, reason: 'INSUFFICIENT_MUTATIONS' })
     expect(generateTraps('', {}, 's').ok).toBe(false)
+  })
+
+  it('falls back to 2 choices (A/B) when only one trap exists', () => {
+    const tags = new Set<string>()
+    for (const seed of seeds) {
+      const r = generateTraps('Nhiệt độ tăng.', {}, seed)
+      if (!r.ok) throw new Error('expected a 2-choice question')
+      expect(r.choices.map((c) => c.tag)).toEqual(['A', 'B'])
+      expect(r.choices.map((c) => c.text).sort()).toEqual(['Nhiệt độ giảm.', 'Nhiệt độ tăng.'])
+      expect(r.choices.find((c) => c.tag === r.correctTag)?.text).toBe('Nhiệt độ tăng.')
+      tags.add(r.correctTag)
+    }
+    // The true statement lands on both A and B across seeds, never on a missing C.
+    expect(tags).toEqual(new Set(['A', 'B']))
+  })
+
+  it('makes a 2-choice question from a single negation', () => {
+    const r = generateTraps('Ty thể là bào quan.', { negate: true }, 'seed')
+    if (!r.ok) throw new Error('expected a 2-choice question')
+    expect(r.choices).toHaveLength(2)
+    expect(r.choices.map((c) => c.text)).toContain('Ty thể không phải là bào quan.')
+  })
+
+  it('never uses more than 2 traps, even with a large pool', () => {
+    const rich = 'Trước khi tăng, nhiệt độ lớn hơn và áp suất cao hơn.'
+    expect(collectTrapCandidates(rich, {}).length).toBeGreaterThan(2)
+    const r = generateTraps(rich, {}, 'seed')
+    if (!r.ok) throw new Error('expected traps')
+    expect(r.choices).toHaveLength(3)
   })
 
   it('never calls Math.random', () => {
@@ -73,10 +99,12 @@ describe('generateTraps', () => {
 })
 
 describe('collectTrapCandidates: swaps', () => {
-  it('applies each configured swap, one mutation per candidate', () => {
+  it('applies each configured swap before dictionary pairs, one mutation per candidate', () => {
     expect(collectTrapCandidates(MITO, MITO_RULES)).toEqual([
       'Mitochondria produce ATP through photosynthesis.',
       'Mitochondria produce DNA through cellular respiration.',
+      // then the built-in produce ↔ consume pair
+      'Mitochondria consume ATP through cellular respiration.',
     ])
   })
 
@@ -135,6 +163,18 @@ describe('collectTrapCandidates: opposite pairs', () => {
   it('keeps a leading capital', () => {
     expect(collectTrapCandidates('Tăng nhiệt độ.', {})).toEqual(['Giảm nhiệt độ.'])
     expect(collectTrapCandidates('Always true.', {})).toEqual(['Never true.'])
+  })
+
+  it('knows the common educational opposites', () => {
+    expect(collectTrapCandidates('Ăn trước khi ngủ.', {})).toEqual(['Ăn sau khi ngủ.'])
+    expect(collectTrapCandidates('Nước ở trong tế bào.', {})).toEqual(['Nước ở ngoài tế bào.'])
+    expect(collectTrapCandidates('Cây tạo ra oxi.', {})).toEqual(['Cây tiêu thụ oxi.'])
+    expect(collectTrapCandidates('We inhale oxygen.', {})).toEqual(['We exhale oxygen.'])
+    expect(collectTrapCandidates('Wash before eating.', {})).toEqual(['Wash after eating.'])
+  })
+
+  it('does not match "trong" inside "trọng"', () => {
+    expect(collectTrapCandidates('Trọng lực.', {})).toEqual([])
   })
 
   it('does not match inside English words', () => {

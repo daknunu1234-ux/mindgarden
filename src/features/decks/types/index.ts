@@ -26,3 +26,8 @@ export type DeckDetail = {
   deck: Deck
   tree: DeckTreeNode[]
 }
+
+// Owner-only editor data (getDeckEditor). Includes true statements, so never for other players.
+export type EditorItem = { id: string; statement: string; drillable: boolean }
+export type EditorNode = { id: string; title: string; depth: number; items: EditorItem[] }
+export type DeckEditor = { deckId: string; nodes: EditorNode[] }

@@ -95,6 +95,8 @@ Example `trap_rules`:
 ```
 Applied to `"Mitochondria produce ATP through cellular respiration."` → traps like `"Mitochondria produce DNA through cellular respiration."`
 
+**Items created in the app** (`createKnowledgeItem`): authors write only the statement. The server stores `trap_rules = {"negate": true}` and `prompt` = the root's title; traps then come from the built-in dictionary (`shared/lib/trapDictionary.ts`). `swaps` stay supported for seeded or imported items.
+
 ### Progress & Gamification Feature
 
 **user_progress** — *Decoupled progress: one row per player per item*

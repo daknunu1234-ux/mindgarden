@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
-import { getDeckBySlug } from '@/features/decks'
+import { getCurrentUser } from '@/features/auth'
+import { getDeckBySlug, getDeckEditor } from '@/features/decks'
+import { getProgressByDecks } from '@/features/progress'
 import { DeckScene } from './_components/DeckScene'
 
 // generateMetadata and the page share one query per request.
@@ -36,5 +38,17 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
     )
   }
 
-  return <DeckScene detail={res.data} />
+  // Signed out → zeros. A progress error only dims the tree; the deck still renders.
+  const deckId = res.data.deck.id
+  const [progress, userRes] = await Promise.all([getProgressByDecks({ deckIds: [deckId] }), getCurrentUser()])
+  const isOwner = userRes.success && userRes.data?.id === res.data.deck.userId
+  const editor = isOwner ? await getDeckEditor({ deckId }) : null
+
+  return (
+    <DeckScene
+      detail={res.data}
+      progress={progress.success ? (progress.data[0] ?? null) : null}
+      editor={editor?.success ? editor.data : null}
+    />
+  )
 }

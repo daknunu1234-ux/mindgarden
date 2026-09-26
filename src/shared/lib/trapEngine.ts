@@ -11,6 +11,7 @@ export type TrapRules = {
 export type DrillTag = 'A' | 'B' | 'C'
 export type DrillChoice = { tag: DrillTag; text: string }
 export type TrapResult =
+  // 3 choices (A/B/C) normally, 2 (A/B) when only one trap could be made.
   | { ok: true; choices: DrillChoice[]; correctTag: DrillTag }
   | { ok: false; reason: 'INSUFFICIENT_MUTATIONS' }
 
@@ -120,16 +121,20 @@ export function collectTrapCandidates(correctStmt: string, rules: TrapRules): st
   })
 }
 
-// 1 correct statement + 2 traps, shuffled and tagged A/B/C. Same inputs → same output.
+// Most traps per question: 2 traps → 3 choices (A/B/C). With only 1 candidate the question
+// falls back to 2 choices (A/B, true vs. one trap); 0 candidates → INSUFFICIENT_MUTATIONS.
+const MAX_TRAPS = 2
+
 // The statement is NFC-normalized, so the correct choice text is `correctStmt.normalize('NFC')`.
+// Same inputs → same output.
 export function generateTraps(correctStmt: string, rules: TrapRules, seed: string): TrapResult {
   const candidates = collectTrapCandidates(correctStmt, rules)
-  if (candidates.length < 2) return { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
+  if (candidates.length === 0) return { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
 
   const random = seededRandom(seed)
-  const [trapA, trapB] = seededShuffle(candidates, random)
+  const traps = seededShuffle(candidates, random).slice(0, MAX_TRAPS)
   const correct = correctStmt.normalize('NFC')
-  const texts = seededShuffle([correct, trapA, trapB], random)
+  const texts = seededShuffle([correct, ...traps], random)
 
   const choices = texts.map((text, i) => ({ tag: TAGS[i], text }))
   const correctTag = TAGS[texts.indexOf(correct)]

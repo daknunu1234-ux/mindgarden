@@ -129,8 +129,8 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
 
       {session.skippedCount > 0 && (
         <p className="text-xs text-muted-foreground">
-          {session.skippedCount} {session.skippedCount === 1 ? 'item was' : 'items were'} skipped: add
-          trap swaps to make them drillable.
+          {session.skippedCount} {session.skippedCount === 1 ? 'item was' : 'items were'} skipped: their
+          statements have no word the trap engine can flip yet.
         </p>
       )}
     </div>

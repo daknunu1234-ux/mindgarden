@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
+import { Button } from "@/shared/components/ui/button";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
 import "./globals.css";
 
@@ -37,7 +38,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/" className="font-semibold tracking-tight">
                 MindGarden 🌳
               </Link>
-              <ProfileButton user={user} />
+              <div className="flex items-center gap-2">
+                <Button asChild size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700">
+                  <Link href="/deck/new">Plant a Tree 🌱</Link>
+                </Button>
+                <ProfileButton user={user} />
+              </div>
             </div>
           </header>
           {children}

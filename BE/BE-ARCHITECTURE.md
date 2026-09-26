@@ -157,7 +157,8 @@ correct_stmt + trap_rules + seed
 4. Operators               (* ↔ /, + ↔ -)
   ▼
 Candidate pool             (dedupe, drop == original)
-  ├── < 2 candidates ──► { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
+  ├── 0 candidates ──► { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
+  ├── 1 candidate  ──► 2 choices: seeded shuffle, tag A / B ──► { choices, correctTag }
   ▼ ≥ 2
 Seeded pick of 2 distractors ──► seeded shuffle, tag A / B / C ──► { choices, correctTag }
 ```
@@ -165,7 +166,7 @@ Seeded pick of 2 distractors ──► seeded shuffle, tag A / B / C ──► {
 | Source | Match rule | Example |
 |--------|------------|---------|
 | `trap_rules.swaps` | Case-insensitive whole word/phrase | `ATP` → `DNA` |
-| Opposite pairs | Both directions, longest phrase first | `Nhiệt độ tăng` → `Nhiệt độ giảm` |
+| Opposite pairs | Both directions, longest phrase first (`trapDictionary.ts`: tăng/giảm, trước/sau, trong/ngoài, tạo ra/tiêu thụ, inhale/exhale, produce/consume…) | `Nhiệt độ tăng` → `Nhiệt độ giảm` |
 | Negations | Only when `trap_rules.negate` is true; both directions, longest first | `Ty thể là bào quan` → `Ty thể không phải là bào quan` |
 | Operators | Only between operands (`3 * 4`, `a+b`); tight `-` and `/` need digits on both sides, so hyphens in words and units (`km/h`) are skipped | `F = m * a` → `F = m / a` |
 
@@ -173,7 +174,8 @@ Seeded pick of 2 distractors ──► seeded shuffle, tag A / B / C ──► {
 - **Unicode-safe boundaries**: `(?<!\p{L})…(?!\p{L})` with the `u` flag; `\b` breaks on Vietnamese diacritics
 - **Deterministic**: `seed = hash(itemId + sessionId)`, computed in `getDrillQuestion`; the engine only uses `seededRandom(seed)`
 - **Grading**: the client receives `choices` + `seed` (never `correctTag`); `submitDrillResult` re-runs the engine with the same seed
-- **Insufficient mutations**: `getDrillQuestion` skips the item; the deck editor asks the author to add `trap_rules.swaps`
+- **Choice count**: 3 choices when ≥ 2 traps exist, 2 (true vs. one trap) when only 1 does. A submitted `C` on a 2-choice question is simply wrong
+- **Insufficient mutations** (0 traps): drill sessions skip the item; the deck editor marks it 💧 and suggests flippable words (authors never edit trap rules)
 
 ---
 
