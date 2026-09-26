@@ -76,6 +76,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `getDeckBySlug` | Action/GET | Deck metadata + full mindmap tree | Optional |
 | Decks | `createDeck` | Action/POST | Create new tree deck | Required |
 | Drill | `getDrillQuestion` | Action/POST | 3 choices (1 correct + 2 traps) for a node | Optional |
+| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck (1 correct + 2 traps per item) | Optional |
+| Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak | Required |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
 
@@ -127,6 +129,31 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - **Item pick**: signed in → lowest `mastery_level`, then oldest `last_practiced_at`; anonymous → first by `created_at` not in `excludeItemIds`
 - Items returning `INSUFFICIENT_MUTATIONS` are skipped
+
+### `getDrillSession` (drill)
+```typescript
+// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus limit?: number /* 1–50, default 20 */
+// data
+{ deck: { id: string; slug: string; title: string; treeType: string };
+  sessionId: string;                          // crypto.randomUUID() per call
+  questions: { itemId: string; nodeTitle: string; prompt: string;
+               seed: string;                  // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
+               choices: { tag: 'A' | 'B' | 'C'; text: string }[] }[];   // no correctTag
+  skippedCount: number }                      // items that returned INSUFFICIENT_MUTATIONS
+// Errors: VALIDATION_FAILED, DECK_NOT_FOUND, DRILL_NO_ITEMS
+```
+- **Order**: items shuffled with `seededRandom(sessionId)`, then cut to `limit`
+- Deck-wide counterpart of `getDrillQuestion` (per node, still planned for the mindmap)
+
+### `checkDrillAnswer` (drill)
+```typescript
+// Input (CheckDrillAnswerDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
+// data
+{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C' }
+// Errors: VALIDATION_FAILED, ITEM_NOT_FOUND
+```
+- **Grading**: same as `submitDrillResult` (re-run `generateTraps` with the seed), but saves nothing and needs no session
+- Lets anonymous players get feedback; `submitDrillResult` adds mastery + streak once auth and progress exist
 
 ### `submitDrillResult` (progress)
 ```typescript

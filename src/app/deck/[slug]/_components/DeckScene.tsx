@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
+import { Button } from '@/shared/components/ui/button'
 import { countDeckTree, type DeckDetail, type DeckTreeNode } from '@/features/decks'
 import { getTreeIcon } from '@/features/garden'
 
@@ -41,6 +42,11 @@ function DeckScene({ detail }: DeckSceneProps) {
             <Stat label="Roots" value={nodeCount} />
             <Stat label="Knowledge items" value={itemCount} />
           </dl>
+          {itemCount > 0 && (
+            <Button asChild className="mt-5">
+              <Link href={`/deck/${deck.slug}/drill`}>Start practice 🌿</Link>
+            </Button>
+          )}
         </div>
       </header>
 

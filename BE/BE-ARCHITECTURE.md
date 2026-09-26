@@ -137,7 +137,7 @@ ActionResult<T> ──► Client receives { success, data, meta } or { success, 
 
 **Signature** (`shared/lib/trapEngine.ts`):
 ```typescript
-export type TrapRules = { swaps?: { from: string; to: string }[] }
+export type TrapRules = { swaps?: { from: string; to: string }[]; negate?: boolean }
 export type DrillChoice = { tag: 'A' | 'B' | 'C'; text: string }
 export type TrapResult =
   | { ok: true; choices: DrillChoice[]; correctTag: DrillChoice['tag'] }
@@ -152,7 +152,9 @@ correct_stmt + trap_rules + seed
   ▼
 2. Opposite pairs          (tăng ↔ giảm, lớn hơn ↔ nhỏ hơn)
   ▼
-3. Operators               (* ↔ /, + ↔ -)
+3. Negations (if negate)   (is ↔ is not, là ↔ không phải là)
+  ▼
+4. Operators               (* ↔ /, + ↔ -)
   ▼
 Candidate pool             (dedupe, drop == original)
   ├── < 2 candidates ──► { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
@@ -164,7 +166,8 @@ Seeded pick of 2 distractors ──► seeded shuffle, tag A / B / C ──► {
 |--------|------------|---------|
 | `trap_rules.swaps` | Case-insensitive whole word/phrase | `ATP` → `DNA` |
 | Opposite pairs | Both directions, longest phrase first | `Nhiệt độ tăng` → `Nhiệt độ giảm` |
-| Operators | Only between operands (`3 * 4`, `a+b`), never hyphens in words | `F = m * a` → `F = m / a` |
+| Negations | Only when `trap_rules.negate` is true; both directions, longest first | `Ty thể là bào quan` → `Ty thể không phải là bào quan` |
+| Operators | Only between operands (`3 * 4`, `a+b`); tight `-` and `/` need digits on both sides, so hyphens in words and units (`km/h`) are skipped | `F = m * a` → `F = m / a` |
 
 - **One mutation per distractor**: each trap differs from the original in exactly one place
 - **Unicode-safe boundaries**: `(?<!\p{L})…(?!\p{L})` with the `u` flag; `\b` breaks on Vietnamese diacritics
