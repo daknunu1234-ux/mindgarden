@@ -15,7 +15,10 @@ export type DrillSourceItem = {
   prompt: string
   correctStmt: string
   trapRules: TrapRules
+  // True statements of the other items in the same node, for sibling concept swaps.
+  siblingStatements: string[]
 }
+export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'>
 export type DeckRef = { deckId: string } | { slug: string }
 
 // Malformed trap_rules fall back to {} so the item can still use built-in traps.
@@ -54,6 +57,7 @@ export async function listDrillItems(
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
 
+  // Siblings are grouped per node here; the engine sorts them, so their order doesn't matter.
   const items = nodes.flatMap((node) =>
     [...node.knowledge_items]
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -64,6 +68,7 @@ export async function listDrillItems(
         prompt: item.prompt,
         correctStmt: item.correct_stmt,
         trapRules: parseTrapRules(item.trap_rules, item.id),
+        siblingStatements: node.knowledge_items.filter((other) => other.id !== item.id).map((other) => other.correct_stmt),
       })),
   )
 
@@ -73,14 +78,16 @@ export async function listDrillItems(
   })
 }
 
-// One item with its answer, for server-side grading. RLS hides items of unreadable decks.
+// One item with its answer and its node siblings, for server-side grading.
+// Must feed the engine the same siblings as listDrillItems, or the correct tag would differ.
+// RLS hides items of unreadable decks.
 export async function findDrillItem(
   supabase: SupabaseClient<Database>,
   itemId: string,
-): Promise<ActionResult<{ id: string; correctStmt: string; trapRules: TrapRules }>> {
+): Promise<ActionResult<DrillGradingItem>> {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, correct_stmt, trap_rules')
+    .select('id, node_id, correct_stmt, trap_rules')
     .eq('id', itemId)
     .maybeSingle()
 
@@ -90,5 +97,21 @@ export async function findDrillItem(
   }
   if (!data) return fail('ITEM_NOT_FOUND', 'Item not found')
 
-  return ok({ id: data.id, correctStmt: data.correct_stmt, trapRules: parseTrapRules(data.trap_rules, data.id) })
+  const { data: siblings, error: siblingsError } = await supabase
+    .from('knowledge_items')
+    .select('correct_stmt')
+    .eq('node_id', data.node_id)
+    .neq('id', data.id)
+
+  if (siblingsError) {
+    console.error('[decks] findDrillItem siblings failed', siblingsError)
+    return fail('INTERNAL_ERROR', 'Could not load item')
+  }
+
+  return ok({
+    id: data.id,
+    correctStmt: data.correct_stmt,
+    trapRules: parseTrapRules(data.trap_rules, data.id),
+    siblingStatements: siblings.map((s) => s.correct_stmt),
+  })
 }

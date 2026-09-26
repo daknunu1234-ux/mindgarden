@@ -66,6 +66,11 @@ describe('isDrillable with the default { negate: true }', () => {
     expect(isDrillable('Mitochondria produce ATP.')).toBe(true)
   })
 
+  it('becomes true once a sibling statement exists in the same root', () => {
+    expect(isDrillable('Ribosome tổng hợp protein.')).toBe(false)
+    expect(isDrillable('Ribosome tổng hợp protein.', undefined, ['Ty thể sản sinh ATP.'])).toBe(true)
+  })
+
   it('is false only when no trap can be made', () => {
     expect(isDrillable('Cells need water.')).toBe(false)
     expect(isDrillable('Ty thể của tế bào.')).toBe(false)

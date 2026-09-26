@@ -140,42 +140,43 @@ ActionResult<T> ──► Client receives { success, data, meta } or { success, 
 export type TrapRules = { swaps?: { from: string; to: string }[]; negate?: boolean }
 export type DrillChoice = { tag: 'A' | 'B' | 'C'; text: string }
 export type TrapResult =
-  | { ok: true; choices: DrillChoice[]; correctTag: DrillChoice['tag'] }
+  | { ok: true; choices: DrillChoice[]; correctTag: DrillChoice['tag'] }   // 2 or 3 choices
   | { ok: false; reason: 'INSUFFICIENT_MUTATIONS' }
-export function generateTraps(correctStmt: string, rules: TrapRules, seed: string): TrapResult
+// siblings = true statements of the other items in the same mindmap node
+export function generateTraps(correctStmt: string, rules: TrapRules, seed: string, siblings?: string[]): TrapResult
 ```
 
 ```
-correct_stmt + trap_rules + seed
+correct_stmt + trap_rules + seed + sibling statements (same node)
   ▼
-1. trap_rules.swaps        (configured keywords)
+Tier 1 · context      sibling concept swaps  ("Ty thể | sản sinh ATP" + "Ribosome | …" → "Ribosome sản sinh ATP")
+                      then trap_rules.swaps (legacy / seeded items)
+Tier 2 · built-in     opposite pairs (tăng ↔ giảm, trước ↔ sau), then operators (* ↔ /, + ↔ -)
+Tier 3 · negation     only if negate (is ↔ is not, là ↔ không phải là)
   ▼
-2. Opposite pairs          (tăng ↔ giảm, lớn hơn ↔ nhỏ hơn)
-  ▼
-3. Negations (if negate)   (is ↔ is not, là ↔ không phải là)
-  ▼
-4. Operators               (* ↔ /, + ↔ -)
-  ▼
-Candidate pool             (dedupe, drop == original)
+Dedupe across tiers; drop the original and any sibling's own statement (it is true)
   ├── 0 candidates ──► { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
-  ├── 1 candidate  ──► 2 choices: seeded shuffle, tag A / B ──► { choices, correctTag }
-  ▼ ≥ 2
-Seeded pick of 2 distractors ──► seeded shuffle, tag A / B / C ──► { choices, correctTag }
+  ▼
+Pick up to 2 traps tier by tier (seeded shuffle inside each tier)
+  ├── 1 trap  ──► seeded shuffle, tag A / B     ──► { choices, correctTag }
+  └── 2 traps ──► seeded shuffle, tag A / B / C ──► { choices, correctTag }
 ```
 
 | Source | Match rule | Example |
 |--------|------------|---------|
+| Sibling concept swap | Subject = text before the first predicate marker (`PREDICATE_MARKERS`: sản sinh, tổng hợp, là, chứa, produces, is…). 1–6 words, no comma, not a clause (`CLAUSE_STARTERS`: khi, nếu, when, if…). Otherwise no swap | `Ty thể sản sinh ATP` → `Ribosome sản sinh ATP` |
 | `trap_rules.swaps` | Case-insensitive whole word/phrase | `ATP` → `DNA` |
-| Opposite pairs | Both directions, longest phrase first (`trapDictionary.ts`: tăng/giảm, trước/sau, trong/ngoài, tạo ra/tiêu thụ, inhale/exhale, produce/consume…) | `Nhiệt độ tăng` → `Nhiệt độ giảm` |
-| Negations | Only when `trap_rules.negate` is true; both directions, longest first | `Ty thể là bào quan` → `Ty thể không phải là bào quan` |
+| Opposite pairs | Both directions, longest phrase first (`trapDictionary.ts`: tăng/giảm, trước/sau, tạo ra/tiêu thụ, inhale/exhale, produce/consume…) | `Nhiệt độ tăng` → `Nhiệt độ giảm` |
 | Operators | Only between operands (`3 * 4`, `a+b`); tight `-` and `/` need digits on both sides, so hyphens in words and units (`km/h`) are skipped | `F = m * a` → `F = m / a` |
+| Negations | Only when `trap_rules.negate` is true; both directions, longest first | `Ty thể là bào quan` → `Ty thể không phải là bào quan` |
 
-- **One mutation per distractor**: each trap differs from the original in exactly one place
+- **One mutation per distractor**: each trap differs from the original in exactly one place (a sibling swap replaces only the subject)
 - **Unicode-safe boundaries**: `(?<!\p{L})…(?!\p{L})` with the `u` flag; `\b` breaks on Vietnamese diacritics
-- **Deterministic**: `seed = hash(itemId + sessionId)`, computed in `getDrillQuestion`; the engine only uses `seededRandom(seed)`
-- **Grading**: the client receives `choices` + `seed` (never `correctTag`); `submitDrillResult` re-runs the engine with the same seed
+- **Deterministic**: `seed = hash(itemId + sessionId)`; the engine only uses `seededRandom(seed)`. Siblings are NFC-normalized, deduped and sorted inside the engine, so their DB order doesn't matter
+- **Grading**: the client receives `choices` + `seed` (never `correctTag`); `submitDrillResult` / `checkDrillAnswer` re-run the engine with the same seed **and the same node siblings** (`decks/server` `findDrillItem`). If the node's statements change mid-round, an in-flight answer may be graded against the new pool
+- **Known limit**: a sibling swap can be accidentally true when two concepts share a property ("Ty thể" and "Lục lạp" both make ATP); an exact copy of a sibling statement is always dropped
 - **Choice count**: 3 choices when ≥ 2 traps exist, 2 (true vs. one trap) when only 1 does. A submitted `C` on a 2-choice question is simply wrong
-- **Insufficient mutations** (0 traps): drill sessions skip the item; the deck editor marks it 💧 and suggests flippable words (authors never edit trap rules)
+- **Insufficient mutations** (0 traps): drill sessions skip the item; the deck editor marks it 💧 and suggests adding a sibling statement or a flippable word (authors never edit trap rules)
 
 ---
 

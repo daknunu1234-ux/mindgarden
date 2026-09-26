@@ -167,14 +167,14 @@ describe('collectTrapCandidates: opposite pairs', () => {
 
   it('knows the common educational opposites', () => {
     expect(collectTrapCandidates('Ăn trước khi ngủ.', {})).toEqual(['Ăn sau khi ngủ.'])
-    expect(collectTrapCandidates('Nước ở trong tế bào.', {})).toEqual(['Nước ở ngoài tế bào.'])
     expect(collectTrapCandidates('Cây tạo ra oxi.', {})).toEqual(['Cây tiêu thụ oxi.'])
     expect(collectTrapCandidates('We inhale oxygen.', {})).toEqual(['We exhale oxygen.'])
     expect(collectTrapCandidates('Wash before eating.', {})).toEqual(['Wash after eating.'])
   })
 
-  it('does not match "trong" inside "trọng"', () => {
-    expect(collectTrapCandidates('Trọng lực.', {})).toEqual([])
+  it('no longer swaps "trong" ↔ "ngoài" (too common in Vietnamese)', () => {
+    expect(collectTrapCandidates('Nước ở trong tế bào.', {})).toEqual([])
+    expect(collectTrapCandidates('Trong khi ngủ, tim đập chậm.', {})).toEqual([])
   })
 
   it('does not match inside English words', () => {

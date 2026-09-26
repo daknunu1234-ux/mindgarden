@@ -14,10 +14,10 @@ None. Reads items through `@/features/decks/server`.
 | types | `DrillSession`, `DrillQuestion`, `DrillAnswer`, `DrillChoice`, `DrillTag` |
 
 ## Internals
-- `services/drillSession.ts`: seed per item = `drillSeed(itemId, sessionId)`, skips `INSUFFICIENT_MUTATIONS`, shuffles with `seededRandom(sessionId)`
+- `services/drillSession.ts`: seed per item = `drillSeed(itemId, sessionId)`, passes the node's other statements as `siblings`, skips `INSUFFICIENT_MUTATIONS`, shuffles with `seededRandom(sessionId)`
 - `hooks/useDrillSession.ts`: signed in → `progress.submitDrillResult` (saves); signed out or session expired → `checkDrillAnswer` + open the login dialog. `answering → checking → feedback → … → done`, `error` with retry
 - `lib/drillSeed.ts`, `lib/splitMutation.ts` (changed-words span for highlights)
-- Tests: `__tests__/trapEngine.test.ts` (engine in `shared/lib`), `__tests__/drillHelpers.test.ts`
+- Tests: `__tests__/trapEngine.test.ts`, `__tests__/siblingSwaps.test.ts` (engine in `shared/lib`), `__tests__/drillHelpers.test.ts`
 
 ## Rules
 - The client never receives `correctStmt` or `correctTag` before answering

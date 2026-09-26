@@ -126,6 +126,16 @@ export async function insertKnowledgeItem(
   const owner = await checkDeckOwner(supabase, node.deck_id, userId)
   if (!owner.success) return owner
 
+  // Existing statements in this root become sibling-swap material for the new one.
+  const { data: siblings, error: siblingsError } = await supabase
+    .from('knowledge_items')
+    .select('correct_stmt')
+    .eq('node_id', nodeId)
+  if (siblingsError) {
+    console.error('[decks] insertKnowledgeItem siblings failed', siblingsError)
+    return fail('INTERNAL_ERROR', 'Could not add the statement')
+  }
+
   const { data, error } = await supabase
     .from('knowledge_items')
     .insert({
@@ -142,7 +152,8 @@ export async function insertKnowledgeItem(
     console.error('[decks] insertKnowledgeItem failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not add the statement')
   }
-  return ok({ id: data.id, drillable: isDrillable(statement, DEFAULT_TRAP_RULES) })
+  const siblingStatements = siblings.map((s) => s.correct_stmt)
+  return ok({ id: data.id, drillable: isDrillable(statement, DEFAULT_TRAP_RULES, siblingStatements) })
 }
 
 // Owner-only view with the true statements, flattened in tree order for the editor.
@@ -180,7 +191,12 @@ export async function loadDeckEditor(supabase: Client, userId: string, deckId: s
             return {
               id: item.id,
               statement: item.correct_stmt,
-              drillable: isDrillable(item.correct_stmt, parsed.success ? parsed.data : {}),
+              // Same siblings the drill session will use, so ✅/💧 matches what players get.
+              drillable: isDrillable(
+                item.correct_stmt,
+                parsed.success ? parsed.data : {},
+                n.knowledge_items.filter((other) => other.id !== item.id).map((other) => other.correct_stmt),
+              ),
             }
           }),
       })

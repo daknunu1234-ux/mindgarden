@@ -10,7 +10,7 @@ import { createMindmapNode } from '../actions/createMindmapNode'
 import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
 
 const DRILL_TIP =
-  'Not drillable yet: the trap engine needs a word it can flip, like tăng/giảm, trước/sau, trong/ngoài, là, có, increases/decreases or is.'
+  'Not drillable yet. Add another statement about a sibling concept in this root (e.g. "Ribosome tổng hợp protein."), or use a word the engine can flip, like tăng/giảm, trước/sau, là or is.'
 
 type DeckEditorProps = { editor: DeckEditorData }
 

@@ -4,5 +4,9 @@ import { collectTrapCandidates, type TrapRules } from '@/shared/lib/trapEngine'
 export const DEFAULT_TRAP_RULES: TrapRules = { negate: true }
 
 // One trap is enough (2-choice question); with none, drill sessions skip the item.
-export const isDrillable = (statement: string, rules: TrapRules = DEFAULT_TRAP_RULES) =>
-  collectTrapCandidates(statement, rules).length >= 1
+// `siblings` = the other true statements in the same root (sibling concept swaps).
+export const isDrillable = (
+  statement: string,
+  rules: TrapRules = DEFAULT_TRAP_RULES,
+  siblings: readonly string[] = [],
+) => collectTrapCandidates(statement, rules, siblings).length >= 1

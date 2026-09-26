@@ -25,7 +25,8 @@ export async function buildDrillSession(
   let skippedCount = 0
   for (const item of res.data.items) {
     const seed = drillSeed(item.id, sessionId)
-    const traps = generateTraps(item.correctStmt, item.trapRules, seed)
+    // Items of the same node act as siblings: their subjects become the best traps.
+    const traps = generateTraps(item.correctStmt, item.trapRules, seed, item.siblingStatements)
     if (!traps.ok) {
       skippedCount += 1
       continue

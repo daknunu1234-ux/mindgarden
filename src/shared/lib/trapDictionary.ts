@@ -20,7 +20,6 @@ export const OPPOSITE_PAIRS: readonly WordPair[] = [
   ['luôn luôn', 'không bao giờ'],
   ['thuận nghịch', 'không thuận nghịch'],
   ['trước', 'sau'],
-  ['trong', 'ngoài'],
   ['tạo ra', 'tiêu thụ'],
   ['đầu tiên', 'cuối cùng'],
   ['thu nhiệt', 'tỏa nhiệt'],
@@ -68,6 +67,30 @@ export const NEGATION_PAIRS: readonly WordPair[] = [
   ['does', 'does not'],
   ['do', 'do not'],
   ['will', 'will not'],
+]
+
+// Sibling concept swaps: a statement's subject is everything before the first of these
+// predicate words ("Ty thể | sản sinh ATP"). Only statements where a marker is found
+// take part, so an unknown sentence shape never produces a garbled trap.
+export const PREDICATE_MARKERS: readonly string[] = [
+  // Vietnamese
+  'là', 'có', 'không', 'sẽ', 'cần', 'được', 'giúp', 'gồm', 'chứa', 'nằm',
+  'sản sinh', 'tổng hợp', 'tạo ra', 'tiêu thụ', 'hấp thụ', 'giải phóng', 'cung cấp',
+  'thực hiện', 'chuyển hóa', 'phân giải', 'vận chuyển', 'điều khiển', 'điều hòa',
+  'lưu trữ', 'bảo vệ', 'diễn ra', 'quy định', 'tăng', 'giảm',
+  // English
+  'is', 'are', 'was', 'were', 'has', 'have', 'can', 'cannot', 'does', 'do', 'will',
+  'produces', 'produce', 'makes', 'make', 'contains', 'contain', 'synthesizes', 'synthesize',
+  'converts', 'convert', 'stores', 'store', 'controls', 'control', 'transports', 'transport',
+  'provides', 'provide', 'releases', 'release', 'absorbs', 'absorb', 'consumes', 'consume',
+  'generates', 'generate', 'regulates', 'regulate', 'breaks down', 'break down',
+]
+
+// A "subject" starting with one of these is really a clause ("Khi nhiệt độ | tăng, …"),
+// so the statement is left out of sibling swaps.
+export const CLAUSE_STARTERS: readonly string[] = [
+  'khi', 'nếu', 'vì', 'do', 'trong', 'sau', 'trước', 'để', 'mặc dù', 'tuy',
+  'when', 'if', 'because', 'in', 'after', 'before', 'during', 'while', 'although', 'since',
 ]
 
 // Operator swaps (step 3). Applied only between operands, see trapEngine.ts.
