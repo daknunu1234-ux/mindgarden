@@ -10,7 +10,7 @@ Project rules, doc map, hard rules and definition of done live in the shared age
 
 The docs describe the target architecture. The code is early:
 
-- Built so far: `src/shared/lib/supabase/{browser,server}.ts`, `src/shared/types/{database.types,result,errors}.ts`, `src/features/decks` (`getDecks` only), `src/features/garden` (`GardenGrid`, `TreeCard`), home page `src/app/page.tsx`.
+- Built so far: `src/shared/lib/supabase/{browser,server}.ts`, `src/shared/types/{database.types,result,errors}.ts`, `src/features/decks` (`getDecks`, `getDeckBySlug`), `src/features/garden` (`GardenGrid`, `TreeCard`), pages `/` and `/deck/[slug]` (mindmap is an outline placeholder).
 - Next.js is **16.3.6** (React 19.2). Check `node_modules/next/dist/docs/` before using any Next API (see the Next.js block above).
 - Installed: Supabase (`@supabase/ssr`, `@supabase/supabase-js`), `zod`, `server-only`, `lucide-react`, `canvas-confetti`, Tailwind v4, shadcn/ui.
 - shadcn/ui: `components.json` aliases point to `@/shared/components/ui` and `@/shared/utils/cn`. Components import `cn` from the official `cn` npm package, so `npx shadcn add <name>` works as is.

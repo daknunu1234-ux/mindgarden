@@ -11,6 +11,7 @@ None. Never calls actions; pages pass data in as props.
 | `GardenGrid({ decks })` | Grid of `TreeCard`s, with a built-in empty state |
 | `GardenGridSkeleton({ count? })` | Loading state, used by `app/loading.tsx` |
 | `TreeCard({ deck })` | Links to `/deck/[slug]`; icon from `treeType` (oak, pine, sakura) |
+| `getTreeIcon(treeType)` | Emoji for a tree skin, oak fallback |
 | `type DeckCardView` | `{ id, slug, title, description, treeType }` |
 
 ## Not built yet
