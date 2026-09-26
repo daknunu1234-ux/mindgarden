@@ -1,30 +1,31 @@
+import { getTreeSkin } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import type { TreeStage } from '../types'
 
-// Canopy colors per tree skin (light, dark). Unknown skins use oak.
-const SKINS: Record<string, readonly [string, string]> = {
-  oak: ['#86efac', '#22c55e'],
-  pine: ['#4ade80', '#15803d'],
-  sakura: ['#fbcfe8', '#f472b6'],
-}
-const TRUNK = '#92400e'
 const GOLD = '#facc15'
+const VIEW = 120
 const GROUND_Y = 108
+
+// Where the trunk meets the ground, as a fraction of the drawn size. Lets a scene line the
+// tree up with its own ground line (the deck page roots connect here).
+export const TREE_BASE_RATIO = { x: 60 / VIEW, y: GROUND_Y / VIEW } as const
 
 type TreeStageSvgProps = {
   stage: TreeStage
   treeType: string
   label: string
   className?: string
+  // Draw the little soil mound under the tree. Off when the scene draws its own ground.
+  ground?: boolean
 }
 
 // Inline SVG tree, one drawing per growth stage. Stage 4 adds a gold tint and sparkles.
-function TreeStageSvg({ stage, treeType, label, className }: TreeStageSvgProps) {
-  const [light, dark] = SKINS[treeType] ?? SKINS.oak
+function TreeStageSvg({ stage, treeType, label, className, ground = true }: TreeStageSvgProps) {
+  const { canopyLight: light, canopyDark: dark, bark: trunk } = getTreeSkin(treeType)
 
   return (
-    <svg viewBox="0 0 120 120" role="img" aria-label={label} className={cn('size-24', className)}>
-      <ellipse cx="60" cy={GROUND_Y + 4} rx="44" ry="6" fill="#d6b58c" opacity="0.55" />
+    <svg viewBox={`0 0 ${VIEW} ${VIEW}`} role="img" aria-label={label} className={cn('size-24', className)}>
+      {ground && <ellipse cx="60" cy={GROUND_Y + 4} rx="44" ry="6" fill="#d6b58c" opacity="0.55" />}
 
       {stage === 1 && (
         <g>
@@ -36,8 +37,8 @@ function TreeStageSvg({ stage, treeType, label, className }: TreeStageSvgProps) 
 
       {stage === 2 && (
         <g>
-          <rect x="57" y="70" width="6" height={GROUND_Y - 70} rx="2" fill={TRUNK} />
-          <path d="M60 86 L45 74 M60 80 L76 68 M60 74 L60 60" stroke={TRUNK} strokeWidth="3" strokeLinecap="round" />
+          <rect x="57" y="70" width="6" height={GROUND_Y - 70} rx="2" fill={trunk} />
+          <path d="M60 86 L45 74 M60 80 L76 68 M60 74 L60 60" stroke={trunk} strokeWidth="3" strokeLinecap="round" />
           <circle cx="44" cy="70" r="9" fill={light} />
           <circle cx="77" cy="64" r="10" fill={light} />
           <circle cx="60" cy="54" r="11" fill={dark} opacity="0.85" />
@@ -46,8 +47,8 @@ function TreeStageSvg({ stage, treeType, label, className }: TreeStageSvgProps) 
 
       {stage >= 3 && (
         <g>
-          <path d={`M54 ${GROUND_Y} L57 62 L63 62 L66 ${GROUND_Y} Z`} fill={TRUNK} />
-          <path d="M60 78 L42 64 M60 72 L80 58" stroke={TRUNK} strokeWidth="4" strokeLinecap="round" />
+          <path d={`M54 ${GROUND_Y} L57 62 L63 62 L66 ${GROUND_Y} Z`} fill={trunk} />
+          <path d="M60 78 L42 64 M60 72 L80 58" stroke={trunk} strokeWidth="4" strokeLinecap="round" />
           <g>
             <circle cx="40" cy="58" r="17" fill={dark} />
             <circle cx="80" cy="54" r="18" fill={dark} />

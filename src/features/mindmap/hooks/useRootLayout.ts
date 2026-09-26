@@ -1,11 +1,14 @@
 import type { RootNodeView } from '../types'
 
-// Card size and spacing (px). Roots grow downward from a trunk point at the top center.
+// Card size and spacing (px). y = 0 is the ground line: the tree trunk enters the soil at
+// (trunk.x, 0), a single conduit runs down to the root crown, and branches fan out from there.
 export const NODE_W = 184
 export const NODE_H = 116
 const GAP_X = 20
 const GAP_Y = 52
-const TRUNK_H = 44
+// Depth of the root crown below the ground, and where the first row of cards starts.
+export const CROWN_Y = 40
+const TRUNK_H = 84
 const PAD = 8
 
 export type LaidOutNode = {
@@ -17,13 +20,16 @@ export type LaidOutNode = {
   y: number
 }
 
-// from = null means the edge starts at the trunk.
-export type RootEdge = { from: string | null; to: string; path: string }
+// from = null means the edge starts at the root crown. (x1, y1) → (x2, y2) are its ends,
+// e.g. for a gradient stroke along the line.
+export type RootEdge = { from: string | null; to: string; path: string; x1: number; y1: number; x2: number; y2: number }
 
 export type RootLayout = {
   nodes: LaidOutNode[]
   edges: RootEdge[]
+  // trunk: where the tree meets the ground (y = 0). crown: end of the main conduit.
   trunk: { x: number; y: number }
+  crown: { x: number; y: number }
   width: number
   height: number
 }
@@ -65,19 +71,23 @@ export function layoutRoots(roots: RootNodeView[]): RootLayout {
     y: 0,
   }
 
+  const crown = { x: trunk.x, y: CROWN_Y }
+
   const byId = new Map(nodes.map((n) => [n.node.id, n]))
   const edges: RootEdge[] = nodes.map((n) => {
-    const toX = n.x + NODE_W / 2
+    const x2 = n.x + NODE_W / 2
+    const y2 = n.y
     const parent = n.parentId ? byId.get(n.parentId) : undefined
-    return parent
-      ? { from: parent.node.id, to: n.node.id, path: curve(parent.x + NODE_W / 2, parent.y + NODE_H, toX, n.y) }
-      : { from: null, to: n.node.id, path: curve(trunk.x, trunk.y, toX, n.y) }
+    const x1 = parent ? parent.x + NODE_W / 2 : crown.x
+    const y1 = parent ? parent.y + NODE_H : crown.y
+    return { from: parent?.node.id ?? null, to: n.node.id, path: curve(x1, y1, x2, y2), x1, y1, x2, y2 }
   })
 
   return {
     nodes,
     edges,
     trunk,
+    crown,
     width: Math.max(nextSlot, 1) * (NODE_W + GAP_X) - GAP_X + PAD * 2,
     height: roots.length === 0 ? 0 : TRUNK_H + (maxDepth + 1) * (NODE_H + GAP_Y) - GAP_Y + PAD,
   }

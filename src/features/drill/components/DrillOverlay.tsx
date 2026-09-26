@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { Kbd } from '@/shared/components/ui/kbd'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useDrillSession } from '../hooks/useDrillSession'
+import { useDrillShortcuts } from '../hooks/useDrillShortcuts'
 import type { DrillSession } from '../types'
 import { DrillCard } from './DrillCard'
 
@@ -28,6 +30,12 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
     session.questions,
     isSignedIn,
   )
+  useDrillShortcuts({
+    status: state.status,
+    tags: question?.choices.map((c) => c.tag) ?? [],
+    onPick: pick,
+    onNext: next,
+  })
   const isDone = state.status === 'done'
   const grewRoots = stats.improved > 0
 
@@ -120,6 +128,9 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
               <div className="flex justify-end">
                 <Button onClick={next} autoFocus>
                   {index + 1 >= total ? 'See results' : 'Next question'}
+                  <Kbd className="ml-1 hidden border-primary-foreground/30 bg-transparent text-primary-foreground/80 sm:inline-flex" aria-hidden>
+                    Enter
+                  </Kbd>
                 </Button>
               </div>
             )}

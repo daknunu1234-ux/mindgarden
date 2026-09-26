@@ -40,6 +40,10 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
         <p className="text-sm text-muted-foreground">Which statement is true?</p>
       </CardHeader>
       <CardContent className="space-y-3">
+        <p className="hidden text-xs text-muted-foreground sm:block">
+          Keys: {question.choices.map((_, i) => i + 1).join(' / ')} or {question.choices.map((c) => c.tag).join(' / ')} to
+          answer, Enter or Space for the next question.
+        </p>
         {question.choices.map((choice) => (
           <ChoiceButton
             key={choice.tag}

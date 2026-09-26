@@ -90,3 +90,26 @@ describe('branch mastery', () => {
     expect(isMightyRoot(null)).toBe(false)
   })
 })
+
+describe('trunk and root crown', () => {
+  const layout = layoutRoots(TREE)
+
+  it('starts at the ground line and drops to a crown straight below the trunk', () => {
+    expect(layout.trunk.y).toBe(0)
+    expect(layout.crown.x).toBe(layout.trunk.x)
+    expect(layout.crown.y).toBeGreaterThan(0)
+  })
+
+  it('branches every top-level root out of the crown, above the first row of cards', () => {
+    const top = layout.edges.filter((e) => e.from === null)
+    for (const e of top) {
+      expect([e.x1, e.y1]).toEqual([layout.crown.x, layout.crown.y])
+      expect(e.y2).toBeGreaterThan(layout.crown.y)
+    }
+  })
+
+  it('centers the trunk over the top-level roots', () => {
+    const tops = layout.nodes.filter((n) => n.parentId === null).map((n) => n.x + NODE_W / 2)
+    expect(layout.trunk.x).toBe((tops[0] + tops[tops.length - 1]) / 2)
+  })
+})

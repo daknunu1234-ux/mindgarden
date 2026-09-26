@@ -1,5 +1,7 @@
 export { MasteryRing } from './components/MasteryRing'
 export { RootMap } from './components/RootMap'
 export { branchItemIds, displayMastery, isMightyRoot, nodeMastery, rootOpacity } from './hooks/nodeMastery'
+export { allNodeIds, countDescendants, pruneCollapsed } from './hooks/collapse'
 export { ancestorPath, layoutRoots } from './hooks/useRootLayout'
+export { stepZoom } from './hooks/zoom'
 export type { ItemLevels, RootNodeView } from './types'

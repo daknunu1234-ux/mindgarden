@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Minus, Plus } from 'lucide-react'
 import { cn } from '@/shared/utils/cn'
 import { branchItemIds, isMightyRoot } from '../hooks/nodeMastery'
 import type { RootNodeView } from '../types'
@@ -9,9 +10,11 @@ type RootNodeProps = {
   // Own items' mastery, or the branch average for grouping roots (displayMastery).
   mastery: number | null
   deckSlug: string
+  // Present when the root has sub-roots: the toggle on the card's bottom edge.
+  collapse: { collapsed: boolean; hiddenCount: number; onToggle: () => void } | null
 }
 
-function RootNode({ node, mastery, deckSlug }: RootNodeProps) {
+function RootNode({ node, mastery, deckSlug, collapse }: RootNodeProps) {
   const mighty = isMightyRoot(mastery)
   const branchCount = branchItemIds(node).length
   const ownCount = node.items.length
@@ -20,7 +23,7 @@ function RootNode({ node, mastery, deckSlug }: RootNodeProps) {
     <article
       aria-label={`${node.title}${mastery === null ? '' : `, mastery ${formatLevel(mastery)} of 3`}${mighty ? ', Mighty Root' : ''}`}
       className={cn(
-        'flex h-full flex-col justify-between rounded-xl border-2 bg-card p-3 shadow-sm transition-colors',
+        'relative flex h-full flex-col justify-between rounded-xl border-2 bg-card p-3 shadow-sm transition-colors',
         mighty ? 'border-yellow-500 bg-yellow-50 shadow-yellow-200 ring-2 ring-yellow-300/60' : 'border-amber-800/20',
       )}
     >
@@ -57,6 +60,33 @@ function RootNode({ node, mastery, deckSlug }: RootNodeProps) {
         >
           Drill branch 🌿
         </Link>
+      )}
+
+      {collapse && (
+        <button
+          type="button"
+          onClick={collapse.onToggle}
+          aria-expanded={!collapse.collapsed}
+          aria-label={
+            collapse.collapsed
+              ? `Expand ${node.title} (${collapse.hiddenCount} hidden ${collapse.hiddenCount === 1 ? 'root' : 'roots'})`
+              : `Collapse ${node.title}`
+          }
+          className={cn(
+            'absolute -bottom-3 left-1/2 z-10 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center gap-0.5 rounded-full border-2 bg-background px-1 text-[11px] font-semibold shadow-sm transition-colors',
+            'hover:bg-amber-50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+            mighty ? 'border-yellow-500 text-yellow-800' : 'border-amber-800/30 text-amber-900',
+          )}
+        >
+          {collapse.collapsed ? (
+            <>
+              <Plus className="size-3" aria-hidden />
+              {collapse.hiddenCount}
+            </>
+          ) : (
+            <Minus className="size-3" aria-hidden />
+          )}
+        </button>
       )}
     </article>
   )

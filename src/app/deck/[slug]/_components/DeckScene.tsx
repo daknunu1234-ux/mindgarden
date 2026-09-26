@@ -3,15 +3,18 @@ import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { countDeckTree, DeckEditor, type DeckDetail, type DeckEditorData } from '@/features/decks'
-import { GrowthBar, TreeStageSvg, useTreeStage } from '@/features/garden'
+import { GrowthBar, TREE_BASE_RATIO, TreeStageSvg, useTreeStage } from '@/features/garden'
 import { RootMap, type ItemLevels } from '@/features/mindmap'
 import type { DeckProgress } from '@/features/progress'
 
 // editor is set only for the deck owner.
 type DeckSceneProps = { detail: DeckDetail; progress: DeckProgress | null; editor: DeckEditorData | null }
 
-// Route-level composition for /deck/[slug]: garden (tree surface) above the ground line,
-// mindmap (roots) below the ground line.
+// Rendered size of the tree in the scene; its trunk base is where the roots attach.
+const TREE_SIZE = 176
+
+// Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
+// ground line and the mindmap roots grow out of its trunk into the soil.
 function DeckScene({ detail, progress, editor }: DeckSceneProps) {
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
@@ -29,14 +32,8 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
         Garden
       </Link>
 
-      <header className="mt-6 flex items-start gap-4">
-        <TreeStageSvg
-          stage={stage}
-          treeType={deck.treeType}
-          label={`${name} tree`}
-          className="size-28 shrink-0 transition-opacity duration-700"
-        />
-        <div className="min-w-0 flex-1">
+      <header className="mt-6">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-semibold tracking-tight">{deck.title}</h1>
             <Badge variant="outline" className={stage === 4 ? 'border-yellow-500 bg-yellow-50' : undefined}>
@@ -63,26 +60,37 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
         </div>
       </header>
 
-      <div className="mt-10 border-t-2 border-amber-800/30" role="separator" aria-label="Ground line" />
-
-      <section aria-labelledby="roots-heading" className="mt-6">
+      <section aria-labelledby="roots-heading" className="mt-8">
         <h2 id="roots-heading" className="text-lg font-medium">
-          Roots
+          Tree &amp; roots
         </h2>
-        <div className="mt-3 rounded-xl border border-dashed bg-amber-50/40 p-6">
-          {tree.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground">
-              {editor ? 'No roots yet. Add the first concept below 🌱' : 'No roots yet. This tree is waiting for its first concept 🌱'}
-            </p>
-          ) : (
-            <>
-              <p className="mb-4 text-xs text-muted-foreground">
-                Roots glow brighter as you master them. Hover a root to trace its branch, or drill just that branch.
-              </p>
-              <RootMap nodes={tree} levels={levels} deckSlug={deck.slug} />
-            </>
-          )}
-        </div>
+        <p className="mt-1 mb-3 text-xs text-muted-foreground">
+          {tree.length === 0
+            ? 'Every concept you add becomes a root under this tree.'
+            : 'Roots glow brighter as you master them. Hover a root to trace it back to the trunk, or drill just that branch.'}
+        </p>
+        <RootMap
+          nodes={tree}
+          levels={levels}
+          deckSlug={deck.slug}
+          treeType={deck.treeType}
+          surface={{
+            width: TREE_SIZE,
+            height: TREE_SIZE,
+            baseX: TREE_SIZE * TREE_BASE_RATIO.x,
+            baseY: TREE_SIZE * TREE_BASE_RATIO.y,
+            content: (
+              <TreeStageSvg
+                stage={stage}
+                treeType={deck.treeType}
+                label={`${name} tree`}
+                ground={false}
+                className="size-full transition-opacity duration-700"
+              />
+            ),
+          }}
+          emptyLabel={editor ? 'No roots yet. Add the first concept below 🌱' : 'No roots yet. This tree is waiting for its first concept 🌱'}
+        />
       </section>
 
       {editor && (
