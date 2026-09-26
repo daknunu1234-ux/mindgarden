@@ -2,6 +2,7 @@
 export type ErrorCode =
   | 'VALIDATION_FAILED'
   | 'AUTH_UNAUTHORIZED'
+  | 'AUTH_RATE_LIMITED'
   | 'DECK_NOT_FOUND'
   | 'NODE_NOT_FOUND'
   | 'ITEM_NOT_FOUND'

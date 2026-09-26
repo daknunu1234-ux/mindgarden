@@ -5,7 +5,7 @@ import { getDecks } from '@/features/decks'
 import { GardenGrid } from '@/features/garden'
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
-  const { page } = await searchParams
+  const { page, login } = await searchParams
   const res = await getDecks({ page: typeof page === 'string' ? page : undefined })
 
   return (
@@ -14,6 +14,15 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
         <h1 className="text-3xl font-semibold tracking-tight">Garden 🌳</h1>
         <p className="mt-2 text-muted-foreground">Pick a tree and start growing its roots.</p>
       </header>
+
+      {login === 'error' && (
+        <Alert className="mb-6 border-amber-500 bg-amber-50 text-amber-900">
+          <AlertTitle>That sign-in link didn&apos;t work</AlertTitle>
+          <AlertDescription>
+            It may have expired or been opened in a different browser. Request a new one with Sign in.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {res.success ? (
         <>

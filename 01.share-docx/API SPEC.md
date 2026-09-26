@@ -59,6 +59,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 |------|------|------|
 | `VALIDATION_FAILED` | 400 | Zod validation failed; `message` = first issue |
 | `AUTH_UNAUTHORIZED` | 401 | No valid session on a Required endpoint |
+| `AUTH_RATE_LIMITED` | 429 | Supabase refused to send another sign-in email (built-in mailer limit) |
 | `DECK_NOT_FOUND` | 404 | Deck doesn't exist, or is private and not owned (RLS returns no row) |
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
@@ -71,7 +72,10 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 
 | Feature | Action / Route | Method | Description | Auth |
 |---------|---------------|--------|-------------|------|
-| Auth | `/auth/callback` | GET | Exchange code for OAuth session | Public |
+| Auth | `/auth/callback` | GET | Exchange the magic-link (PKCE) code for a session | Public |
+| Auth | `signInWithEmail` | Action/POST | Email a magic link | Public |
+| Auth | `signOut` | Action/POST | Clear the session | Optional |
+| Auth | `getCurrentUser` | Action | Verified user or null (layout, pages) | Optional |
 | Decks | `getDecks` | Action/GET | List public and personal decks | Optional |
 | Decks | `getDeckBySlug` | Action/GET | Deck metadata + full mindmap tree | Optional |
 | Decks | `createDeck` | Action/POST | Create new tree deck | Required |
@@ -86,8 +90,22 @@ Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `PO
 ### `GET /auth/callback`
 ```
 Query:   ?code=<oauth_code>&next=/deck/cell-biology-101
-Success: exchangeCodeForSession(code) → 302 to `next` (same-origin paths only)
+Success: exchangeCodeForSession(code) → 307 to `next` (same-origin paths only, `auth/lib/safeNextPath`)
 Failure: 302 to /?login=error
+```
+
+### `signInWithEmail` (auth)
+```typescript
+// Input (SignInWithEmailDto): { email: string; next?: string /* same-origin path, else '/' */ }
+// data: { sent: true } · Errors: VALIDATION_FAILED, AUTH_RATE_LIMITED, INTERNAL_ERROR
+```
+- `signInWithOtp` with `emailRedirectTo = <origin>/auth/callback?next=…`; new emails get an account
+- The link must be opened in the same browser (PKCE code verifier cookie)
+
+### `signOut` / `getCurrentUser` (auth)
+```typescript
+// signOut(): data null · Errors: INTERNAL_ERROR
+// getCurrentUser(): data { id: string; email: string } | null   (from supabase.auth.getUser())
 ```
 
 ### `getDecks` (decks)
@@ -147,7 +165,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `checkDrillAnswer` (drill)
 ```typescript
-// Input (CheckDrillAnswerDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
+// Input (DrillSubmissionDto, from progress): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
 // data
 { isCorrect: boolean; correctTag: 'A' | 'B' | 'C' }
 // Errors: VALIDATION_FAILED, ITEM_NOT_FOUND
@@ -160,13 +178,15 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
 // data
 { isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
-  masteryLevel: 0 | 1 | 2 | 3; mistakeCount: number; streakCount: number }
+  masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3; mistakeCount: number }
+// streakCount: planned, needs the admin client (SUPABASE_SERVICE_ROLE_KEY); not returned yet
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ITEM_NOT_FOUND
 ```
 - **Grading**: re-run `generateTraps(correctStmt, trapRules, seed)`, compare `tag` with `correctTag`
 - **Mastery** (`nextMastery` in `progress/lib`): correct → `min(level + 1, 3)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`
 - **Write**: upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'`, `last_practiced_at = now()`
-- **Streak** (admin client): `last_active_at` = today → unchanged; yesterday → +1; otherwise → 1
+- **Streak** (admin client, not built yet): `last_active_at` = today → unchanged; yesterday → +1; otherwise → 1
+- **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`
 
 ### `getProgressByDecks` (progress)
 ```typescript

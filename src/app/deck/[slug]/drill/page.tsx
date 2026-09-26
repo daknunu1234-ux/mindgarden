@@ -3,13 +3,15 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
 import { Button } from '@/shared/components/ui/button'
+import { getCurrentUser } from '@/features/auth'
 import { DrillOverlay, getDrillSession } from '@/features/drill'
 
 export const metadata: Metadata = { title: 'Practice · MindGarden' }
 
 export default async function DrillPage({ params }: PageProps<'/deck/[slug]/drill'>) {
   const { slug } = await params
-  const res = await getDrillSession({ slug })
+  const [res, userRes] = await Promise.all([getDrillSession({ slug }), getCurrentUser()])
+  const isSignedIn = userRes.success && userRes.data !== null
 
   if (!res.success) {
     const { code, message } = res.error
@@ -37,7 +39,7 @@ export default async function DrillPage({ params }: PageProps<'/deck/[slug]/dril
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-12 sm:px-6">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{res.data.deck.title}</h1>
       {/* A new session (e.g. after "Practice again" refreshes) remounts the overlay with fresh state. */}
-      <DrillOverlay key={res.data.sessionId} session={res.data} />
+      <DrillOverlay key={res.data.sessionId} session={res.data} isSignedIn={isSignedIn} />
     </main>
   )
 }

@@ -102,7 +102,7 @@ export function useDrillSession(nodeId: string) {
 ## 8. Gamification & Plain Text
 - **Tree stage** from `masteryPercent`: 0–25 🌱 · 26–50 🌿 · 51–80 🪴 · 81–100 🌳✨ (frontend/ARCHITECTURE.md §5)
 - **Feedback**: gold `border-yellow-500 bg-yellow-50` (mastery) · amber `border-amber-500 bg-amber-50` (needs practice); no red
-- **Confetti** on mastery 3 or stage-up only: `confetti({ particleCount: 80, disableForReducedMotion: true })`
+- **Confetti** on mastery 3, stage-up, or a drill round that raised saved mastery on at least one item (once, at the summary): `confetti({ particleCount: 80, disableForReducedMotion: true })`
 - **Text**: `whitespace-pre-wrap` plain text; DON'T use KaTeX, MathJax, or `dangerouslySetInnerHTML`
 - DON'T show hearts, "lives left", life-deduction modals, or lockout timers
 

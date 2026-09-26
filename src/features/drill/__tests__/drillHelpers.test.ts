@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateTraps } from '@/shared/lib/trapEngine'
 import { drillSeed } from '../lib/drillSeed'
 import { splitMutation } from '../lib/splitMutation'
-import { CheckDrillAnswerDto } from '../dto/CheckDrillAnswerDto'
+import { DrillSubmissionDto as CheckDrillAnswerDto } from '@/features/progress'
 import { GetDrillSessionDto } from '../dto/GetDrillSessionDto'
 
 const ITEM = '6f1c2a8e-2b1e-4c8a-9d3f-1a2b3c4d5e6f'

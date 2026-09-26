@@ -1,22 +1,39 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
 import { Button } from '@/shared/components/ui/button'
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useDrillSession } from '../hooks/useDrillSession'
 import type { DrillSession } from '../types'
 import { DrillCard } from './DrillCard'
 
-type DrillOverlayProps = { session: DrillSession }
+type DrillOverlayProps = { session: DrillSession; isSignedIn: boolean }
+
+// One burst when a round ends with at least one root grown. Loaded lazily; respects reduced motion.
+function celebrate() {
+  import('canvas-confetti').then(({ default: confetti }) =>
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, disableForReducedMotion: true }),
+  )
+}
 
 // Practice round for one deck: question → answer → feedback → next, then a summary.
-function DrillOverlay({ session }: DrillOverlayProps) {
+function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   const router = useRouter()
-  const { question, index, total, state, correctCount, isPending, pick, retry, next } = useDrillSession(
+  const { open: openLogin } = useLoginDialog()
+  const { question, index, total, state, stats, saving, isPending, pick, retry, next } = useDrillSession(
     session.questions,
+    isSignedIn,
   )
+  const isDone = state.status === 'done'
+  const grewRoots = stats.improved > 0
+
+  useEffect(() => {
+    if (isDone && grewRoots) celebrate()
+  }, [isDone, grewRoots])
   const deckHref = `/deck/${session.deck.slug}`
   const answered = index + (state.status === 'feedback' || state.status === 'done' ? 1 : 0)
 
@@ -52,14 +69,28 @@ function DrillOverlay({ session }: DrillOverlayProps) {
             </p>
             <h2 className="mt-4 text-2xl font-semibold">Your tree soaked it all up!</h2>
             <p className="mt-2 text-muted-foreground">
-              <span className="font-medium text-yellow-700">{correctCount} golden</span>
-              {total - correctCount > 0 && (
+              <span className="font-medium text-yellow-700">{stats.correct} golden</span>
+              {total - stats.correct > 0 && (
                 <>
                   {' · '}
-                  <span className="font-medium text-amber-700">{total - correctCount} to water again</span>
+                  <span className="font-medium text-amber-700">{total - stats.correct} to water again</span>
                 </>
               )}
             </p>
+            {saving && grewRoots && (
+              <p className="mt-3 text-sm">
+                {stats.improved} {stats.improved === 1 ? 'root' : 'roots'} grew stronger
+                {stats.mastered > 0 && ` · ${stats.mastered} reached Mighty Root ✨`}
+              </p>
+            )}
+            {!saving && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                <button type="button" onClick={openLogin} className="font-medium text-foreground underline underline-offset-4">
+                  Sign in
+                </button>{' '}
+                to save mastery and grow your tree.
+              </p>
+            )}
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Button onClick={() => router.refresh()}>Practice again</Button>
               <Button variant="outline" asChild>

@@ -1,9 +1,10 @@
 'use client'
 
+import { MASTERY_NAMES } from '@/features/progress'
 import { Badge } from '@/shared/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import type { DrillState } from '../hooks/useDrillSession'
-import type { DrillQuestion, DrillTag } from '../types'
+import type { DrillProgress, DrillQuestion, DrillTag } from '../types'
 import { ChoiceButton, type ChoiceState } from './ChoiceButton'
 import { MutationHighlight } from './MutationHighlight'
 
@@ -78,10 +79,30 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
                 </p>
               </>
             )}
+            {state.progress && <MasteryMeter progress={state.progress} />}
           </div>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function MasteryMeter({ progress }: { progress: DrillProgress }) {
+  const { masteryLevel } = progress
+  return (
+    <p className="mt-3 flex items-center gap-2 text-sm">
+      <span className="flex gap-1" aria-hidden>
+        {[1, 2, 3].map((step) => (
+          <span
+            key={step}
+            className={step <= masteryLevel ? 'size-2.5 rounded-full bg-yellow-500' : 'size-2.5 rounded-full bg-muted-foreground/25'}
+          />
+        ))}
+      </span>
+      <span>
+        {MASTERY_NAMES[masteryLevel]} · {masteryLevel}/3
+      </span>
+    </p>
   )
 }
 

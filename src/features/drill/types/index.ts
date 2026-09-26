@@ -20,3 +20,6 @@ export type DrillSession = {
 }
 
 export type DrillAnswer = { isCorrect: boolean; correctTag: DrillTag }
+
+// Saved progress for one answer (signed-in players only).
+export type DrillProgress = { masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3 }
