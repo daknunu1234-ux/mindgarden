@@ -16,7 +16,7 @@ function TreeCard({ deck }: TreeCardProps) {
       href={`/deck/${deck.slug}`}
       className="group block rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-      <Card className="h-full transition-colors duration-200 group-hover:border-emerald-300 group-hover:bg-emerald-50/40">
+      <Card className="h-full transition-colors duration-200 group-hover:bg-emerald-50/40 group-hover:ring-emerald-300">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <TreeStageSvg stage={stage} treeType={deck.treeType} label={`${name} tree`} className="size-20" />

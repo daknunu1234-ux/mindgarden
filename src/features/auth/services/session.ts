@@ -35,7 +35,7 @@ export async function readSessionUser(supabase: SupabaseClient<Database>): Promi
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  return user ? { id: user.id, email: user.email ?? '' } : null
+  return user ? { id: user.id, email: user.email ?? '', createdAt: user.created_at } : null
 }
 
 // For /auth/callback. Returns false when the code is missing, expired or from another browser.

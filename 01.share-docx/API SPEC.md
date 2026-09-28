@@ -88,6 +88,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak | Required |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
+| Progress | `getGardenStats` | Action | Profile totals over the player's own trees | Required |
 
 Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `POST /api/drill/question`, `POST /api/progress/drill-result`, `GET /api/progress?deckIds=…`
 
@@ -109,7 +110,7 @@ Failure: 302 to /?login=error
 ### `signOut` / `getCurrentUser` (auth)
 ```typescript
 // signOut(): data null · Errors: INTERNAL_ERROR
-// getCurrentUser(): data { id: string; email: string } | null   (from supabase.auth.getUser())
+// getCurrentUser(): data { id: string; email: string; createdAt: string } | null   (from supabase.auth.getUser())
 ```
 
 ### `getDecks` (decks)
@@ -218,6 +219,20 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Write**: upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'`, `last_practiced_at = now()`
 - **Streak** (admin client, not built yet): `last_active_at` = today → unchanged; yesterday → +1; otherwise → 1
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
+
+### `getGardenStats` (progress)
+```typescript
+// Input: none (the signed-in user)
+// data
+{ treeCount: number;          // decks owned by the user (public + private)
+  itemCount: number;          // knowledge items across those decks
+  mightyRootCount: number;    // roots with ≥ 1 item whose average mastery is 3/3
+  masteryPercent: number;     // Σ level / (3 × itemCount) × 100 over owned items, rounded; 0 without items
+  trees: { deckId; slug; title; treeType; isPublic; itemCount; masteryPercent; mightyRoots }[] }  // newest first
+// Errors: AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+- Only owned trees count; mastery earned on other people's public decks is not included
+- Deck + item ids come from `decks/server` (`listOwnedDecks`, `listDeckItemIds`), levels from `user_progress`
 
 ### `getProgressByDecks` (progress)
 ```typescript

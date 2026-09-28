@@ -8,7 +8,7 @@ import type { GetDecksInput } from '../dto/GetDecksDto'
 import { buildDeckTree } from '../lib/deckTree'
 import type { Deck, DeckDetail } from '../types'
 
-const toDeck = (row: Tables<'decks'>): Deck => ({
+export const toDeck = (row: Tables<'decks'>): Deck => ({
   id: row.id,
   userId: row.user_id,
   title: row.title,

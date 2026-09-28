@@ -11,8 +11,8 @@ Sign-in (email magic link) and the header profile button.
 | `index.ts` | `signInWithEmail({ email, next? })` | Server Action. Sends a magic link to `/auth/callback?next=…`. Errors: `VALIDATION_FAILED`, `AUTH_RATE_LIMITED`, `INTERNAL_ERROR` |
 | `index.ts` | `signOut()` | Server Action. Caller runs `router.refresh()` |
 | `index.ts` | `getCurrentUser()` | Server Action → `SessionUser \| null` (root layout, drill page) |
-| `index.ts` | `LoginDialog`, `ProfileButton({ user })` | Client. The dialog is rendered once in `app/layout.tsx`; open it with `useLoginDialog()` from `shared/stores` |
-| `index.ts` | `type SessionUser` | `{ id, email }` |
+| `index.ts` | `LoginDialog`, `ProfileButton({ user })` — signed in: link to `/profile` + icon-only sign out | Client. The dialog is rendered once in `app/layout.tsx`; open it with `useLoginDialog()` from `shared/stores` |
+| `index.ts` | `type SessionUser` | `{ id, email, createdAt }` (`createdAt` = Supabase Auth account creation, shown as "Joined") |
 | `server.ts` | `exchangeAuthCode(supabase, code)`, `safeNextPath(next)` | For `app/auth/callback/route.ts` |
 
 ## Session refresh

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Tables } from '@/shared/types/database.types'
+import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { slugify } from '@/shared/utils/slugify'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
@@ -9,6 +9,7 @@ import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
 import { TrapRulesDto } from '../dto/TrapRulesDto'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
+import { toDeck } from './decks'
 import type { Deck, DeckEditor, EditorNode } from '../types'
 
 type Client = SupabaseClient<Database>
@@ -17,17 +18,6 @@ type Client = SupabaseClient<Database>
 const RESERVED_SLUGS = new Set(['new'])
 const UNIQUE_VIOLATION = '23505'
 const FK_VIOLATION = '23503'
-
-const toDeck = (row: Tables<'decks'>): Deck => ({
-  id: row.id,
-  userId: row.user_id,
-  title: row.title,
-  slug: row.slug,
-  description: row.description,
-  isPublic: row.is_public,
-  treeType: row.tree_type,
-  createdAt: row.created_at,
-})
 
 function* slugCandidates(title: string) {
   const base = slugify(title)

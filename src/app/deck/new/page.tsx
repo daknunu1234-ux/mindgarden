@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getCurrentUser } from '@/features/auth'
 import { CreateDeckForm } from '@/features/decks'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card'
-import { SignInPrompt } from './_components/SignInPrompt'
+import { SignInPrompt } from '@/shared/components/SignInPrompt'
 
 export const metadata: Metadata = { title: 'Plant a Tree · MindGarden' }
 
@@ -23,7 +23,10 @@ export default async function NewDeckPage() {
           </CardContent>
         </Card>
       ) : (
-        <SignInPrompt />
+        <SignInPrompt
+          title="Sign in to plant your own tree"
+          description="Your trees and their roots are saved to your account."
+        />
       )}
     </main>
   )

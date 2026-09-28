@@ -86,6 +86,7 @@ src/
 | `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
+| `user-profile` | Gardener overview on `/profile` | `GardenerCard`, `GardenStatsGrid`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features
 - **No feature-to-feature UI imports**: `mindmap` → `drill` via URL; `drill` opens login through `LoginDialogProvider`

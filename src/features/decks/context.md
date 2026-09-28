@@ -18,7 +18,8 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `countDeckTree(tree)` | Pure: `{ nodeCount, itemCount }` for a deck header |
 | `index.ts` | `type Deck`, `DeckDetail`, `DeckTreeNode`, `DeckTreeItem` | camelCase shapes from API SPEC.md §6. Items carry only `id` + `prompt` (no `correctStmt`) |
 | `server.ts` | `listDrillItems(supabase, { deckId } \| { slug })` | Server-only. Deck + `nodes { id, parentId, title }` + every item with `correctStmt`, parsed `trapRules` and `siblingStatements` (other statements in its node), for drill |
-| `server.ts` | `listDeckItemIds(supabase, deckIds)` | Server-only. `{ deckId, items: { itemId, nodeId }[] }[]` in input order, for progress |
+| `server.ts` | `listDeckItemIds(supabase, deckIds)` | Server-only. `{ deckId, items: { itemId, nodeId }[] }[]` in input order (queried 100 decks at a time), for progress |
+| `server.ts` | `listOwnedDecks(supabase, userId)` | Server-only. The user's decks (public + private), newest first, for the profile stats |
 | `server.ts` | `findDrillItem(supabase, itemId)` | Server-only. One item with its answer and `siblingStatements`, for grading. `ITEM_NOT_FOUND` if unreadable |
 
 ## Internals
