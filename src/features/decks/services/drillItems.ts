@@ -2,9 +2,9 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TrapRules } from '@/shared/lib/trapEngine'
-import type { Database, Json } from '@/shared/types/database.types'
+import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
-import { TrapRulesDto } from '../dto/TrapRulesDto'
+import { answersByNode, readAnswersForNodes } from './answers'
 
 // Server-only shapes: these carry correctStmt, so they must never reach the client.
 export type DrillDeck = { id: string; slug: string; title: string; treeType: string }
@@ -22,15 +22,8 @@ export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'tra
 export type DeckRef = { deckId: string } | { slug: string }
 export type DrillNode = { id: string; parentId: string | null; title: string }
 
-// Malformed trap_rules fall back to {} so the item can still use built-in traps.
-function parseTrapRules(raw: Json, itemId: string): TrapRules {
-  const parsed = TrapRulesDto.safeParse(raw)
-  if (parsed.success) return parsed.data
-  console.warn('[decks] invalid trap_rules, using {}', itemId, parsed.error.issues[0]?.message)
-  return {}
-}
-
 // Every knowledge item in a deck, with its node title, for building a drill session.
+// The user client (RLS) decides what is visible; answers.ts then reads the statements.
 export async function listDrillItems(
   supabase: SupabaseClient<Database>,
   ref: DeckRef,
@@ -49,7 +42,7 @@ export async function listDrillItems(
 
   const { data: nodes, error: nodesError } = await supabase
     .from('mindmap_nodes')
-    .select('id, parent_id, title, knowledge_items(id, prompt, correct_stmt, trap_rules, created_at)')
+    .select('id, parent_id, title, knowledge_items(id, prompt, created_at)')
     .eq('deck_id', deck.id)
     .order('sort_order')
 
@@ -58,19 +51,34 @@ export async function listDrillItems(
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
 
-  // Siblings are grouped per node here; the engine sorts them, so their order doesn't matter.
-  const items = nodes.flatMap((node) =>
+  const answers = await readAnswersForNodes(
+    supabase,
+    nodes.map((n) => n.id),
+  )
+  if (!answers.success) return answers
+  const byNode = answersByNode(answers.data)
+  const byItem = new Map(answers.data.map((a) => [a.itemId, a]))
+
+  // Siblings = every other statement in the node, exactly what findDrillItem uses for grading.
+  // The engine sorts them, so their order doesn't matter.
+  const items: DrillSourceItem[] = nodes.flatMap((node) =>
     [...node.knowledge_items]
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((item) => ({
-        id: item.id,
-        nodeId: node.id,
-        nodeTitle: node.title,
-        prompt: item.prompt,
-        correctStmt: item.correct_stmt,
-        trapRules: parseTrapRules(item.trap_rules, item.id),
-        siblingStatements: node.knowledge_items.filter((other) => other.id !== item.id).map((other) => other.correct_stmt),
-      })),
+      .flatMap((item) => {
+        const answer = byItem.get(item.id)
+        if (!answer) return []
+        return [
+          {
+            id: item.id,
+            nodeId: node.id,
+            nodeTitle: node.title,
+            prompt: item.prompt,
+            correctStmt: answer.correctStmt,
+            trapRules: answer.trapRules,
+            siblingStatements: (byNode.get(node.id) ?? []).filter((a) => a.itemId !== item.id).map((a) => a.correctStmt),
+          },
+        ]
+      }),
   )
 
   return ok({
@@ -82,14 +90,14 @@ export async function listDrillItems(
 
 // One item with its answer and its node siblings, for server-side grading.
 // Must feed the engine the same siblings as listDrillItems, or the correct tag would differ.
-// RLS hides items of unreadable decks.
+// The user client (RLS) proves the item is readable before any answer is read.
 export async function findDrillItem(
   supabase: SupabaseClient<Database>,
   itemId: string,
 ): Promise<ActionResult<DrillGradingItem>> {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, node_id, correct_stmt, trap_rules')
+    .select('id, node_id')
     .eq('id', itemId)
     .maybeSingle()
 
@@ -99,21 +107,15 @@ export async function findDrillItem(
   }
   if (!data) return fail('ITEM_NOT_FOUND', 'Item not found')
 
-  const { data: siblings, error: siblingsError } = await supabase
-    .from('knowledge_items')
-    .select('correct_stmt')
-    .eq('node_id', data.node_id)
-    .neq('id', data.id)
-
-  if (siblingsError) {
-    console.error('[decks] findDrillItem siblings failed', siblingsError)
-    return fail('INTERNAL_ERROR', 'Could not load item')
-  }
+  const answers = await readAnswersForNodes(supabase, [data.node_id])
+  if (!answers.success) return answers
+  const own = answers.data.find((a) => a.itemId === data.id)
+  if (!own) return fail('ITEM_NOT_FOUND', 'Item not found')
 
   return ok({
-    id: data.id,
-    correctStmt: data.correct_stmt,
-    trapRules: parseTrapRules(data.trap_rules, data.id),
-    siblingStatements: siblings.map((s) => s.correct_stmt),
+    id: own.itemId,
+    correctStmt: own.correctStmt,
+    trapRules: own.trapRules,
+    siblingStatements: answers.data.filter((a) => a.itemId !== own.itemId).map((a) => a.correctStmt),
   })
 }

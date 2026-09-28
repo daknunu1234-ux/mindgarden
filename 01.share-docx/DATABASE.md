@@ -235,11 +235,29 @@ GRANT UPDATE (full_name, avatar_url) ON public.users TO authenticated;
 - **Perf**: Use `(SELECT auth.uid())` instead of bare `auth.uid()` so it's evaluated once per query
 - **Full policy set**: see `supabase/migrations/*_rls_policies.sql`
 
+### Answer secrecy (column privileges on `knowledge_items`)
+
+RLS picks **rows**; it cannot hide **columns**. Without extra grants, `GET /rest/v1/knowledge_items?select=correct_stmt` with the public anon key returns every answer.
+Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds column-level privileges:
+
+| Role | SELECT | INSERT / UPDATE |
+|------|--------|-----------------|
+| anon | `id`, `node_id`, `prompt`, `created_at` | ✗ |
+| authenticated | `id`, `node_id`, `prompt`, `created_at` | `node_id`, `prompt`, `correct_stmt`, `trap_rules` (RLS: deck owner) |
+| service_role | all | all |
+
+- **Why the service role**: anything a Server Action can do with the player's JWT, the player can do from the browser too. Answers are read only with a key the browser never has
+- **Code**: every `correct_stmt` / `trap_rules` read lives in `src/features/decks/services/answers.ts`, via `src/shared/lib/supabase/admin.ts`. The user's RLS client first proves the nodes/items are readable; the admin client then reads answers only for those ids. `decks/__tests__/answerSecrecy.test.ts` fails if any other file selects these columns
+- **Writes**: authors still insert/update statements with their own session; Postgres needs SELECT on columns used in `WHERE` / `RETURNING`, so writes can't be used as an oracle and inserts return only `id`
+- **Deploy order**: set `SUPABASE_SERVICE_ROLE_KEY` on the server → restart → run the migration. Without the key, `answers.ts` falls back to the user client (works only before the migration; after it, reads fail with `42501` and the server logs the fix)
+- **New columns** on `knowledge_items` are not readable by anon/authenticated until granted explicitly (fail closed)
+
 ---
 
 ## Migration Rules
 
 - **Location**: `supabase/migrations/`
+- ⚠️ The base schema (tables, RLS, trigger) was created in the Supabase dashboard and is not in `supabase/migrations/` yet, so `npx supabase db reset` cannot rebuild it. Until it is, apply new migrations in the SQL Editor
 - **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`)
 - **One feature per file**: auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one

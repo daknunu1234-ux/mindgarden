@@ -7,8 +7,8 @@ import { slugify } from '@/shared/utils/slugify'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
-import { TrapRulesDto } from '../dto/TrapRulesDto'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
+import { answersByNode, readAnswersForNodes } from './answers'
 import { toDeck } from './decks'
 import type { Deck, DeckEditor, EditorNode } from '../types'
 
@@ -116,15 +116,10 @@ export async function insertKnowledgeItem(
   const owner = await checkDeckOwner(supabase, node.deck_id, userId)
   if (!owner.success) return owner
 
-  // Existing statements in this root become sibling-swap material for the new one.
-  const { data: siblings, error: siblingsError } = await supabase
-    .from('knowledge_items')
-    .select('correct_stmt')
-    .eq('node_id', nodeId)
-  if (siblingsError) {
-    console.error('[decks] insertKnowledgeItem siblings failed', siblingsError)
-    return fail('INTERNAL_ERROR', 'Could not add the statement')
-  }
+  // Existing statements in this root become sibling-swap material for the new one
+  // (read via answers.ts: the owner check above authorizes this node).
+  const siblings = await readAnswersForNodes(supabase, [nodeId])
+  if (!siblings.success) return siblings
 
   const { data, error } = await supabase
     .from('knowledge_items')
@@ -135,6 +130,7 @@ export async function insertKnowledgeItem(
       correct_stmt: statement,
       trap_rules: DEFAULT_TRAP_RULES,
     })
+    // RETURNING only id: writing correct_stmt is allowed, reading it back is not.
     .select('id')
     .single()
 
@@ -142,7 +138,7 @@ export async function insertKnowledgeItem(
     console.error('[decks] insertKnowledgeItem failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not add the statement')
   }
-  const siblingStatements = siblings.map((s) => s.correct_stmt)
+  const siblingStatements = siblings.data.map((s) => s.correctStmt)
   return ok({ id: data.id, drillable: isDrillable(statement, DEFAULT_TRAP_RULES, siblingStatements) })
 }
 
@@ -153,13 +149,21 @@ export async function loadDeckEditor(supabase: Client, userId: string, deckId: s
 
   const { data: nodes, error } = await supabase
     .from('mindmap_nodes')
-    .select('id, parent_id, title, sort_order, knowledge_items(id, correct_stmt, trap_rules, created_at)')
+    .select('id, parent_id, title, sort_order')
     .eq('deck_id', deckId)
 
   if (error) {
     console.error('[decks] loadDeckEditor failed', error)
     return fail('INTERNAL_ERROR', 'Could not load the editor')
   }
+
+  // Statements come from answers.ts (oldest first); the owner check above authorizes the deck.
+  const answers = await readAnswersForNodes(
+    supabase,
+    nodes.map((n) => n.id),
+  )
+  if (!answers.success) return answers
+  const byNode = answersByNode(answers.data)
 
   const childrenOf = new Map<string | null, typeof nodes>()
   for (const n of nodes) childrenOf.set(n.parent_id, [...(childrenOf.get(n.parent_id) ?? []), n])
@@ -174,21 +178,16 @@ export async function loadDeckEditor(supabase: Client, userId: string, deckId: s
         id: n.id,
         title: n.title,
         depth,
-        items: [...n.knowledge_items]
-          .sort((a, b) => a.created_at.localeCompare(b.created_at))
-          .map((item) => {
-            const parsed = TrapRulesDto.safeParse(item.trap_rules)
-            return {
-              id: item.id,
-              statement: item.correct_stmt,
-              // Same siblings the drill session will use, so ✅/💧 matches what players get.
-              drillable: isDrillable(
-                item.correct_stmt,
-                parsed.success ? parsed.data : {},
-                n.knowledge_items.filter((other) => other.id !== item.id).map((other) => other.correct_stmt),
-              ),
-            }
-          }),
+        items: (byNode.get(n.id) ?? []).map((item, _, all) => ({
+          id: item.itemId,
+          statement: item.correctStmt,
+          // Same siblings the drill session will use, so ✅/💧 matches what players get.
+          drillable: isDrillable(
+            item.correctStmt,
+            item.trapRules,
+            all.filter((other) => other.itemId !== item.itemId).map((other) => other.correctStmt),
+          ),
+        })),
       })
       visit(n.id, depth + 1)
     }

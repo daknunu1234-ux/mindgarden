@@ -219,6 +219,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Write**: upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'`, `last_practiced_at = now()`
 - **Streak** (admin client, not built yet): `last_active_at` = today → unchanged; yesterday → +1; otherwise → 1
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
+- **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"); no action or route ever returns them to a player
 
 ### `getGardenStats` (progress)
 ```typescript

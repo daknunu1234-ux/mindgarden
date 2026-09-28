@@ -29,6 +29,7 @@ Server feature for decks, their mindmap tree and knowledge items.
 - `dto/CreateDeckDto.ts` (`TREE_TYPES`), `dto/CreateMindmapNodeDto.ts`, `dto/CreateKnowledgeItemDto.ts` (plain text, rejects `\commands`), `dto/GetDeckEditorDto.ts`
 - `services/authoring.ts`: inserts + owner checks; `lib/drillable.ts`: `DEFAULT_TRAP_RULES`, `isDrillable`
 - `dto/TrapRulesDto.ts`: Zod for `trap_rules` (`swaps` ≤ 50, `negate`). Invalid JSON falls back to `{}` with a warning
+- `services/answers.ts`: the only reader of `correct_stmt` / `trap_rules` (`readAnswersForNodes`, `answersByNode`), via the service-role client (`shared/lib/supabase/admin.ts`), falling back to the user client when `SUPABASE_SERVICE_ROLE_KEY` is unset. Callers pass only node ids their RLS query already returned. Guarded by `__tests__/answerSecrecy.test.ts`
 - `services/drillItems.ts`, `services/deckItems.ts`: back `server.ts`
 - `lib/deckTree.ts`: `buildDeckTree` (adjacency list → nested roots, siblings by `sort_order`, cycle nodes dropped), `countDeckTree`
 

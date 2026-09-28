@@ -16,7 +16,9 @@ The docs describe the target architecture. The code is early:
 - shadcn/ui: `components.json` aliases point to `@/shared/components/ui` and `@/shared/utils/cn`. Components import `cn` from the official `cn` npm package, so `npx shadcn add <name>` works as is.
 - `database.types.ts` is **hand-written** from DATABASE.md. Replace it with `supabase gen types` output once migrations exist.
 - Vitest 5 is set up (`vitest.config.mts`, `@` alias). Tests live in `src/**/__tests__/*.test.ts`; `npm test` runs once, `npm run test:watch` watches. `server-only` is stubbed in Vitest (`src/test/server-only.ts`).
-- **Not set up yet**: the Supabase CLI project (`supabase/` migrations folder), `admin.ts` + daily streak (needs `SUPABASE_SERVICE_ROLE_KEY`). If a task needs one of these, set it up first or ask the user.
+- `src/shared/lib/supabase/admin.ts` (service role) is used only by `decks/services/answers.ts` to read `correct_stmt` / `trap_rules`. Set `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (never `NEXT_PUBLIC_`). Without it, answer reads fall back to the user client, which stops working once `supabase/migrations/20260928000100_hide_knowledge_answers.sql` is applied.
+- `supabase/migrations/` holds only that hardening migration: the base schema was built in the dashboard, so apply migrations in the SQL Editor (no `db reset`).
+- **Not set up yet**: the Supabase CLI project (`supabase/config.toml`), daily streak. If a task needs one of these, set it up first or ask the user.
 - Commands that work today: `npm run dev`, `npm run build`, `npm run lint`, `npx tsc --noEmit`, `npm test`. Run `npx next typegen` before `tsc` after adding a route, so `PageProps<...>` knows it.
 
 ## Working notes
