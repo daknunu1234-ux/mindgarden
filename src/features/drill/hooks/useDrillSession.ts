@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { submitDrillResult } from '@/features/progress'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
+import { useStreak } from '@/shared/stores/StreakProvider'
 import type { ErrorCode } from '@/shared/types/errors'
 import { checkDrillAnswer } from '../actions/checkDrillAnswer'
 import type { DrillAnswer, DrillProgress, DrillQuestion, DrillTag } from '../types'
@@ -25,6 +26,7 @@ export type RoundStats = {
 // server after the player picks: submitDrillResult (saves) when signed in, else checkDrillAnswer.
 export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean) {
   const { open: openLogin } = useLoginDialog()
+  const { streak, setStreak } = useStreak()
   const [index, setIndex] = useState(0)
   const [state, setState] = useState<DrillState>({ status: 'answering' })
   const [stats, setStats] = useState<RoundStats>({ correct: 0, improved: 0, mastered: 0 })
@@ -39,13 +41,20 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
 
     startTransition(async () => {
       const input = { itemId: question.itemId, seed: question.seed, tag }
+      // The streak's calendar day is the player's local day.
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
       let answer: DrillAnswer
       let progress: DrillProgress | null = null
 
-      const saved = saving ? await submitDrillResult(input) : null
+      const saved = saving ? await submitDrillResult({ ...input, timeZone }) : null
       if (saved?.success) {
         answer = { isCorrect: saved.data.isCorrect, correctTag: saved.data.correctTag }
         progress = { masteryLevel: saved.data.masteryLevel, previousMasteryLevel: saved.data.previousMasteryLevel }
+        if (saved.data.streakCount !== null) {
+          // Update the header badge in place; a page refresh would restart the round.
+          const current = saved.data.streakCount
+          setStreak({ current, best: Math.max(streak?.best ?? 0, current), practicedToday: true })
+        }
       } else if (saved && saved.error.code !== 'AUTH_UNAUTHORIZED') {
         setState({ status: 'error', picked: tag, error: saved.error })
         return

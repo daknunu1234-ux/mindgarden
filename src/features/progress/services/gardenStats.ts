@@ -4,11 +4,23 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDeckItemIds, listOwnedDecks } from '@/features/decks/server'
 import type { Database } from '@/shared/types/database.types'
 import { ok, type ActionResult } from '@/shared/types/result'
-import { summarizeGarden, type GardenStats } from '../lib/gardenStats'
+import { summarizeGarden, type GardenStats, type GardenStatsWithStreak } from '../lib/gardenStats'
 import { fetchMasteryLevels } from './levels'
+import { loadStreaks } from './streak'
+
+// Garden totals plus daily streaks. A streak read error shows 0 rather than hiding the garden.
+export async function loadGardenStats(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<ActionResult<GardenStatsWithStreak>> {
+  const [garden, streaks] = await Promise.all([loadGarden(supabase, userId), loadStreaks(supabase, userId)])
+  if (!garden.success) return garden
+  const s = streaks.success ? streaks.data : { current: 0, best: 0, practicedToday: false }
+  return ok({ ...garden.data, currentStreak: s.current, bestStreak: s.best, practicedToday: s.practicedToday })
+}
 
 // Stats over the trees the player planted (owned decks, public and private).
-export async function loadGardenStats(supabase: SupabaseClient<Database>, userId: string): Promise<ActionResult<GardenStats>> {
+async function loadGarden(supabase: SupabaseClient<Database>, userId: string): Promise<ActionResult<GardenStats>> {
   const owned = await listOwnedDecks(supabase, userId)
   if (!owned.success) return owned
   if (owned.data.length === 0) return ok(summarizeGarden([], new Map()))

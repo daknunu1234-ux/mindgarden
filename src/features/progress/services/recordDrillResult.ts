@@ -7,6 +7,7 @@ import type { DrillSubmission } from '../dto/DrillSubmissionDto'
 import { nextMastery, toMasteryLevel } from '../lib/masteryRules'
 import type { DrillResult } from '../types'
 import { gradeSubmission } from './grading'
+import { recordPracticeDay } from './streak'
 
 // Grades the answer, then upserts the player's user_progress row.
 // Read-then-upsert is not atomic: two simultaneous submits for one item can lose one step.
@@ -52,5 +53,9 @@ export async function recordDrillResult(
     return fail('INTERNAL_ERROR', 'Could not save progress')
   }
 
-  return ok({ ...graded.data, masteryLevel, previousMasteryLevel, mistakeCount })
+  // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes.
+  const streak = await recordPracticeDay(supabase, userId, submission.timeZone)
+  const streakCount = streak.success ? streak.data.current : null
+
+  return ok({ ...graded.data, masteryLevel, previousMasteryLevel, mistakeCount, streakCount })
 }

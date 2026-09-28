@@ -88,7 +88,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak | Required |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
-| Progress | `getGardenStats` | Action | Profile totals over the player's own trees | Required |
+| Progress | `getGardenStats` | Action | Profile totals over the player's own trees + current/best streak | Required |
+| Progress | `getStreak` | Action | Current/best streak for the header badge (null when signed out) | Optional |
 
 Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `POST /api/drill/question`, `POST /api/progress/drill-result`, `GET /api/progress?deckIds=…`
 
@@ -207,17 +208,17 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `submitDrillResult` (progress)
 ```typescript
-// Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
+// Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C'; timeZone?: string /* browser IANA zone */ }
 // data
 { isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
-  masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3; mistakeCount: number }
-// streakCount: planned, needs the admin client (SUPABASE_SERVICE_ROLE_KEY); not returned yet
+  masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3; mistakeCount: number;
+  streakCount: number | null }   // current daily streak; null if it could not be saved (the answer still counts)
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ITEM_NOT_FOUND
 ```
 - **Grading**: re-run `generateTraps(correctStmt, trapRules, seed)`, compare `tag` with `correctTag`
 - **Mastery** (`nextMastery` in `progress/lib`): correct → `min(level + 1, 3)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`
 - **Write**: upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'`, `last_practiced_at = now()`
-- **Streak** (admin client, not built yet): `last_active_at` = today → unchanged; yesterday → +1; otherwise → 1
+- **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak")
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
 - **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"); no action or route ever returns them to a player
 
@@ -229,11 +230,19 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   itemCount: number;          // knowledge items across those decks
   mightyRootCount: number;    // roots with ≥ 1 item whose average mastery is 3/3
   masteryPercent: number;     // Σ level / (3 × itemCount) × 100 over owned items, rounded; 0 without items
-  trees: { deckId; slug; title; treeType; isPublic; itemCount; masteryPercent; mightyRoots }[] }  // newest first
+  trees: { deckId; slug; title; treeType; isPublic; itemCount; masteryPercent; mightyRoots }[];  // newest first
+  currentStreak: number; bestStreak: number; practicedToday: boolean }   // 0 / false if the streak can't be read
 // Errors: AUTH_UNAUTHORIZED, INTERNAL_ERROR
 ```
 - Only owned trees count; mastery earned on other people's public decks is not included
 - Deck + item ids come from `decks/server` (`listOwnedDecks`, `listDeckItemIds`), levels from `user_progress`
+
+### `getStreak` (progress)
+```typescript
+// Input: none
+// data: { current: number; best: number; practicedToday: boolean; lastDay: string | null } | null   // null when signed out
+```
+- "Today" uses the timezone saved with the player's latest practice day
 
 ### `getProgressByDecks` (progress)
 ```typescript

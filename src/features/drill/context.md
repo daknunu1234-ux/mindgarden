@@ -15,7 +15,7 @@ None. Reads items through `@/features/decks/server`.
 
 ## Internals
 - `services/drillSession.ts`: seed per item = `drillSeed(itemId, sessionId)`, passes the node's other statements as `siblings`, skips `INSUFFICIENT_MUTATIONS`, shuffles with `seededRandom(sessionId)`
-- `hooks/useDrillSession.ts`: signed in → `progress.submitDrillResult` (saves); signed out or session expired → `checkDrillAnswer` + open the login dialog. `answering → checking → feedback → … → done`, `error` with retry
+- `hooks/useDrillSession.ts`: signed in → `progress.submitDrillResult` (saves, sends the browser timezone, pushes `streakCount` into `shared/stores/StreakProvider` so the header badge updates without a reload); signed out or session expired → `checkDrillAnswer` + open the login dialog. `answering → checking → feedback → … → done`, `error` with retry
 - `lib/drillSeed.ts`, `lib/splitMutation.ts` (changed-words span for highlights)
 - Keyboard: `lib/shortcuts.ts` `shortcutFor` (pure) + `hooks/useDrillShortcuts.ts`: `1`/`2`/`3` or `A`/`B`/`C` answer (no `C` on 2-choice), `Enter`/`Space` go to the next question during feedback. Ignored while typing, with Ctrl/Cmd/Alt, on key repeat, while the login dialog is open, and for Enter/Space on a focused button (it clicks itself). Choices show a `<Kbd>` badge and `aria-keyshortcuts` (hidden below `sm`)
 - Tests: `__tests__/trapEngine.test.ts`, `__tests__/siblingSwaps.test.ts` (engine in `shared/lib`), `__tests__/drillHelpers.test.ts`, `__tests__/branch.test.ts`, `__tests__/shortcuts.test.ts`

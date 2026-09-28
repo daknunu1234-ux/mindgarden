@@ -3,8 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
+import { getStreak, StreakBadge } from "@/features/progress";
 import { Button } from "@/shared/components/ui/button";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
+import { StreakProvider } from "@/shared/stores/StreakProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,8 +25,9 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const res = await getCurrentUser();
+  const [res, streakRes] = await Promise.all([getCurrentUser(), getStreak()]);
   const user = res.success ? res.data : null;
+  const streak = streakRes.success && streakRes.data ? streakRes.data : null;
 
   return (
     <html
@@ -33,6 +36,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <LoginDialogProvider>
+          <StreakProvider initial={streak && { current: streak.current, best: streak.best, practicedToday: streak.practicedToday }}>
           <header className="border-b">
             <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
               <Link href="/" className="font-semibold tracking-tight">
@@ -42,6 +46,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Button asChild size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700">
                   <Link href="/deck/new">Plant a Tree 🌱</Link>
                 </Button>
+                {user && <StreakBadge />}
                 <ProfileButton user={user} />
               </div>
             </div>
@@ -51,6 +56,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Suspense>
             <LoginDialog />
           </Suspense>
+          </StreakProvider>
         </LoginDialogProvider>
       </body>
     </html>

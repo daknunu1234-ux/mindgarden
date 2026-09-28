@@ -5,9 +5,11 @@ export type { MasteryLevel }
 
 export type GradedAnswer = { isCorrect: boolean; correctTag: DrillTag }
 
-// submitDrillResult payload (API SPEC.md §6). streakCount comes later with the admin client.
+// submitDrillResult payload (API SPEC.md §6).
 export type DrillResult = GradedAnswer & {
   masteryLevel: MasteryLevel
   previousMasteryLevel: MasteryLevel
   mistakeCount: number
+  // Current daily streak after this answer; null if it couldn't be saved (the answer still counts).
+  streakCount: number | null
 }

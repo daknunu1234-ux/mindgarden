@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/shared/components/ui/card'
 import { cn } from '@/shared/utils/cn'
+import { plural } from '../lib/format'
 import type { GardenStatsView } from '../types'
 
 type GardenStatsGridProps = { stats: GardenStatsView }
@@ -11,6 +12,20 @@ function GardenStatsGrid({ stats }: GardenStatsGridProps) {
     { label: 'Knowledge items', value: String(stats.itemCount), icon: '📜' },
     { label: 'Mighty Roots', value: String(stats.mightyRootCount), icon: '✨', gold: stats.mightyRootCount > 0 },
     { label: 'Garden mastery', value: `${stats.masteryPercent}%`, icon: '🌿', gold: golden },
+    {
+      label: 'Current streak',
+      value: plural(stats.currentStreak, 'day', 'days'),
+      icon: stats.practicedToday ? '🔥' : '🌱',
+      gold: stats.currentStreak >= 7,
+      note: stats.currentStreak === 0 ? 'Practise today to start one' : stats.practicedToday ? 'Watered today' : 'Practise today to keep it',
+    },
+    {
+      label: 'Best streak',
+      value: plural(stats.bestStreak, 'day', 'days'),
+      icon: '🏆',
+      gold: stats.bestStreak >= 7,
+      note: stats.bestStreak > 0 && stats.bestStreak === stats.currentStreak ? 'Your best, right now' : undefined,
+    },
   ]
 
   return (
@@ -18,7 +33,7 @@ function GardenStatsGrid({ stats }: GardenStatsGridProps) {
       <h2 id="stats-heading" className="sr-only">
         Garden statistics
       </h2>
-      <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {tiles.map((tile) => (
           <li key={tile.label}>
             <Card className={cn('h-full py-4', tile.gold && 'bg-yellow-50 ring-yellow-500')}>
@@ -30,6 +45,7 @@ function GardenStatsGrid({ stats }: GardenStatsGridProps) {
                 <p className={cn('mt-1 text-3xl font-semibold tabular-nums', tile.gold && 'text-yellow-800')}>
                   {tile.value}
                 </p>
+                {'note' in tile && tile.note && <p className="mt-0.5 text-xs text-muted-foreground">{tile.note}</p>}
               </CardContent>
             </Card>
           </li>

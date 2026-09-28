@@ -7,6 +7,9 @@ import { describe, expect, it } from 'vitest'
 const SRC = join(__dirname, '..', '..', '..')
 const ANSWERS = ['features', 'decks', 'services', 'answers.ts'].join(sep)
 const ADMIN = ['shared', 'lib', 'supabase', 'admin.ts'].join(sep)
+// The only modules allowed to use the service-role client (it bypasses RLS):
+// answers (read correct_stmt / trap_rules) and streak (write practice_days, users counters).
+const ADMIN_USERS = [ANSWERS, ['features', 'progress', 'services', 'streak.ts'].join(sep)]
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -39,13 +42,16 @@ describe('answer secrecy', () => {
     expect(offenders.map((f) => f.rel)).toEqual([])
   })
 
-  it('imports the service-role client only from the answers module', () => {
+  it('imports the service-role client only from the allow-listed modules', () => {
     const importers = files.filter((f) => /from ['"]@\/shared\/lib\/supabase\/admin['"]/.test(f.code)).map((f) => f.rel)
-    expect(importers).toEqual([ANSWERS])
+    expect([...importers].sort()).toEqual([...ADMIN_USERS].sort())
   })
 
   it('reads SUPABASE_SERVICE_ROLE_KEY only in admin.ts, and never as a NEXT_PUBLIC_ variable', () => {
-    expect(files.filter((f) => f.code.includes('SUPABASE_SERVICE_ROLE_KEY') && f.rel !== ADMIN && f.rel !== ANSWERS).map((f) => f.rel)).toEqual([])
+    // admin.ts reads it; the allow-listed users only mention it in "key not set" log messages.
+    const mentions = files.filter((f) => f.code.includes('SUPABASE_SERVICE_ROLE_KEY') && f.rel !== ADMIN && !ADMIN_USERS.includes(f.rel))
+    expect(mentions.map((f) => f.rel)).toEqual([])
+    expect(files.filter((f) => /process\.env\.SUPABASE_SERVICE_ROLE_KEY/.test(f.code)).map((f) => f.rel)).toEqual([ADMIN])
     expect(files.filter((f) => /NEXT_PUBLIC_\w*SERVICE/.test(f.code)).map((f) => f.rel)).toEqual([])
     expect(readFileSync(join(SRC, ADMIN), 'utf8')).toContain("import 'server-only'")
   })

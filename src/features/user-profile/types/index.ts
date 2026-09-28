@@ -8,6 +8,9 @@ export type GardenStatsView = {
   itemCount: number
   mightyRootCount: number
   masteryPercent: number
+  currentStreak: number
+  bestStreak: number
+  practicedToday: boolean
 }
 
 export type PlantedTreeView = {

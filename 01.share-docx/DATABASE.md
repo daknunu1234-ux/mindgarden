@@ -110,6 +110,17 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | last_practiced_at | TIMESTAMPTZ | NULLABLE | |
 | *(user_id, knowledge_item_id)* | — | UNIQUE | One progress row per player per item |
 
+**practice_days** — *Streak log: one row per player per local day with at least one saved answer*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
+| day | DATE | NOT NULL | Player's local calendar day (browser IANA timezone, UTC fallback) |
+| time_zone | TEXT | NOT NULL, DEFAULT 'UTC', 1–64 chars | Zone used for `day`; pages that can't ask the browser reuse the latest one |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(user_id, day)* | — | PK | First answer of the day inserts, later ones change nothing |
+
+⚠️ `user_progress.last_practiced_at` is overwritten on every answer (one row per item), so past active days cannot be rebuilt from it. Streaks are computed from `practice_days` (`progress/lib/streak.ts`); `users.streak_count` / `last_active_at` mirror the current value.
+
 ---
 
 ## ERD Diagram
@@ -187,6 +198,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | mindmap_nodes | If deck readable | Deck owner | Deck owner | Deck owner |
 | knowledge_items | If deck readable | Deck owner | Deck owner | Deck owner |
 | user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
+| practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 
 ```sql
 -- Decks: public or own
@@ -324,4 +336,4 @@ CREATE TRIGGER on_auth_user_created
 | Fooled by a trap | `mistake_count + 1`, `mastery_level = GREATEST(mastery_level - 1, 0)`, set `last_practiced_at = now()` |
 | Load deck progress | `getProgressByDecks`: item IDs per deck (via `decks` server API) + `user_progress` rows of the user |
 | Tree health | `Σ mastery_level / (3 × item count) × 100`, unpractised items count as 0 (computed, not stored) |
-| Daily streak | `progress` service with the admin client: same day → unchanged, yesterday → +1, else → 1 |
+| Daily streak | `recordPracticeDay` (admin client): upsert `practice_days (user_id, today)` with `ignoreDuplicates`, recompute current/best from all days, sync `users.streak_count` + `last_active_at`. Current = run ending today or yesterday (alive until a whole day is missed); best = longest run. Migration `20260928000200_practice_days.sql` |

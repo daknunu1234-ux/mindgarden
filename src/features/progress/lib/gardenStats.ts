@@ -26,6 +26,9 @@ export type GardenStats = {
   trees: GardenTree[]
 }
 
+// getGardenStats payload: the garden totals plus daily streaks.
+export type GardenStatsWithStreak = GardenStats & { currentStreak: number; bestStreak: number; practicedToday: boolean }
+
 const percent = (total: number, count: number) => (count === 0 ? 0 : Math.round((total / (MAX_MASTERY * count)) * 100))
 
 // Pure: owned decks + their item ids + the player's levels → profile stats.
