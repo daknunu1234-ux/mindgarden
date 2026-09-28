@@ -7,6 +7,7 @@ import { slugify } from '@/shared/utils/slugify'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
+import type { UpdateDeckInput } from '../dto/UpdateDeckDto'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
 import { answersByNode, readAnswersForNodes } from './answers'
 import { toDeck } from './decks'
@@ -53,15 +54,19 @@ export async function insertDeck(supabase: Client, userId: string, input: Create
 }
 
 // RLS already blocks writes to other people's decks; this gives a clear error first.
-async function checkDeckOwner(supabase: Client, deckId: string, userId: string): Promise<ActionResult<{ slug: string }>> {
-  const { data, error } = await supabase.from('decks').select('user_id, slug').eq('id', deckId).maybeSingle()
+async function checkDeckOwner(
+  supabase: Client,
+  deckId: string,
+  userId: string,
+): Promise<ActionResult<{ slug: string; treeType: string }>> {
+  const { data, error } = await supabase.from('decks').select('user_id, slug, tree_type').eq('id', deckId).maybeSingle()
   if (error) {
     console.error('[decks] checkDeckOwner failed', error)
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
   if (!data) return fail('DECK_NOT_FOUND', 'Deck not found')
   if (data.user_id !== userId) return fail('AUTH_FORBIDDEN', 'Only the owner can edit this tree')
-  return ok({ slug: data.slug })
+  return ok({ slug: data.slug, treeType: data.tree_type })
 }
 
 export async function insertMindmapNode(
@@ -194,5 +199,34 @@ export async function loadDeckEditor(supabase: Client, userId: string, deckId: s
   }
   visit(null, 0)
 
-  return ok({ deckId, nodes: flat })
+  return ok({ deckId, treeType: owner.data.treeType, nodes: flat })
+}
+
+// Owner-only settings change (title, description, species, visibility). RLS "decks: update own"
+// is the final guard; the owner check gives AUTH_FORBIDDEN instead of a silent no-op.
+export async function updateDeckSettings(
+  supabase: Client,
+  userId: string,
+  { deckId, title, description, treeType, isPublic }: UpdateDeckInput,
+): Promise<ActionResult<Deck>> {
+  const owner = await checkDeckOwner(supabase, deckId, userId)
+  if (!owner.success) return owner
+
+  const { data, error } = await supabase
+    .from('decks')
+    .update({
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(treeType !== undefined && { tree_type: treeType }),
+      ...(isPublic !== undefined && { is_public: isPublic }),
+    })
+    .eq('id', deckId)
+    .select('*')
+    .single()
+
+  if (error) {
+    console.error('[decks] updateDeckSettings failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not update this tree')
+  }
+  return ok(toDeck(data))
 }

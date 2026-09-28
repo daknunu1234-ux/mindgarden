@@ -76,3 +76,23 @@ describe('isDrillable with the default { negate: true }', () => {
     expect(isDrillable('Ty thể của tế bào.')).toBe(false)
   })
 })
+
+describe('UpdateDeckDto', () => {
+  it('accepts every species in the shared catalog', async () => {
+    const { UpdateDeckDto } = await import('../dto/UpdateDeckDto')
+    for (const treeType of ['oak', 'pine', 'sakura', 'bamboo', 'apple', 'saguaro']) {
+      expect(UpdateDeckDto.safeParse({ deckId: ID, treeType }).success, treeType).toBe(true)
+    }
+  })
+
+  it('rejects unknown species and empty updates', async () => {
+    const { UpdateDeckDto } = await import('../dto/UpdateDeckDto')
+    expect(UpdateDeckDto.safeParse({ deckId: ID, treeType: 'palm' }).success).toBe(false)
+    expect(UpdateDeckDto.safeParse({ deckId: ID }).success).toBe(false)
+  })
+
+  it('turns an empty description into null and keeps unset fields undefined', async () => {
+    const { UpdateDeckDto } = await import('../dto/UpdateDeckDto')
+    expect(UpdateDeckDto.parse({ deckId: ID, description: '' })).toEqual({ deckId: ID, description: null })
+  })
+})

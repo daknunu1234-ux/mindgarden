@@ -57,7 +57,7 @@
 | slug | VARCHAR(160) | NOT NULL, UNIQUE, CHECK kebab-case | "cell-biology-101" |
 | description | TEXT | NULLABLE | |
 | is_public | BOOLEAN | NOT NULL, DEFAULT TRUE | Visible to everyone |
-| tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Visual skin: oak, pine, sakura… |
+| tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Species: oak, pine, sakura, bamboo, apple, saguaro (validated by Zod from `shared/lib/treeSkins.ts`; unknown values render as oak) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
 **mindmap_nodes** (self-referencing adjacency list) — *Nodes are underground Roots*

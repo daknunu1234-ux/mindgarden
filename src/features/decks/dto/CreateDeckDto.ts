@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { TREE_TYPE_IDS } from '@/shared/lib/treeSkins'
 
-export const TREE_TYPES = ['oak', 'pine', 'sakura'] as const
+// Species ids come from the shared catalog (shared/lib/treeSkins), so every view knows them.
+export const TREE_TYPES = TREE_TYPE_IDS
 
 // The slug is generated from the title on the server (shared/utils/slugify).
 export const CreateDeckDto = z.object({

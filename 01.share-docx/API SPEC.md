@@ -83,6 +83,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `createMindmapNode` | Action/POST | Add a root to an owned deck | Required |
 | Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
+| Decks | `updateDeck` | Action/POST | Owner edits title, description, species, visibility | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item) | Optional |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
@@ -90,6 +91,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
 | Progress | `getGardenStats` | Action | Profile totals over the player's own trees + current/best streak | Required |
 | Progress | `getStreak` | Action | Current/best streak for the header badge (null when signed out) | Optional |
+| Progress | `getFarmHud` | Action | Gardener level + streak for the Farm Island HUD (null when signed out) | Optional |
 
 Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `POST /api/drill/question`, `POST /api/progress/drill-result`, `GET /api/progress?deckIds=…`
 
@@ -137,7 +139,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `createDeck` (decks)
 ```typescript
-// Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'sakura' }
+// Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'sakura' | 'bamboo' | 'apple' | 'saguaro' }
 // defaults (DATABASE.md): isPublic = true, treeType = 'oak'
 // slug: generated with shared/utils/slugify (diacritics stripped); on a unique clash → -2 … -5, then a random suffix; "new" is reserved
 // data: created deck (same shape as a getDecks row) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
@@ -222,6 +224,23 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
 - **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"); no action or route ever returns them to a player
 
+### `updateDeck` (decks)
+```typescript
+// Input (UpdateDeckDto): { deckId: string; title?: string; description?: string | null; treeType?: TreeTypeId; isPublic?: boolean }  // at least one field
+// data: the updated deck (getDecks row shape) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- The slug never changes, so links stay stable
+
+### `getFarmHud` (progress)
+```typescript
+// Input: none
+// data: { level: { level; title; xp; xpIntoLevel; xpForNextLevel; progress /* 0–1 */ };
+//         streak: { current; best; practicedToday; lastDay };
+//         coins: number } | null                                          // null when signed out
+```
+- XP = 10 × Σ `mastery_level` over all of the player's `user_progress` rows; level L → L + 1 costs 50 + 25 × (L − 1)
+- Coins = 5 × Σ `mastery_level` (same data as XP). Display only: there is no shop or spending yet. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
+
 ### `getGardenStats` (progress)
 ```typescript
 // Input: none (the signed-in user)
@@ -249,7 +268,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Input: { deckIds: string[] /* 1–50 */ }
 // data
 Array<{ deckId: string; masteryPercent: number;            // Σ level / (3 × itemCount) × 100, 0 if no items
-        itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 }[] }>
+        itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 }[];
+        mightyRoots: number;                                // roots whose items are all 3/3
+        lastPracticedDay: string | null;                    // newest practice, player's local day
+        practicedToday: boolean }>                          // false also when never practised (farm 💧)
 // Errors: VALIDATION_FAILED
 ```
 - Anonymous → every `masteryPercent` = 0 and `masteryLevel` = 0; unpractised items count as 0

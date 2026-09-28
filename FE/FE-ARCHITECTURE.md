@@ -23,7 +23,7 @@
 ## 2. Overview
 
 - **Concept**: a growth-based ecosystem. Each deck is one scene split at the "ground line":
-  - **Surface**: SVG tree growing through 4 stages from the deck's `masteryPercent`
+  - **Surface**: SVG tree growing through 5 stages from the deck's `masteryPercent`, drawn per species (`shared/lib/treeSkins.ts`)
   - **Subsurface**: the mindmap (`mindmap_nodes`) drawn as interactive SVG root paths
 - **Layout**: vertical cascade on mobile (tree above, roots below); split screen from `lg:` up
 
@@ -59,7 +59,7 @@ src/
 │   └── stores/                     # StreakProvider, LoginDialogProvider (React Context)
 └── features/
     ├── garden/                     # Surface: tree canvas & stage calculations
-    │   ├── components/             # GardenGrid, TreeCard, TreeCanvas, TreeStageSvg
+    │   ├── components/             # FarmIslandView (+ FarmHud, FarmPlotDialog), GardenGrid, TreeCard, TreeStageSvg
     │   ├── hooks/                  # useTreeStage (getTreeStage)
     │   └── types/                  # TreeStage, DeckCardView
     ├── mindmap/                    # Subsurface: SVG root rendering
@@ -82,7 +82,7 @@ src/
 
 | Feature | Responsible for | Owns (components / hooks) | Does NOT | Input | Output / talks to |
 |---------|-----------------|---------------------------|----------|-------|-------------------|
-| `garden` | Tree grid + single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
+| `garden` | Farm Island world map (default `/`), classic grid (`/?view=grid`), single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
 | `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
@@ -99,17 +99,29 @@ src/
 
 | Stage | Range | Name | Visual | SVG notes |
 |-------|-------|------|--------|-----------|
-| 1 | 0–25% | Sprout | 🌱 | Two leaves, thin stem, no canopy |
-| 2 | 26–50% | Sapling | 🌿 | Trunk + 3 branches, light-green canopy |
-| 3 | 51–80% | Maturing Tree | 🪴 | Full trunk, layered canopy |
-| 4 | 81–100% | Blooming Golden Tree | 🌳✨ | Gold canopy tint + sparkle particles |
+| 1 | 0–20% | Sprout | 🌱 | Tender shoot breaking the soil (cactus: a nub, bamboo: one shoot) |
+| 2 | 21–40% | Young Sapling | 🌿 | Thin trunk with branching stems |
+| 3 | 41–65% | Growing Tree | 🪴 | Distinct foliage volume |
+| 4 | 66–89% | Mature Canopy | 🌳 | Full, textured canopy (apple: red fruit) |
+| 5 | 90–100% | Golden Ancient Bloom | 🌟 | Golden aura + sparkles, blossoms / fruit / pine star / cactus flowers |
+
+**Species** (`decks.tree_type`, catalog in `shared/lib/treeSkins.ts`, one silhouette family each): 🌳 oak, 🌸 sakura, 🍎 apple (broadleaf) · 🌲 pine (conifer) · 🎋 bamboo · 🌵 saguaro (cactus). Every drawing grows from the same trunk base (`TREE_BASE_RATIO`), so the deck scene's roots attach for all species. Gold "fully grown" accents use `GOLDEN_BLOOM_PERCENT` (90).
 
 ```ts
 // features/garden/hooks/useTreeStage.ts
-export const getTreeStage = (pct: number): TreeStage => (pct <= 25 ? 1 : pct <= 50 ? 2 : pct <= 80 ? 3 : 4)
+export const getTreeStage = (pct: number): TreeStage =>
+  pct <= 20 ? 1 : pct <= 40 ? 2 : pct <= 65 ? 3 : pct < GOLDEN_BLOOM_PERCENT ? 4 : 5
 ```
 
-- Stage change → cross-fade SVGs (`transition-opacity duration-700`); reaching stage 4 → one confetti burst
+- Stage change → cross-fade SVGs (`transition-opacity duration-700`); reaching stage 5 → one confetti burst
+- **Farm World** (`garden/components/FarmIslandView.tsx`, geometry `garden/lib/farmLayout.ts`, camera `garden/lib/camera.ts` + `hooks/useFarmCamera.ts`): the full-bleed home page (`/`) under the site header. An isometric farmstead on an island: plots 1.45 tiles apart on raised soil beds with border stones and contact shadows, cobblestone lanes (spanning tree from the dock + a lane to the farmhouse), a white picket fence along the front edge (open at the dock), lampposts, benches, straw bales, beehives beside flowering trees (sakura / apple from stage 3), flower patches and grass tufts (seeded). Scenery is pure SVG (`FarmScenery.tsx`); trees and landmarks are HTML buttons over it, stacked back-to-front
+  - **Landmarks**: 🏡 farmhouse → `/profile` (sign-in dialog when signed out); 🚜 tractor → Daily Delivery dialog listing today's thirsty trees with a "Start delivery" into the first one's drill (no quest system yet)
+  - **Per plot**: 💧 when signed in and not practised today (player's local day), ✨ at 100%, wooden nameplate; stage 4–5 trees drop leaves/petals, apple & sakura get two orbiting bees (max 12 animated trees); a one-time water splash + ripple the first time a watered tree is seen that day (per browser, `localStorage`)
+  - **HUD** (corners): level + XP bar (top-left); 🔥 streak, 🪙 coins, 💎 gems (top-right); zoom − / % / + / fit (bottom-left); Farm/Grid toggle (bottom-centre); seed sack → `/deck/new` (bottom-right); island switcher + notices (top-centre, when needed). Coins = 5 per mastery step, gems = Mighty Roots on the island: display only, nothing to spend
+  - **Camera**: fits and centres on arrival; drag to pan with mouse or one finger (`touch-action: none`), two-finger pinch and Ctrl/⌘ + wheel (trackpad pinch) zoom around the fingers/cursor (35–180%); a drag > 6 px swallows the click that ends it so dragging over a plot never opens it
+  - **Motion**: CSS-only `.mg-*` keyframes in `globals.css` (transform/opacity); all particles, bees and splashes are off under `prefers-reduced-motion`
+- A plot opens a dialog: Water Tree (practice), Inspect Roots (mindmap), Edit (owner)
+- **Gardener level** (`progress/lib/gardenerLevel.ts`): XP = 10 × Σ mastery levels over every practised item; level L → L + 1 costs 50 + 25 × (L − 1) XP
 - **Root opacity**: `0.35 + 0.65 × (node mastery / 3)`, node mastery = average `masteryLevel` of its items
 
 ---

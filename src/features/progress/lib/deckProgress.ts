@@ -1,4 +1,10 @@
 import { MAX_MASTERY, toMasteryLevel, type MasteryLevel } from './masteryRules'
+import { localDay } from './streak'
+
+export type PracticeRow = { level: number; lastPracticedAt: string | null }
+
+// The player's "now" in their own timezone, for watering status.
+export type LocalClock = { today: string; timeZone: string }
 
 export type DeckProgress = {
   deckId: string
@@ -6,16 +12,42 @@ export type DeckProgress = {
   masteryPercent: number
   itemCount: number
   items: { itemId: string; masteryLevel: MasteryLevel }[]
+  // Roots whose items are all at 3/3.
+  mightyRoots: number
+  // Newest practice of any item in the deck, as the player's local day ('YYYY-MM-DD').
+  lastPracticedDay: string | null
+  // False also for never-practised decks: the farm shows a 💧 "needs watering" badge.
+  practicedToday: boolean
 }
 
 // Unpractised items count as level 0 (DATABASE.md "Tree health").
 export function summarizeDeckProgress(
   deckId: string,
-  itemIds: string[],
-  levels: ReadonlyMap<string, number>,
+  items: readonly { itemId: string; nodeId: string }[],
+  rows: ReadonlyMap<string, PracticeRow>,
+  clock: LocalClock,
 ): DeckProgress {
-  const items = itemIds.map((itemId) => ({ itemId, masteryLevel: toMasteryLevel(levels.get(itemId) ?? 0) }))
-  const total = items.reduce((sum, item) => sum + item.masteryLevel, 0)
-  const masteryPercent = items.length === 0 ? 0 : Math.round((total / (MAX_MASTERY * items.length)) * 100)
-  return { deckId, masteryPercent, itemCount: items.length, items }
+  const byNode = new Map<string, number[]>()
+  let total = 0
+  let lastPracticedAt: string | null = null
+
+  const levels = items.map(({ itemId, nodeId }) => {
+    const row = rows.get(itemId)
+    const masteryLevel = toMasteryLevel(row?.level ?? 0)
+    total += masteryLevel
+    byNode.set(nodeId, [...(byNode.get(nodeId) ?? []), masteryLevel])
+    if (row?.lastPracticedAt && (!lastPracticedAt || row.lastPracticedAt > lastPracticedAt)) lastPracticedAt = row.lastPracticedAt
+    return { itemId, masteryLevel }
+  })
+
+  const lastPracticedDay = lastPracticedAt ? localDay(new Date(lastPracticedAt), clock.timeZone) : null
+  return {
+    deckId,
+    masteryPercent: items.length === 0 ? 0 : Math.round((total / (MAX_MASTERY * items.length)) * 100),
+    itemCount: items.length,
+    items: levels,
+    mightyRoots: [...byNode.values()].filter((ls) => ls.every((l) => l === MAX_MASTERY)).length,
+    lastPracticedDay,
+    practicedToday: lastPracticedDay !== null && lastPracticedDay >= clock.today,
+  }
 }

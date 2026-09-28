@@ -36,7 +36,7 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-semibold tracking-tight">{deck.title}</h1>
-            <Badge variant="outline" className={stage === 4 ? 'border-yellow-500 bg-yellow-50' : undefined}>
+            <Badge variant="outline" className={stage === 5 ? 'border-yellow-500 bg-yellow-50' : undefined}>
               {emoji} {name}
             </Badge>
             <Badge variant="secondary" className="capitalize">

@@ -83,3 +83,16 @@ export async function recordPracticeDay(
 
   return streaks
 }
+
+// Timezone saved with the player's latest practice day (UTC if none or unreadable).
+export async function latestTimeZone(supabase: SupabaseClient<Database>, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('practice_days')
+    .select('time_zone')
+    .eq('user_id', userId)
+    .order('day', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) logStreakError('latestTimeZone', error)
+  return resolveTimeZone(data?.time_zone)
+}

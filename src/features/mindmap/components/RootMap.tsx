@@ -8,11 +8,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent,
   type ReactNode,
 } from 'react'
 import { ChevronsDownUp, ChevronsUpDown, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
+import { useDragPan } from '@/shared/hooks/useDragPan'
 import { getTreeSkin, MIGHTY_GOLD } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { allNodeIds, countDescendants, pruneCollapsed } from '../hooks/collapse'
@@ -37,8 +37,6 @@ type RootMapProps = {
   emptyLabel?: string
 }
 
-type Drag = { x: number; y: number; left: number; top: number; pointerId: number }
-
 // One scene: tree above the ground line, soil below, a tapered conduit from the trunk into a
 // root crown, and bezier roots out to each concept card. Everything lives in one canvas that
 // is CSS-scaled for zoom and scrolled for pan, so the tree stays anchored to its roots.
@@ -49,7 +47,6 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel }: Roo
   const [activeId, setActiveId] = useState<string | null>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<Drag | null>(null)
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const skin = getTreeSkin(treeType)
 
@@ -135,27 +132,7 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel }: Roo
     afterRender(() => centerOnTrunk('smooth'))
   }
 
-  // Mouse drag on empty canvas pans it. Touch already scrolls natively; cards keep their clicks.
-  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    const el = scrollRef.current
-    if (!el || e.pointerType !== 'mouse' || e.button !== 0) return
-    if ((e.target as HTMLElement).closest('a, button, article')) return
-    drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop, pointerId: e.pointerId }
-    el.setPointerCapture(e.pointerId)
-  }
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    const el = scrollRef.current
-    const d = drag.current
-    if (!el || !d || d.pointerId !== e.pointerId) return
-    el.scrollLeft = d.left - (e.clientX - d.x)
-    el.scrollTop = d.top - (e.clientY - d.y)
-  }
-  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
-    if (drag.current?.pointerId === e.pointerId) {
-      scrollRef.current?.releasePointerCapture(e.pointerId)
-      drag.current = null
-    }
-  }
+  const pan = useDragPan(scrollRef)
 
   const id = (name: string) => `${uid}-${name}`
   const { groundY, offsetX, trunkX } = scene
@@ -205,10 +182,7 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel }: Roo
       <div
         ref={scrollRef}
         className="max-h-[80vh] cursor-grab overflow-auto rounded-xl border bg-background active:cursor-grabbing"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        {...pan}
       >
         {/* The sizer reserves the zoomed size so scrollbars match; the canvas inside is scaled. */}
         {/* Centered until the viewport is measured (server render), so the first paint doesn't jump. */}

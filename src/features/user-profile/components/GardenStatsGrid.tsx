@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { plural } from '../lib/format'
 import type { GardenStatsView } from '../types'
@@ -6,7 +7,7 @@ import type { GardenStatsView } from '../types'
 type GardenStatsGridProps = { stats: GardenStatsView }
 
 function GardenStatsGrid({ stats }: GardenStatsGridProps) {
-  const golden = stats.masteryPercent > 80
+  const golden = stats.masteryPercent >= GOLDEN_BLOOM_PERCENT
   const tiles = [
     { label: 'Trees planted', value: String(stats.treeCount), icon: '🌳' },
     { label: 'Knowledge items', value: String(stats.itemCount), icon: '📜' },

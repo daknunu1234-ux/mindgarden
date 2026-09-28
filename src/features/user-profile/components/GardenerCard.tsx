@@ -1,6 +1,7 @@
 import { CalendarDays, Mail } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { formatJoined, gardenerName } from '../lib/format'
 import type { GardenerView } from '../types'
 
@@ -21,7 +22,7 @@ function GardenerCard({ gardener, masteryPercent }: GardenerCardProps) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
             <Badge variant="secondary">🧑‍🌾 Gardener</Badge>
-            {masteryPercent > 80 && <Badge className="border-yellow-500 bg-yellow-50 text-yellow-800">✨ Golden garden</Badge>}
+            {masteryPercent >= GOLDEN_BLOOM_PERCENT && <Badge className="border-yellow-500 bg-yellow-50 text-yellow-800">✨ Golden garden</Badge>}
           </div>
           <dl className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:gap-5">
             <div className="flex min-w-0 items-center gap-1.5">

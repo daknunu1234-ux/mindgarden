@@ -14,6 +14,8 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `createMindmapNode({ deckId, title, parentId? })` | Server Action, owner only (`AUTH_FORBIDDEN` otherwise) |
 | `index.ts` | `createKnowledgeItem({ nodeId, statement })` | Server Action, owner only. Stores `trap_rules = { negate: true }`, `prompt` = root title; returns `drillable` |
 | `index.ts` | `getDeckEditor({ deckId })` | Server Action, owner only. Flattened roots with true statements |
+| `index.ts` | `updateDeck({ deckId, title?, description?, treeType?, isPublic? })` | Server Action, owner only; the editor uses it for the species picker |
+| `index.ts` | `TreeSpeciesPicker({ value, onChange })` | Radio cards for every species in `shared/lib/treeSkins` |
 | `index.ts` | `CreateDeckForm`, `DeckEditor({ editor })` | Client UI for `/deck/new` and the owner section of the deck page. No trap settings are shown |
 | `index.ts` | `countDeckTree(tree)` | Pure: `{ nodeCount, itemCount }` for a deck header |
 | `index.ts` | `type Deck`, `DeckDetail`, `DeckTreeNode`, `DeckTreeItem` | camelCase shapes from API SPEC.md §6. Items carry only `id` + `prompt` (no `correctStmt`) |

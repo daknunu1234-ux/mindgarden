@@ -20,7 +20,7 @@ function TreeCard({ deck }: TreeCardProps) {
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <TreeStageSvg stage={stage} treeType={deck.treeType} label={`${name} tree`} className="size-20" />
-            <Badge variant="outline" className={stage === 4 ? 'border-yellow-500 bg-yellow-50' : undefined}>
+            <Badge variant="outline" className={stage === 5 ? 'border-yellow-500 bg-yellow-50' : undefined}>
               {emoji} {name}
             </Badge>
           </div>

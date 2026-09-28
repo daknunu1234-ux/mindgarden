@@ -11,6 +11,7 @@ Per-player mastery for knowledge items.
 | `index.ts` | `submitDrillResult({ itemId, seed, tag })` | Server Action. Auth: Required. Grades on the server, upserts `user_progress` → `DrillResult { isCorrect, correctTag, masteryLevel, previousMasteryLevel, mistakeCount }`. Errors: `VALIDATION_FAILED`, `AUTH_UNAUTHORIZED`, `ITEM_NOT_FOUND`, `INTERNAL_ERROR` |
 | `index.ts` | `getProgressByDecks({ deckIds })` | Server Action. Auth: Optional. 1–50 ids → `DeckProgress[] { deckId, masteryPercent, itemCount, items: { itemId, masteryLevel }[] }`, zeros when signed out. Errors: `VALIDATION_FAILED`, `INTERNAL_ERROR` |
 | `index.ts` | `getGardenStats()` | Server Action. Auth: Required. Totals over owned trees: `treeCount`, `itemCount`, `mightyRootCount`, `masteryPercent`, `trees[]` (pure `lib/gardenStats.ts` `summarizeGarden`) |
+| `index.ts` | `getFarmHud()` | Server Action. Auth: Optional. `FarmHud { level: GardenerLevel, streak, coins }` or null (coins = 5 per mastery step, `coinsFromLevels`) (`lib/gardenerLevel.ts`, `services/farmHud.ts`) |
 | `index.ts` | `getStreak()` | Server Action. Auth: Optional. `Streaks { current, best, practicedToday, lastDay }` or null |
 | `index.ts` | `StreakBadge` | Client. Header badge "🔥 N days" / "🌱 N days" (not yet today) from `shared/stores/StreakProvider`; hidden at 0 |
 | `index.ts` | `STREAK_MILESTONES`, `streakMilestone`, `nextStreakMilestone`, `type Streaks` | Pure (`lib/streak.ts`, with `computeStreaks`, `localDay`, `resolveTimeZone`) |

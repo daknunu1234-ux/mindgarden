@@ -8,22 +8,16 @@ import { Input } from '@/shared/components/ui/input'
 import { Label } from '@/shared/components/ui/label'
 import { Textarea } from '@/shared/components/ui/textarea'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
-import { cn } from '@/shared/utils/cn'
 import { createDeck } from '../actions/createDeck'
-import { TREE_TYPES } from '../dto/CreateDeckDto'
-
-const SKINS: Record<(typeof TREE_TYPES)[number], { icon: string; label: string }> = {
-  oak: { icon: '🌳', label: 'Oak' },
-  pine: { icon: '🌲', label: 'Pine' },
-  sakura: { icon: '🌸', label: 'Sakura' },
-}
+import type { TreeTypeId } from '@/shared/lib/treeSkins'
+import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 
 function CreateDeckForm() {
   const router = useRouter()
   const { open: openLogin } = useLoginDialog()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [treeType, setTreeType] = useState<(typeof TREE_TYPES)[number]>('oak')
+  const [treeType, setTreeType] = useState<TreeTypeId>('oak')
   const [isPublic, setIsPublic] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -70,34 +64,7 @@ function CreateDeckForm() {
         />
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Tree</legend>
-        <div className="grid grid-cols-3 gap-3">
-          {TREE_TYPES.map((type) => (
-            <label
-              key={type}
-              className={cn(
-                'flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 p-3 text-sm transition-colors',
-                'has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50',
-                treeType === type ? 'border-emerald-500 bg-emerald-50' : 'border-border hover:border-emerald-300',
-              )}
-            >
-              <input
-                type="radio"
-                name="treeType"
-                value={type}
-                checked={treeType === type}
-                onChange={() => setTreeType(type)}
-                className="sr-only"
-              />
-              <span aria-hidden className="text-3xl">
-                {SKINS[type].icon}
-              </span>
-              {SKINS[type].label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <TreeSpeciesPicker value={treeType} onChange={setTreeType} />
 
       <div className="flex items-start gap-3">
         <Checkbox

@@ -7,6 +7,8 @@ import { Input } from '@/shared/components/ui/input'
 import { Label } from '@/shared/components/ui/label'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
+import { updateDeck } from '../actions/updateDeck'
+import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
 
 const DRILL_TIP =
@@ -19,6 +21,7 @@ type DeckEditorProps = { editor: DeckEditorData }
 function DeckEditor({ editor }: DeckEditorProps) {
   return (
     <div className="space-y-6">
+      <SpeciesForm deckId={editor.deckId} treeType={editor.treeType} />
       <AddRootForm deckId={editor.deckId} nodes={editor.nodes} />
       {editor.nodes.length > 0 && (
         <ul className="space-y-4">
@@ -28,6 +31,41 @@ function DeckEditor({ editor }: DeckEditorProps) {
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  )
+}
+
+// Change the tree species; the page refreshes so the scene redraws in the new species.
+function SpeciesForm({ deckId, treeType }: { deckId: string; treeType: string }) {
+  const router = useRouter()
+  const [value, setValue] = useState(treeType)
+  const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const change = (next: string) => {
+    if (next === value) return
+    const previous = value
+    setValue(next)
+    setError(null)
+    startTransition(async () => {
+      const res = await updateDeck({ deckId, treeType: next })
+      if (!res.success) {
+        setValue(previous)
+        setError(res.error.message)
+        return
+      }
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <TreeSpeciesPicker value={value} onChange={change} disabled={isPending} legend="Tree species" />
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-amber-800">
+          {error}.
+        </p>
       )}
     </div>
   )

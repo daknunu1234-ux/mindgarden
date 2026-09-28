@@ -1,8 +1,9 @@
+import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 
 type GrowthBarProps = { percent: number; className?: string }
 
-// Deck mastery as a green bar that turns gold once the tree blooms (stage 4, > 80%).
+// Deck mastery as a green bar that turns gold once the tree blooms (stage 5, ≥ 90%).
 function GrowthBar({ percent, className }: GrowthBarProps) {
   const value = Math.min(100, Math.max(0, Math.round(percent)))
   return (
@@ -16,7 +17,7 @@ function GrowthBar({ percent, className }: GrowthBarProps) {
         aria-valuenow={value}
       >
         <div
-          className={cn('h-full rounded-full transition-all duration-700', value > 80 ? 'bg-yellow-500' : 'bg-emerald-500')}
+          className={cn('h-full rounded-full transition-all duration-700', value >= GOLDEN_BLOOM_PERCENT ? 'bg-yellow-500' : 'bg-emerald-500')}
           style={{ width: `${value}%` }}
         />
       </div>

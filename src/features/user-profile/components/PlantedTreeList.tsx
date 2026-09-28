@@ -3,6 +3,7 @@ import { PencilLine } from 'lucide-react'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
 import { Card } from '@/shared/components/ui/card'
+import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { plural } from '../lib/format'
 import type { PlantedTreeView } from '../types'
@@ -49,7 +50,7 @@ function PlantedTreeList({ trees }: PlantedTreeListProps) {
               <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted" aria-hidden>
                   <div
-                    className={cn('h-full rounded-full', tree.masteryPercent > 80 ? 'bg-yellow-500' : 'bg-emerald-500')}
+                    className={cn('h-full rounded-full', tree.masteryPercent >= GOLDEN_BLOOM_PERCENT ? 'bg-yellow-500' : 'bg-emerald-500')}
                     style={{ width: `${tree.masteryPercent}%` }}
                   />
                 </div>
