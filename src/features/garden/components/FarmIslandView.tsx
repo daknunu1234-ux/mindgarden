@@ -32,7 +32,7 @@ type FarmIslandViewProps = {
   gridHref: string
   // Optional top-centre content (page switcher, sign-in notice).
   topCenter?: ReactNode
-  // Left-edge slot (the Community Gardens drawer tab).
+  // Left-edge slot (the Visited Gardens drawer tab).
   leftEdge?: ReactNode
   // Read-only visitor mode: someone else's shared trees. No planting / quests dock, a banner with
   // the way back to the player's own garden.
@@ -169,7 +169,7 @@ function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, leftEdge, v
                     ? 'Come back later, or visit another neighbour.'
                     : signedIn
                       ? 'Open the seed sack to plant your first tree.'
-                      : 'Sign in to see your own trees, or visit a neighbour in Community Gardens.'}
+                      : 'Sign in to see your own trees and the gardens you have visited.'}
                 </span>
               </div>
             )}

@@ -216,6 +216,40 @@ export type Database = {
           },
         ]
       }
+      // Migration 20260928000800_tree_visits.sql. Players read their own rows; record_tree_visit() writes.
+      tree_visits: {
+        Row: {
+          user_id: string
+          deck_id: string
+          visited_at: string
+        }
+        Insert: {
+          user_id: string
+          deck_id: string
+          visited_at?: string
+        }
+        Update: {
+          user_id?: string
+          deck_id?: string
+          visited_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'tree_visits_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'tree_visits_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       user_progress: {
         Row: {
           id: string
@@ -285,6 +319,11 @@ export type Database = {
       clone_deck: {
         Args: { p_source_deck_id: string; p_slug: string }
         Returns: { deck_id: string; remaining_coins: number; cost: number }[]
+      }
+      // Migration 20260928000800: save/refresh the caller's visit to someone else's public tree.
+      record_tree_visit: {
+        Args: { p_deck_id: string }
+        Returns: boolean
       }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {

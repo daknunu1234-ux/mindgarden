@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { GamePanel } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
-import { getDeckBySlug, getDeckEditor, getDeckReader } from '@/features/decks'
+import { countsAsVisit, getDeckBySlug, getDeckEditor, getDeckReader, TreeVisitTracker } from '@/features/decks'
 import { getFarmHud, getProgressByDecks } from '@/features/progress'
 import { DeckScene } from './_components/DeckScene'
 
@@ -52,15 +52,25 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
     !isOwner && signedIn ? getFarmHud() : null,
   ])
   const purse = hud?.success && hud.data ? hud.data : null
+  // Visited Gardens: a signed-in player opening someone else's shared tree. Recorded from the
+  // browser after mount, so link prefetching never counts as a visit.
+  const tracksVisit = countsAsVisit({
+    viewerId: userRes.success ? (userRes.data?.id ?? null) : null,
+    ownerId: res.data.deck.userId,
+    isPublic: res.data.deck.isPublic,
+  })
 
   return (
-    <DeckScene
-      detail={res.data}
-      progress={progress.success ? (progress.data[0] ?? null) : null}
-      editor={editor?.success ? editor.data : null}
-      visitor={
-        isOwner ? null : { reader: reader?.success ? reader.data : null, signedIn, coins: purse?.coins ?? null, coinsAsOf: purse?.coinsAsOf }
-      }
-    />
+    <>
+      {tracksVisit && <TreeVisitTracker deckId={deckId} />}
+      <DeckScene
+        detail={res.data}
+        progress={progress.success ? (progress.data[0] ?? null) : null}
+        editor={editor?.success ? editor.data : null}
+        visitor={
+          isOwner ? null : { reader: reader?.success ? reader.data : null, signedIn, coins: purse?.coins ?? null, coinsAsOf: purse?.coinsAsOf }
+        }
+      />
+    </>
   )
 }

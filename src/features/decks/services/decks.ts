@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Tables } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { GetDeckBySlugInput } from '../dto/GetDeckBySlugDto'
-import type { GetCommunityDecksInput, GetDecksInput, GetNeighborGardenInput } from '../dto/GetDecksDto'
+import type { GetDecksInput, GetNeighborGardenInput } from '../dto/GetDecksDto'
 import { buildDeckTree } from '../lib/deckTree'
 import type { Deck, DeckDetail } from '../types'
 
@@ -40,24 +40,6 @@ export async function listDecks(
   }
 
   return ok(data.map(toDeck), { page, limit, total: count ?? 0 })
-}
-
-// Community Gardens: shared (public) trees of OTHER gardeners, newest first. Signed out → every
-// public tree. Private trees never appear (is_public filter + RLS).
-export async function listCommunityDecks(
-  supabase: SupabaseClient<Database>,
-  viewerId: string | null,
-  { limit }: GetCommunityDecksInput,
-): Promise<ActionResult<Deck[]>> {
-  let query = supabase.from('decks').select('*').eq('is_public', true)
-  if (viewerId) query = query.neq('user_id', viewerId)
-  const { data, error } = await query.order('created_at', { ascending: false }).limit(limit)
-
-  if (error) {
-    console.error('[decks] listCommunityDecks failed', error)
-    return fail('INTERNAL_ERROR', 'Could not load the community gardens')
-  }
-  return ok(data.map(toDeck))
 }
 
 // One neighbour's island when visiting: their public trees only.

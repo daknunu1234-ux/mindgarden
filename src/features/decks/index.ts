@@ -9,9 +9,10 @@ export { deleteMindmapNode } from './actions/deleteMindmapNode'
 export { getDeckBySlug } from './actions/getDeckBySlug'
 export { getDeckEditor } from './actions/getDeckEditor'
 export { getDeckReader } from './actions/getDeckReader'
-export { getCommunityDecks } from './actions/getCommunityDecks'
 export { getDecks } from './actions/getDecks'
 export { getNeighborGarden } from './actions/getNeighborGarden'
+export { getVisitedGardens } from './actions/getVisitedGardens'
+export { recordTreeVisit } from './actions/recordTreeVisit'
 export { updateDeck } from './actions/updateDeck'
 export { updateMindmapNode } from './actions/updateMindmapNode'
 export { CloneTreeButton } from './components/CloneTreeButton'
@@ -22,6 +23,8 @@ export { DeckShareToggle } from './components/DeckShareToggle'
 export { DeckDangerZone, DeleteDeckDialog } from './components/DeleteDeckDialog'
 export { AddRootDialog, NodeManageDialog, type ManagedNode } from './components/NodeManageDialog'
 export { TreeSpeciesPicker } from './components/TreeSpeciesPicker'
+export { TreeVisitTracker } from './components/TreeVisitTracker'
+export { countsAsVisit } from './lib/visits'
 export { countDeckTree } from './lib/deckTree'
 export type {
   Deck,
@@ -31,4 +34,5 @@ export type {
   DeckTreeNode,
   EditorItem,
   EditorNode,
+  VisitedTree,
 } from './types'

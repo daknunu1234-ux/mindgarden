@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/shared/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
 import { createClient } from '@/shared/lib/supabase/server'
-import { getCommunityDecks } from '../actions/getCommunityDecks'
 import { getDecks } from '../actions/getDecks'
 import { getNeighborGarden } from '../actions/getNeighborGarden'
 
@@ -97,19 +96,6 @@ describe('getDecks: my own garden only', () => {
     const calls = fakeSupabase(null)
     expect(await getDecks()).toMatchObject({ success: true, data: [], meta: { total: 0 } })
     expect(calls).toEqual([])
-  })
-})
-
-describe('getCommunityDecks: other gardeners’ shared trees', () => {
-  it('lists public trees of others, never my own and never anyone’s private ones', async () => {
-    const calls = fakeSupabase(ANNA)
-    expect(slugs(await getCommunityDecks())).toEqual(['chi-shared', 'binh-shared'])
-    expect(calls).toEqual(expect.arrayContaining(['eq is_public', 'neq user_id']))
-  })
-
-  it('shows every public tree to a signed-out visitor', async () => {
-    fakeSupabase(null)
-    expect(slugs(await getCommunityDecks())).toEqual(['chi-shared', 'binh-shared', 'anna-shared'])
   })
 })
 

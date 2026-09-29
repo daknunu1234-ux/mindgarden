@@ -7,7 +7,7 @@ import { listDecks } from '../services/decks'
 import type { Deck } from '../types'
 
 // Auth: Optional. The player's OWN garden: only decks whose user_id is the session user (public and
-// private). Signed out → an empty garden. Other gardeners' shared trees: getCommunityDecks.
+// private). Signed out → an empty garden. Shared trees you opened: getVisitedGardens.
 export async function getDecks(input: unknown = {}): Promise<ActionResult<Deck[]>> {
   const parsed = GetDecksDto.safeParse(input ?? {})
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)

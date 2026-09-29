@@ -1,4 +1,4 @@
-export { CommunityGardensDrawer } from './components/CommunityGardensDrawer'
+export { VisitedGardensDrawer } from './components/VisitedGardensDrawer'
 export { FarmIslandView } from './components/FarmIslandView'
 export { ViewToggle } from './components/FarmHud'
 export { GardenGrid, GardenGridSkeleton } from './components/GardenGrid'
@@ -7,5 +7,12 @@ export { TreeCard } from './components/TreeCard'
 export { TREE_BASE_RATIO, TreeStageSvg } from './components/TreeStageSvg'
 export { getTreeStage, TREE_STAGES, useTreeStage } from './hooks/useTreeStage'
 export { layoutFarm } from './lib/farmLayout'
-export { groupNeighborGardens, neighborName, visitHref, type NeighborGarden, type SharedTree } from './lib/neighbors'
+export {
+  formatVisitedAgo,
+  groupVisitedGardens,
+  neighborName,
+  visitHref,
+  type VisitedGarden,
+  type VisitedTreeView,
+} from './lib/neighbors'
 export type { DeckCardView, FarmHudView, FarmPlotView, TreeStage } from './types'

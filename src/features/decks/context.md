@@ -3,7 +3,7 @@
 Server feature for decks, their mindmap tree and knowledge items.
 
 ## Owned tables
-`decks`, `mindmap_nodes`, `knowledge_items` (only this feature's services query them)
+`decks`, `mindmap_nodes`, `knowledge_items`, `tree_visits` (only this feature's services query them)
 
 ## Exports
 | From | Export | Notes |
@@ -11,8 +11,10 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `getDecks(input?)` | Server Action. `{ limit?, page? }` → `ActionResult<Deck[]>` with `meta { page, limit, total }`. Auth: Optional. **Owner-only**: returns the session user's own decks (public and private), never another gardener's; signed out → `[]` |
 | `index.ts` | `getDeckBySlug({ slug })` | Server Action → `ActionResult<DeckDetail>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `INTERNAL_ERROR`. Auth: Optional |
 | `index.ts` | `createDeck({ title, description?, treeType?, isPublic? })` | Server Action, Auth Required. Costs 100 🪙 (`shared/lib/economy.ts`): `services/authoring.ts` `plantDeck` calls the `plant_deck()` RPC (charge + insert in one transaction) per slug candidate. Returns `{ deck, remainingCoins }`; `INSUFFICIENT_COINS` when short. Slug from `slugify(title)` with collision suffixes (a clash never double-charges) |
-| `index.ts` | `getDecks`, `getCommunityDecks`, `getNeighborGarden` | Server Actions (`services/decks.ts`). `getDecks` = the session user's own decks only (signed out → []); `getCommunityDecks` = other gardeners' public decks; `getNeighborGarden({ ownerId })` = one gardener's public decks. Tests: `__tests__/gardenIsolation.test.ts` |
-| `index.ts` | `DeckShareToggle({ deckId, slug, isPublic })` | Owner switch "Share tree with community (Public link) 🌐" (`updateDeck({ isPublic })`) + copy link. New trees are private by default |
+| `index.ts` | `getDecks`, `getNeighborGarden` | Server Actions (`services/decks.ts`). `getDecks` = the session user's own decks only (signed out → []); `getNeighborGarden({ ownerId })` = one gardener's public decks (`/?visit=<id>`). Tests: `__tests__/gardenIsolation.test.ts` |
+| `index.ts` | `getVisitedGardens({ limit? })`, `recordTreeVisit({ deckId })` | Server Actions (`dto/TreeVisitDto.ts`, `services/visits.ts`). Visited Gardens: `recordTreeVisit` (Auth Required) calls the `record_tree_visit()` RPC (migration `20260928000800`), which saves only another gardener's public tree and refreshes `visited_at` on a repeat → `{ recorded }`. `getVisitedGardens` (Auth Optional, signed out → []) = `VisitedTree[]` newest first, own and private trees filtered out, with `statementCount` from `listDeckItemIds`. Tests: `__tests__/treeVisits.test.ts` |
+| `index.ts` | `TreeVisitTracker({ deckId })`, `countsAsVisit({ viewerId, ownerId, isPublic })` | Client tracker (renders nothing; calls `recordTreeVisit` in `useEffect` on mount, so prefetching never counts) and the pure rule the deck page uses to mount it (`lib/visits.ts`: signed in, not the owner, public) |
+| `index.ts` | `DeckShareToggle({ deckId, slug, isPublic })` | Owner switch "Share tree with community (Public link) 🌐" (`updateDeck({ isPublic })`) + copy link. New trees are private by default; a shared tree is found through its link (and then sits in the visitor's Visited Gardens) |
 | `index.ts` | `CreateDeckForm({ coins, coinsAsOf? })` | "Seed Cost: 100 🪙 · Your Purse: X 🪙"; when short, the plant button is disabled and "Get More Coins 🪙" opens the Coin Shop (`shared/stores/CoinShopProvider`) |
 | `index.ts` | `createMindmapNode({ deckId, title, parentId? })` | Server Action, owner only (`AUTH_FORBIDDEN` otherwise) |
 | `index.ts` | `createKnowledgeItem({ nodeId, statement })` | Server Action, owner only. Stores `trap_rules = { negate: true }`, `prompt` = root title; returns `drillable` |
@@ -29,7 +31,7 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `TreeSpeciesPicker({ value, onChange })` | Radio cards for every species in `shared/lib/treeSkins` |
 | `index.ts` | `CreateDeckForm`, `DeckEditor({ editor })` | Client UI for `/deck/new` and the owner section of the deck page. No trap settings are shown |
 | `index.ts` | `countDeckTree(tree)` | Pure: `{ nodeCount, itemCount }` for a deck header |
-| `index.ts` | `type Deck`, `DeckDetail`, `DeckTreeNode`, `DeckTreeItem` | camelCase shapes from API SPEC.md §6. Items carry only `id` + `prompt` (no `correctStmt`) |
+| `index.ts` | `type Deck`, `DeckDetail`, `DeckTreeNode`, `DeckTreeItem`, `VisitedTree` | camelCase shapes from API SPEC.md §6. Items carry only `id` + `prompt` (no `correctStmt`) |
 | `server.ts` | `listDrillItems(supabase, { deckId } \| { slug })` | Server-only. Deck (with `ownerId`, for drill's owner-only guard) + `nodes { id, parentId, title }` + every item with `correctStmt`, parsed `trapRules` and `siblingStatements` (other statements in its node), for drill |
 | `server.ts` | `listDeckItemIds(supabase, deckIds)` | Server-only. `{ deckId, items: { itemId, nodeId }[] }[]` in input order (queried 100 decks at a time), for progress |
 | `server.ts` | `listOwnedDecks(supabase, userId)` | Server-only. The user's decks (public + private), newest first, for the profile stats |

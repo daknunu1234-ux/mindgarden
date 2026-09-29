@@ -1,4 +1,5 @@
-// Community Gardens (pure, unit-tested): shared trees grouped into neighbour gardens.
+// Visited Gardens (pure, unit-tested): the shared trees a player has opened, grouped into
+// neighbour gardens.
 //
 // Players can't read each other's profiles (users RLS: self only), so a neighbour is shown with a
 // friendly name derived from their id: stable for everyone, reveals nothing personal.
@@ -21,31 +22,80 @@ export function neighborName(ownerId: string): string {
   return `${ADJECTIVES[h % ADJECTIVES.length]} ${CREATURES[Math.floor(h / ADJECTIVES.length) % CREATURES.length]}`
 }
 
-export type SharedTree = { id: string; slug: string; title: string; treeType: string; userId: string; createdAt: string }
-
-export type NeighborGarden = {
+// One visited tree, as the page passes it in (from decks' getVisitedGardens).
+export type VisitedTreeView = {
+  deckId: string
   ownerId: string
-  name: string
-  trees: Omit<SharedTree, 'userId'>[]
+  slug: string
+  title: string
+  treeType: string
+  // null when the count couldn't be read.
+  statementCount: number | null
+  visitedAt: string
 }
 
-// Groups shared trees by owner, never including the viewer's own trees; gardens with the newest
-// tree first, trees newest first inside each garden.
-export function groupNeighborGardens(trees: readonly SharedTree[], viewerId: string | null): NeighborGarden[] {
-  const byOwner = new Map<string, SharedTree[]>()
+export type VisitedGarden = {
+  ownerId: string
+  name: string
+  // The newest visit to any of this gardener's trees.
+  lastVisitedAt: string
+  trees: Omit<VisitedTreeView, 'ownerId'>[]
+}
+
+// Groups visited trees by gardener, never including the viewer's own trees: the most recently
+// visited garden first, and inside each garden the most recently visited tree first. A tree listed
+// twice keeps its newest visit.
+export function groupVisitedGardens(trees: readonly VisitedTreeView[], viewerId: string | null): VisitedGarden[] {
+  const newest = new Map<string, VisitedTreeView>()
   for (const t of trees) {
-    if (t.userId === viewerId) continue
-    byOwner.set(t.userId, [...(byOwner.get(t.userId) ?? []), t])
+    if (t.ownerId === viewerId) continue
+    const seen = newest.get(t.deckId)
+    if (!seen || t.visitedAt > seen.visitedAt) newest.set(t.deckId, t)
   }
+
+  const byOwner = new Map<string, VisitedTreeView[]>()
+  for (const t of newest.values()) byOwner.set(t.ownerId, [...(byOwner.get(t.ownerId) ?? []), t])
+
   return [...byOwner.entries()]
-    .map(([ownerId, list]) => ({
-      ownerId,
-      name: neighborName(ownerId),
-      trees: [...list]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .map((t) => ({ id: t.id, slug: t.slug, title: t.title, treeType: t.treeType, createdAt: t.createdAt })),
-    }))
-    .sort((a, b) => b.trees[0].createdAt.localeCompare(a.trees[0].createdAt))
+    .map(([ownerId, list]) => {
+      const sorted = [...list].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt))
+      return {
+        ownerId,
+        name: neighborName(ownerId),
+        lastVisitedAt: sorted[0].visitedAt,
+        trees: sorted.map((t) => ({
+          deckId: t.deckId,
+          slug: t.slug,
+          title: t.title,
+          treeType: t.treeType,
+          statementCount: t.statementCount,
+          visitedAt: t.visitedAt,
+        })),
+      }
+    })
+    .sort((a, b) => b.lastVisitedAt.localeCompare(a.lastVisitedAt))
+}
+
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
+// Fixed names: Intl month abbreviations differ between ICU versions ("Sep" / "Sept").
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", then the date ("12 Sep 2026").
+// `now` is passed in so the result is deterministic (and the same on server and client).
+export function formatVisitedAgo(visitedAt: string, now: number): string {
+  const at = Date.parse(visitedAt)
+  if (Number.isNaN(at)) return ''
+  const diff = Math.max(0, now - at)
+  if (diff < MINUTE) return 'just now'
+  if (diff < HOUR) return `${Math.floor(diff / MINUTE)} min ago`
+  if (diff < DAY) return `${Math.floor(diff / HOUR)} h ago`
+  const days = Math.floor(diff / DAY)
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days} days ago`
+  const d = new Date(at)
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
 // Farm URL for visiting a neighbour's island (read-only visitor mode).

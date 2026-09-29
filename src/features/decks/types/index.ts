@@ -10,6 +10,18 @@ export type Deck = {
   createdAt: string
 }
 
+// One shared tree the player has opened (Visited Gardens, getVisitedGardens). ownerId = the tree's gardener.
+// statementCount is null when the count couldn't be read.
+export type VisitedTree = {
+  deckId: string
+  ownerId: string
+  title: string
+  slug: string
+  treeType: string
+  statementCount: number | null
+  visitedAt: string
+}
+
 // Items expose only the prompt: correct_stmt stays on the server so answers remain hidden.
 export type DeckTreeItem = { id: string; prompt: string }
 

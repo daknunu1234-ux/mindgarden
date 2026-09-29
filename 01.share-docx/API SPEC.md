@@ -82,8 +82,9 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Auth | `signOut` | Action/POST | Clear the session | Optional |
 | Auth | `getCurrentUser` | Action | Verified user or null (layout, pages) | Optional |
 | Decks | `getDecks` | Action/GET | The signed-in player's own decks (their garden) | Optional |
-| Decks | `getCommunityDecks` | Action/GET | Other gardeners' shared (public) decks | Optional |
 | Decks | `getNeighborGarden` | Action/GET | One gardener's shared decks (visitor mode) | Optional |
+| Decks | `getVisitedGardens` | Action | Shared trees the player has opened, newest visit first (Visited Gardens drawer) | Optional |
+| Decks | `recordTreeVisit` | Action | Save / refresh a visit to another gardener's shared tree | Required |
 | Decks | `getDeckBySlug` | Action/GET | Deck metadata + full mindmap tree | Optional |
 | Decks | `createDeck` | Action/POST | Plant a new tree deck for 100 🪙 (slug generated) | Required |
 | Decks | `cloneDeck` | Action/POST | Copy another gardener's shared tree into your garden for min(100 + statements, 150) 🪙 | Required |
@@ -140,20 +141,35 @@ Array<{ id: string; userId: string; title: string; slug: string; description: st
 ```
 - Feeds the farm island and the grid: each gardener sees their own garden. Switching accounts shows only the new account's trees
 
-### `getCommunityDecks` (decks)
-```typescript
-// Input: { limit?: number /* 1–60, default 30 */ }
-// data: public decks (is_public = true) of OTHER gardeners (user_id ≠ session user), newest first; signed out → every public deck
-// Same row shape as getDecks · Errors: VALIDATION_FAILED, INTERNAL_ERROR
-```
-- Fills the farm's "🌱 Community Gardens · Thăm Vườn" drawer, grouped by gardener (`garden/lib/neighbors.ts`). Neighbours get a friendly name derived from their id, because profiles aren't readable across players
-
 ### `getNeighborGarden` (decks)
 ```typescript
 // Input: { ownerId: string /* uuid */; limit?: number }
 // data: that gardener's PUBLIC decks only (never their private ones) · Errors: VALIDATION_FAILED, INTERNAL_ERROR
 ```
-- Read-only visitor mode on the farm (`/?visit=<ownerId>`). Visiting yourself shows your own garden. **Strict read-only**: visitors can open a shared tree and read all its roots and statements (`getDeckReader`), but can't edit it or practise it (`FORBIDDEN_VISITOR_PRACTICE`). To practise, they clone it (`cloneDeck`)
+- Read-only visitor mode on the farm (`/?visit=<ownerId>`), reached from the Visited Gardens drawer ("Visit 👣"). Visiting an island records no tree visits. Visiting yourself shows your own garden. **Strict read-only**: visitors can open a shared tree and read all its roots and statements (`getDeckReader`), but can't edit it or practise it (`FORBIDDEN_VISITOR_PRACTICE`). To practise, they clone it (`cloneDeck`)
+
+### `getVisitedGardens` (decks)
+```typescript
+// Input: { limit?: number /* 1–100, default 50 */ }
+// data: the shared trees the signed-in player has opened, newest visit first. Signed out → [].
+Array<{ deckId: string; ownerId: string; title: string; slug: string; treeType: string;
+        statementCount: number | null;   // null if the count couldn't be read (the tree is still listed)
+        visitedAt: string }>
+// Errors: VALIDATION_FAILED, INTERNAL_ERROR
+```
+- Fills the farm's "🧭 Visited Gardens · Vườn đã thăm" left drawer, which replaced Community Gardens. The page groups the rows by gardener (`garden/lib/neighbors.ts` `groupVisitedGardens`: newest-visited garden first, own trees left out); neighbours get a friendly name derived from their id, because profiles aren't readable across players
+- Only **public** trees of **other** gardeners (explicit filters + decks RLS on the join): a tree that went private again, or was deleted, drops out
+- Reads `tree_visits` (DATABASE.md), statement counts via `listDeckItemIds`
+
+### `recordTreeVisit` (decks)
+```typescript
+// Input (RecordTreeVisitDto): { deckId: string /* uuid */ }
+// data: { recorded: boolean }   // false: unknown, private, or your own tree (nothing saved, not an error)
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+- Called once by `TreeVisitTracker` (client, `useEffect` on mount) on `/deck/[slug]` when `countsAsVisit` holds: signed in, not the owner, tree public. Recording after mount means link prefetching never counts as a visit
+- `record_tree_visit()` re-checks the same rule in the database and upserts `(user_id, deck_id)`: a repeat visit refreshes `visitedAt` (one row per tree). No `revalidatePath`: `/` is rendered per request, so the next farm load reads the drawer fresh (a browser back/forward may still show the cached farm)
+- Visiting a whole island (`/?visit=<id>`) records nothing
 
 ### `getDeckBySlug` (decks)
 ```typescript

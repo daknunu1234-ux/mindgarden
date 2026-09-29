@@ -2,14 +2,14 @@ import Link from 'next/link'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
 import { getCurrentUser } from '@/features/auth'
-import { getCommunityDecks, getDecks, getNeighborGarden, type Deck } from '@/features/decks'
+import { getDecks, getNeighborGarden, getVisitedGardens, type Deck } from '@/features/decks'
 import { FarmWorld } from './_components/FarmWorld'
 import {
-  CommunityGardensDrawer,
   GardenGrid,
-  groupNeighborGardens,
+  groupVisitedGardens,
   neighborName,
   ViewToggle,
+  VisitedGardensDrawer,
   type DeckCardView,
   type FarmHudView,
   type FarmPlotView,
@@ -41,7 +41,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const { page, login, view: rawView, visit: rawVisit } = await searchParams
   const view: View = rawView === 'grid' ? 'grid' : 'farm'
 
-  const [userRes, hudRes, communityRes] = await Promise.all([getCurrentUser(), getFarmHud(), getCommunityDecks({ limit: 40 })])
+  const [userRes, hudRes, visitedRes] = await Promise.all([getCurrentUser(), getFarmHud(), getVisitedGardens()])
   const userId = userRes.success ? (userRes.data?.id ?? null) : null
   // Visiting yourself is just your own garden.
   const visitOwnerId = view === 'farm' && typeof rawVisit === 'string' && UUID.test(rawVisit) && rawVisit !== userId ? rawVisit : null
@@ -51,17 +51,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const decks = res.success ? res.data : []
   const progress = await loadProgress(decks)
   const currentPage = res.success ? (res.meta?.page ?? 1) : 1
-  const neighbors = groupNeighborGardens(
-    (communityRes.success ? communityRes.data : []).map((d) => ({
-      id: d.id,
-      slug: d.slug,
-      title: d.title,
-      treeType: d.treeType,
-      userId: d.userId,
-      createdAt: d.createdAt,
-    })),
-    userId,
-  )
+  // Visited Gardens drawer: shared trees this player opened. A failed load shows an empty drawer.
+  const visitedGardens = groupVisitedGardens(visitedRes.success ? visitedRes.data : [], userId)
 
   const cards: DeckCardView[] = decks.map((d) => ({
     id: d.id,
@@ -141,7 +132,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           signedIn={userId !== null}
           gridHref={hrefFor('grid', currentPage)}
           visitor={visitOwnerId ? { name: neighborName(visitOwnerId), backHref: '/' } : null}
-          leftEdge={<CommunityGardensDrawer gardens={neighbors} visitingOwnerId={visitOwnerId} />}
+          leftEdge={<VisitedGardensDrawer gardens={visitedGardens} signedIn={userId !== null} visitingOwnerId={visitOwnerId} />}
           topCenter={
             !visitOwnerId &&
             (loginNotice || islands) && (

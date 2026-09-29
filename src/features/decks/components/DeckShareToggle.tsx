@@ -8,8 +8,8 @@ import { updateDeck } from '../actions/updateDeck'
 
 type DeckShareToggleProps = { deckId: string; slug: string; isPublic: boolean }
 
-// Owner-only: "Share tree with community (Public link) 🌐". Public trees show up in other
-// gardeners' Community Gardens drawer and open read-only for them; private trees are yours alone.
+// Owner-only: "Share tree with community (Public link) 🌐". Anyone with the link can open a public
+// tree read-only (and it joins their Visited Gardens drawer); private trees are yours alone.
 function DeckShareToggle({ deckId, slug, isPublic: initial }: DeckShareToggleProps) {
   const router = useRouter()
   const [isPublic, setIsPublic] = useState(initial)
@@ -71,7 +71,7 @@ function DeckShareToggle({ deckId, slug, isPublic: initial }: DeckShareTogglePro
           </p>
           <p className="text-sm text-emerald-900/70">
             {isPublic
-              ? 'Shared: other gardeners find it in Community Gardens and can visit it read-only.'
+              ? 'Shared: anyone with the link can open it read-only and clone it to practise.'
               : 'Private: only you can see and practise this tree.'}
           </p>
         </div>

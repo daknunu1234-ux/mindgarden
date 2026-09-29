@@ -57,7 +57,7 @@
 | title | VARCHAR(150) | NOT NULL | "Cell Biology 101" |
 | slug | VARCHAR(160) | NOT NULL, UNIQUE, CHECK kebab-case | "cell-biology-101" |
 | description | TEXT | NULLABLE | |
-| is_public | BOOLEAN | NOT NULL, DEFAULT FALSE | Shared with the community: listed in other gardeners' Community Gardens and readable (read-only) by everyone. Private until the owner shares it (the default was TRUE before migration `20260928000600`; existing trees kept their value) |
+| is_public | BOOLEAN | NOT NULL, DEFAULT FALSE | Shared with the community: readable (read-only) by everyone with the link, and listed in the Visited Gardens of players who opened it. Private until the owner shares it (the default was TRUE before migration `20260928000600`; existing trees kept their value) |
 | tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Species: oak, pine, sakura, bamboo, apple, saguaro (validated by Zod from `shared/lib/treeSkins.ts`; unknown values render as oak) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
@@ -71,6 +71,18 @@
 | sort_order | INT | NOT NULL, DEFAULT 0 | Order among siblings |
 
 ⚠️ Parent must be in the **same deck**: enforced by composite FK `(parent_id, deck_id) → (id, deck_id)`. `CHECK (parent_id <> id)` blocks self-parenting.
+
+**tree_visits** — *Visited Gardens: the shared trees a player has opened (migration `20260928000800_tree_visits.sql`)*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | The visitor |
+| deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | The tree they opened |
+| visited_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Latest visit; a repeat visit refreshes it |
+| *(user_id, deck_id)* | — | PK | One row per player per tree |
+
+- **What counts as a visit**: a signed-in player opening `/deck/[slug]` of **another gardener's public** tree. Visiting a whole island (`/?visit=<id>`) records nothing. The page records it from the browser after mount (`TreeVisitTracker`), so link prefetching never counts
+- **Writes**: only `public.record_tree_visit(deck_id)` (`SECURITY DEFINER`, caller = `auth.uid()`). It returns `false` without writing for an unknown, private or own tree, otherwise upserts the row with `visited_at = now()` and returns `true`. Players have SELECT only, so a visit to a private or own tree can't be forged through the API
+- **Reads**: `getVisitedGardens` joins `tree_visits → decks` (inner join through decks RLS) and filters `is_public` and `user_id ≠ me`, so a tree that went private again drops out of the drawer without deleting the row
 
 ### Knowledge & Trap Engine Feature
 
@@ -159,8 +171,10 @@ roles
             │                   │   └──────────┘ parent_id (self-ref 1:N)
             │                   └─1:N─► knowledge_items
             │                             │
-            └─1:N─► user_progress ◄─N:1───┘
-                    (N:M bridge: one row per user per knowledge_item)
+            ├─1:N─► user_progress ◄─N:1───┘
+            │       (N:M bridge: one row per user per knowledge_item)
+            └─1:N─► tree_visits ◄─N:1── decks
+                    (N:M bridge: one row per visitor per shared tree)
 ```
 
 ---
@@ -176,6 +190,7 @@ roles
 | mindmap_nodes → mindmap_nodes | 1:N | Self-ref, same-deck only, subtree cascades |
 | mindmap_nodes → knowledge_items | 1:N | CASCADE |
 | **users ↔ knowledge_items** | N:M via `user_progress` | ⚠️ Decoupled progress: same public deck, separate progress per player |
+| users ↔ decks (visits) | N:M via `tree_visits` | Visited Gardens; both sides CASCADE |
 
 ---
 
@@ -203,6 +218,10 @@ CREATE INDEX idx_mindmap_nodes_parent_id ON public.mindmap_nodes(parent_id);
 -- Knowledge & Trap Engine
 CREATE INDEX idx_knowledge_items_node_id ON public.knowledge_items(node_id);
 
+-- Visited Gardens (the PK (user_id, deck_id) covers per-player lookups)
+CREATE INDEX idx_tree_visits_user_visited_at ON public.tree_visits(user_id, visited_at DESC);
+CREATE INDEX idx_tree_visits_deck_id ON public.tree_visits(deck_id);   -- fast cascade deletes
+
 -- Progress
 CREATE UNIQUE INDEX idx_user_progress_user_item
   ON public.user_progress(user_id, knowledge_item_id);                    -- doubles as UNIQUE + upsert target
@@ -224,6 +243,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | knowledge_items | If deck readable | Deck owner | Deck owner | Deck owner |
 | user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
+| tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
 
 ```sql
 -- Decks: public or own
@@ -307,6 +327,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 6 | `20260928000500_seed_economy.sql` | `users.coins` default 300 + signup trigger + one-time top-up to 300, `plant_deck()` (100 🪙 per tree, the only way to insert decks), `dev_grant_coins()` (service role, test top-ups). Needs file 4 |
   | 7 | `20260928000600_profiles_and_sharing.sql` | Signup trigger reads Google metadata; `ensure_user_profile()` + backfill of missing profile rows (300 🪙); `decks.is_public` default `false`; `plant_deck()` ensures the profile first and plants private by default |
   | 8 | `20260928000700_clone_deck.sql` | `clone_deck()`: charge min(100 + statements, 150) 🪙 and deep-copy another gardener's public tree (roots + statements, no progress) into a private deck of the caller. Needs file 7 |
+  | 9 | `20260928000800_tree_visits.sql` | `tree_visits` + RLS (read own) + `record_tree_visit()`, the only writer (another gardener's public tree only). Needs file 7 |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
 - ⚠️ **Existing hosted project**: its base schema was built in the dashboard before file 1 existed, and files 2 and 3 are already applied there. Don't run file 1 on it: it is re-runnable (`if not exists`, `drop policy if exists`), but it can't reconcile differences with the dashboard schema, and dashboard policies with other names would stay next to its policies (permissive policies OR together)
@@ -315,7 +336,8 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **Deploy order for file 6 on the hosted project**: run it together with the app deploy. The new app plants through `plant_deck`, which doesn't exist before the migration. The old app inserts decks directly, which is refused after it
 - **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000700`
+- **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000800`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing

@@ -103,7 +103,7 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf }: CreateDeckFormProps) 
           </label>
           <p id="deck-public-hint" className="text-sm text-amber-900/65">
             {isPublic
-              ? 'Other gardeners can find it in Community Gardens and visit it read-only.'
+              ? 'Anyone you send the link to can open it read-only, and clone it to practise.'
               : 'Only you can see and practice this tree. You can share it later.'}
           </p>
         </div>
