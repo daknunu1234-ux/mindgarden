@@ -19,6 +19,8 @@ export type FarmPlotView = {
   treeType: string
   masteryPercent: number
   itemCount: number
+  // Items the player has at 5/5: they rest in normal rounds (the popup offers review mode).
+  masteredCount: number
   mightyRoots: number
   // true: show 💧 (not practised today); false: watered; null: unknown (signed out).
   needsWater: boolean | null

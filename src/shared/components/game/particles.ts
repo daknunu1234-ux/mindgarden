@@ -4,8 +4,11 @@
 export type BurstParticle = { dx: number; dy: number; spin: number; delay: number; glyph: string; size: number }
 
 const GLYPHS = ['✨', '🍃', '⭐', '💧', '🌸']
+// Gold shower for coin rewards.
+export const GOLD_GLYPHS = ['🪙', '✨', '⭐', '🪙', '💛'] as const
 
-export function burstParticles(count: number, radius = 110): BurstParticle[] {
+export function burstParticles(count: number, radius = 110, glyphs: readonly string[] = GLYPHS): BurstParticle[] {
+  const set = glyphs.length > 0 ? glyphs : GLYPHS
   const n = Math.max(0, Math.min(48, Math.floor(count)))
   return Array.from({ length: n }, (_, i) => {
     // Golden-angle spread keeps particles evenly fanned without randomness.
@@ -17,7 +20,7 @@ export function burstParticles(count: number, radius = 110): BurstParticle[] {
       dy: Math.round(Math.sin(angle) * reach - radius * 0.2),
       spin: ((i * 97) % 360) - 180,
       delay: (i % 6) * 0.03,
-      glyph: GLYPHS[i % GLYPHS.length],
+      glyph: set[i % set.length],
       size: 14 + ((i * 7) % 10),
     }
   })

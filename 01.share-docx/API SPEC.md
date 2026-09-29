@@ -66,6 +66,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
 | `DRILL_NO_ITEMS` | 422 | Node has no drillable item (none left, or all `INSUFFICIENT_MUTATIONS`) |
+| `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
 ---
@@ -187,8 +188,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `getDrillSession` (drill)
 ```typescript
-// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus nodeId?: string, limit?: number /* 1–50, default 20 */
+// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus nodeId?: string, limit?: number /* 1–50, default 20 */,
+//        includeMastered?: boolean /* default false; the page passes ?review=1 */
 // nodeId: only items of that root and all its sub-roots (the page passes ?nodeId=)
+// includeMastered: review mode: mix the player's 5/5 items back in (normally they rest)
 // data
 { deck: { id: string; slug: string; title: string; treeType: string };
   sessionId: string;                          // crypto.randomUUID() per call
@@ -196,9 +199,13 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   questions: { itemId: string; nodeTitle: string; prompt: string;
                seed: string;                  // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
                choices: { tag: 'A' | 'B' | 'C'; text: string }[] }[];   // no correctTag
-  skippedCount: number }                      // items that returned INSUFFICIENT_MUTATIONS
-// Errors: VALIDATION_FAILED, DECK_NOT_FOUND, NODE_NOT_FOUND (nodeId not in this deck), DRILL_NO_ITEMS
+  skippedCount: number;                       // items that returned INSUFFICIENT_MUTATIONS
+  masteredCount: number;                      // drillable items the player has at 5/5 (resting, or mixed in when reviewing)
+  includeMastered: boolean }
+// Errors: VALIDATION_FAILED, DECK_NOT_FOUND, NODE_NOT_FOUND (nodeId not in this deck), DRILL_NO_ITEMS,
+//         DRILL_ALL_MASTERED (every drillable item is 5/5 and includeMastered is false)
 ```
+- **Queue** (`lib/queue.ts` `selectPracticeItems`, pure): signed in → the player's levels come from `progress/server` `fetchMasteryLevels`; 5/5 items are left out unless `includeMastered`. Signed out → nothing is left out. If levels can't be read, nothing is left out either, so practice is never blocked
 - **Order**: items shuffled with `seededRandom(sessionId)`, then cut to `limit`
 - **Traps**: each item gets the other statements of its node as siblings (sibling concept swaps, backend/ARCHITECTURE.md §7)
 - With `nodeId` it covers what `getDrillQuestion` was planned for (per-node practice from the mindmap); `getDrillQuestion` is not built
@@ -218,13 +225,16 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C'; timeZone?: string /* browser IANA zone */ }
 // data
 { isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
-  masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3; mistakeCount: number;
-  streakCount: number | null }   // current daily streak; null if it could not be saved (the answer still counts)
+  masteryLevel: 0 | 1 | 2 | 3 | 4 | 5; previousMasteryLevel: 0 | 1 | 2 | 3 | 4 | 5; mistakeCount: number;
+  streakCount: number | null;    // current daily streak; null if it could not be saved (the answer still counts)
+  coinsEarned: number;           // 🪙 paid by this answer: 1 on the item's first 5/5, else 0
+  totalCoins: number | null }    // balance after this answer; null if it could not be read (the answer still counts)
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ITEM_NOT_FOUND
 ```
 - **Grading**: re-run `generateTraps(correctStmt, trapRules, seed)`, compare `tag` with `correctTag`
-- **Mastery** (`nextMastery` in `progress/lib`): correct → `min(level + 1, 3)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`
-- **Write**: upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'`, `last_practiced_at = now()`
+- **Mastery** (`nextMastery` in `progress/lib`, scale in `shared/lib/mastery.ts`): correct → `min(level + 1, 5)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`. A 5/5 item drops to 4/5 on a wrong answer (it can only get there in review mode)
+- **Write**: first answer inserts the `user_progress` row, later ones update `mastery_level`, `mistake_count`, `last_practiced_at = now()` (players can't rewrite the row's user/item, DATABASE.md "Gold coins")
+- **Gold** (admin client, `progress/services/coins.ts`): if the answer leaves the item at 5/5 and it was never paid (`coin_awarded_at` NULL), `award_mastery_coin` pays 1 🪙 atomically. Once per item ever: re-mastering after a drop, or answering a mastered item again, pays 0. A coin failure never fails the answer (`coinsEarned: 0`, `totalCoins: null`). The client pushes `totalCoins` into `shared/stores/CoinsProvider` so the farm HUD updates without a reload. There's no `revalidatePath` because it would re-render the drill route and restart the round
 - **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak")
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
 - **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"); no action or route ever returns them to a player
@@ -251,7 +261,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //                        → on failure: { success: false, error }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner, or RLS deleted 0 rows), DECK_NOT_FOUND, INTERNAL_ERROR
 ```
-- One `DELETE FROM decks … RETURNING id`; `mindmap_nodes`, `knowledge_items` and `user_progress` go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP and coins are derived from progress, so they drop accordingly
+- One `DELETE FROM decks … RETURNING id`; `mindmap_nodes`, `knowledge_items` and `user_progress` go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP is derived from progress, so it drops accordingly. 🪙 gold already earned is kept (`users.coins` is a stored balance)
 - Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
 - UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone and the owner's 🗑 badge in the farm plot popup
 
@@ -263,7 +273,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //         coins: number } | null                                          // null when signed out
 ```
 - XP = 10 × Σ `mastery_level` over all of the player's `user_progress` rows; level L → L + 1 costs 50 + 25 × (L − 1)
-- Coins = 5 × Σ `mastery_level` (same data as XP). Display only: there is no shop or spending yet. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
+- Coins = the stored 🪙 gold balance `users.coins` (1 per item mastered for the first time; 0 if the coins migration hasn't run). Nothing to spend yet. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
 
 ### `getGardenStats` (progress)
 ```typescript
@@ -271,8 +281,8 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // data
 { treeCount: number;          // decks owned by the user (public + private)
   itemCount: number;          // knowledge items across those decks
-  mightyRootCount: number;    // roots with ≥ 1 item whose average mastery is 3/3
-  masteryPercent: number;     // Σ level / (3 × itemCount) × 100 over owned items, rounded; 0 without items
+  mightyRootCount: number;    // roots with ≥ 1 item whose average mastery is 5/5
+  masteryPercent: number;     // Σ level / (5 × itemCount) × 100 over owned items, rounded; 0 without items
   trees: { deckId; slug; title; treeType; isPublic; itemCount; masteryPercent; mightyRoots }[];  // newest first
   currentStreak: number; bestStreak: number; practicedToday: boolean }   // 0 / false if the streak can't be read
 // Errors: AUTH_UNAUTHORIZED, INTERNAL_ERROR
@@ -291,9 +301,9 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```typescript
 // Input: { deckIds: string[] /* 1–50 */ }
 // data
-Array<{ deckId: string; masteryPercent: number;            // Σ level / (3 × itemCount) × 100, 0 if no items
+Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × itemCount) × 100, 0 if no items
         itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 }[];
-        mightyRoots: number;                                // roots whose items are all 3/3
+        mightyRoots: number;                                // roots whose items are all 5/5
         lastPracticedDay: string | null;                    // newest practice, player's local day
         practicedToday: boolean }>                          // false also when never practised (farm 💧)
 // Errors: VALIDATION_FAILED

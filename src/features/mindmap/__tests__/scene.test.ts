@@ -51,17 +51,17 @@ describe('sceneGeometry', () => {
 })
 
 describe('rootStroke', () => {
-  it('follows 0.35 + 0.65 × mastery / 3 for opacity', () => {
+  it('follows 0.35 + 0.65 × mastery / 5 for opacity', () => {
     expect(rootStroke(0, COLORS).opacity).toBeCloseTo(0.35)
-    expect(rootStroke(1.5, COLORS).opacity).toBeCloseTo(0.675)
-    expect(rootStroke(3, COLORS).opacity).toBeCloseTo(1)
+    expect(rootStroke(2.5, COLORS).opacity).toBeCloseTo(0.675)
+    expect(rootStroke(5, COLORS).opacity).toBeCloseTo(1)
     expect(rootStroke(null, COLORS).opacity).toBeCloseTo(0.35)
   })
 
-  it('stays plain wood below 2/3, glows in the skin color from 2/3, and turns gold at 3/3', () => {
-    expect(rootStroke(1, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.bark, glow: 'none' })
-    expect(rootStroke(2, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.glow, glow: 'soft' })
-    expect(rootStroke(3, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.gold, glow: 'gold' })
+  it('stays plain wood below two thirds, glows in the skin color from there, and turns gold at 5/5', () => {
+    expect(rootStroke(3, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.bark, glow: 'none' })
+    expect(rootStroke(4, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.glow, glow: 'soft' })
+    expect(rootStroke(5, COLORS)).toMatchObject({ from: COLORS.bark, to: COLORS.gold, glow: 'gold' })
   })
 
   it('brightens and thickens a highlighted path', () => {

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
+import { isMastered } from '@/shared/lib/mastery'
 import { getCurrentUser } from '@/features/auth'
 import { getDecks, type Deck } from '@/features/decks'
 import { FarmWorld } from './_components/FarmWorld'
@@ -62,6 +63,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       treeType: d.treeType,
       masteryPercent: p?.masteryPercent ?? 0,
       itemCount: p?.itemCount ?? 0,
+      masteredCount: p?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0,
       mightyRoots: p?.mightyRoots ?? 0,
       // Only a signed-in player has watering status.
       needsWater: userId ? !(p?.practicedToday ?? false) : null,

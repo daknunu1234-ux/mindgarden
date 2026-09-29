@@ -8,7 +8,7 @@ None. `users` belongs to `auth`, stats come from `progress.getGardenStats`. The 
 ## Exports (`index.ts`)
 | Export | Notes |
 |--------|-------|
-| `GardenerCard({ gardener, masteryPercent, level? })` | Wooden nameplate: gold-framed avatar initial with level badge, name (email before `@`), title ribbon, XP gauge (when `level`), email, "Joined …" date; "✨ Golden garden" ribbon at `GOLDEN_BLOOM_PERCENT` |
+| `GardenerCard({ gardener, masteryPercent, level?, coins? })` | `coins`: 🪙 gold balance pill (from `getFarmHud().coins`; hidden when null). Wooden nameplate: gold-framed avatar initial with level badge, name (email before `@`), title ribbon, XP gauge (when `level`), email, "Joined …" date; "✨ Golden garden" ribbon at `GOLDEN_BLOOM_PERCENT` |
 | `GardenStatsGrid({ stats })` | "Record Hall": medallion plaques for trees, items, Mighty Roots, mastery %, current/best streak (gold when earned) + overall mastery gauge |
 | `MightyShowcase({ trees })` | "Mighty Roots Showcase": framed slots for trees with Mighty Roots (via `showcaseSlots`), locked frames as goals |
 | `PlantedTreeList({ trees })` | "Your Orchard" ledger: owned trees with an optional `illustration`, growth gauge, chips (species · growth `stage` · size-tier `size` badge, both optional view-model fields the page fills from `getTreeStage` / `getTreeSizeTier`); "💧 Water" (`/deck/[slug]/drill`, only with statements) and "Edit" (`/deck/[slug]#grow-heading`). Empty state links to `/deck/new` |

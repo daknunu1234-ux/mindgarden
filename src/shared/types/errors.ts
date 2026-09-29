@@ -9,4 +9,6 @@ export type ErrorCode =
   | 'NODE_NOT_EMPTY'
   | 'ITEM_NOT_FOUND'
   | 'DRILL_NO_ITEMS'
+  // Every drillable item is at 5/5 and review mode is off: the tree is fully cultivated.
+  | 'DRILL_ALL_MASTERED'
   | 'INTERNAL_ERROR'

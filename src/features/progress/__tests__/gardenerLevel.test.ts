@@ -1,19 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { coinsFromLevels, gardenerLevel, levelTitle, xpForLevel, xpFromLevels } from '../lib/gardenerLevel'
-
-describe('coinsFromLevels', () => {
-  it('pays 5 coins per mastery step, from the same data as XP', () => {
-    expect(coinsFromLevels([])).toBe(0)
-    expect(coinsFromLevels([3, 1, 0])).toBe(20)
-    expect(coinsFromLevels([7, -2])).toBe(15)
-  })
-})
+import { gardenerLevel, levelTitle, xpForLevel, xpFromLevels } from '../lib/gardenerLevel'
 
 describe('xpFromLevels', () => {
   it('gives 10 XP per mastery step and clamps bad values', () => {
     expect(xpFromLevels([])).toBe(0)
     expect(xpFromLevels([3, 1, 0])).toBe(40)
-    expect(xpFromLevels([7, -2])).toBe(30)
+    // Clamped to the 0–5 scale: 7 → 5, −2 → 0.
+    expect(xpFromLevels([7, -2])).toBe(50)
+    expect(xpFromLevels([5, 5])).toBe(100)
   })
 })
 

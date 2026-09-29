@@ -8,6 +8,7 @@ import { GameButton } from "@/shared/components/game";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
 import { StreakProvider } from "@/shared/stores/StreakProvider";
 import { ToastProvider } from "@/shared/stores/ToastProvider";
+import { CoinsProvider } from "@/shared/stores/CoinsProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <LoginDialogProvider>
           <ToastProvider>
+          <CoinsProvider>
           <StreakProvider initial={streak && { current: streak.current, best: streak.best, practicedToday: streak.practicedToday }}>
           {/* Wooden top bar: carved logo, plant button, streak capsule, gardener badge. */}
           <header className="relative z-40 border-b-[3px] border-amber-950/60 bg-gradient-to-b from-amber-700 to-amber-800 shadow-[inset_0_2px_0_rgba(255,255,255,0.15),0_4px_0_rgba(69,26,3,0.35)]">
@@ -73,6 +75,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <LoginDialog />
           </Suspense>
           </StreakProvider>
+          </CoinsProvider>
           </ToastProvider>
         </LoginDialogProvider>
       </body>

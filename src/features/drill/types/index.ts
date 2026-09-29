@@ -1,3 +1,4 @@
+import type { MasteryLevel } from '@/shared/lib/mastery'
 import type { DrillChoice, DrillTag } from '@/shared/lib/trapEngine'
 
 export type { DrillChoice, DrillTag }
@@ -19,9 +20,18 @@ export type DrillSession = {
   questions: DrillQuestion[]
   // Items skipped because the engine found no trap at all (INSUFFICIENT_MUTATIONS).
   skippedCount: number
+  // Drillable items the player has at 5/5: resting in normal rounds, mixed in when reviewing.
+  masteredCount: number
+  // Review mode ("Review Mastered 🌿"): mastered items are in the queue too.
+  includeMastered: boolean
 }
 
 export type DrillAnswer = { isCorrect: boolean; correctTag: DrillTag }
 
 // Saved progress for one answer (signed-in players only).
-export type DrillProgress = { masteryLevel: 0 | 1 | 2 | 3; previousMasteryLevel: 0 | 1 | 2 | 3 }
+export type DrillProgress = {
+  masteryLevel: MasteryLevel
+  previousMasteryLevel: MasteryLevel
+  // 🪙 paid by this answer (1 on an item's first 5/5, else 0).
+  coinsEarned: number
+}

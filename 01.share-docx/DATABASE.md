@@ -44,6 +44,7 @@
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
+| coins | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | 🪙 Gold balance: +1 the first time the player masters an item (5/5). Written only by `award_mastery_coin` (service role); see *Gold coins* |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
 ### Decks & Mindmap Feature
@@ -105,10 +106,22 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | id | UUID | PK, DEFAULT gen_random_uuid() | |
 | user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
 | knowledge_item_id | UUID | FK → knowledge_items, NOT NULL, ON DELETE CASCADE | |
-| mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–3 | 0 Seed → 1 Sprout → 2 Sapling → 3 Mighty Root |
+| mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–5 | 0 Seed → 1 Sprout → 2 Seedling → 3 Sapling → 4 Young Tree → 5 Mighty Root (mastered: 5 net correct answers). The scale was 0–3 before migration `20260928000400`. Old values were kept as they were, not rescaled, so a former 3/3 item is now 3/5 |
 | mistake_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Times fooled by a trap |
 | last_practiced_at | TIMESTAMPTZ | NULLABLE | |
+| coin_awarded_at | TIMESTAMPTZ | NULLABLE, not writable by players | When this item's 🪙 was paid to this player; NULL = unpaid. Makes the reward one-time |
 | *(user_id, knowledge_item_id)* | — | UNIQUE | One progress row per player per item |
+
+**Gold coins** (migrations `20260928000300_user_coins.sql` + `20260928000400_mastery_scale_5.sql`): 1 🪙 the first time a player's item reaches mastery 5/5, **once per item ever**. A wrong answer drops a 5/5 item to 4/5, and climbing back to 5/5 pays nothing (`coin_awarded_at` stays set). The backfill pays items already at 5/5 when it runs. If `000300` ran before the scale change, it paid items at the old top level 3; those stay paid, so they earn nothing at 5/5. Anti-cheat invariants:
+
+| Invariant | Enforced by |
+|-----------|-------------|
+| `users.coins` changes only through `public.award_mastery_coin(user, item)` | `users` UPDATE is granted to players on `full_name`, `avatar_url` only; the function is `SECURITY DEFINER` with EXECUTE for `service_role` only (`progress/services/coins.ts`, admin client) |
+| A paid item can't be reset and farmed again | Players have no INSERT/UPDATE privilege on `user_progress.coin_awarded_at` (column grants), and can't rewrite a row's identity: UPDATE is granted on `mastery_level`, `mistake_count`, `last_practiced_at` only |
+| No double payment under concurrency | The function claims with one `UPDATE … WHERE mastery_level = 3 AND coin_awarded_at IS NULL`: only one caller gets the row |
+| Balance ≤ number of (player, item) pairs ever mastered | The above; `coins >= 0` CHECK (nothing to spend yet) |
+
+⚠️ Players can still write their own `mastery_level` (see *Supabase Notes*), so a player could mark an item 5/5 directly and collect its one coin without drilling. The cap above still holds: one coin per item. Close this with the planned `SECURITY DEFINER` progress RPC before coins buy anything.
 
 **practice_days** — *Streak log: one row per player per local day with at least one saved answer*
 | Column | Type | Constraints | Description |
@@ -276,10 +289,14 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 1 | `20260928000000_initial_schema.sql` | Baseline: `roles` (+ seed), `users` + `handle_new_user()` trigger, `decks`, `mindmap_nodes`, `knowledge_items`, `user_progress`; FKs and cascades, checks, indexes, RLS + policies, `users` column grants, `is_admin()` |
   | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges: `correct_stmt` / `trap_rules` readable only by the service role |
   | 3 | `20260928000200_practice_days.sql` | Streak log table + RLS + backfill from `user_progress` |
+  | 4 | `20260928000300_user_coins.sql` | `users.coins`, `user_progress.coin_awarded_at`, `award_mastery_coin()` (service role only), `user_progress` column grants, backfill of already-mastered (5/5) items |
+  | 5 | `20260928000400_mastery_scale_5.sql` | `mastery_level` CHECK widened to 0–5 (no rescaling), `award_mastery_coin()` pays at 5/5. Order-independent with file 4 |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
 - ⚠️ **Existing hosted project**: its base schema was built in the dashboard before file 1 existed, and files 2 and 3 are already applied there. Don't run file 1 on it: it is re-runnable (`if not exists`, `drop policy if exists`), but it can't reconcile differences with the dashboard schema, and dashboard policies with other names would stay next to its policies (permissive policies OR together)
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000200`
+- **Deploy order for file 4 on the hosted project**: deploy the app code first, then run the migration. The new code saves answers without coins until the column exists. The old code's `user_progress` upsert would fail after the migration, because players can no longer update `user_id` / `knowledge_item_id`
+- **Deploy order for file 5 on the hosted project**: run it **before** deploying the 0–5 app. It's safe with the old app, which never writes above 3. The new app's 4/5 answers fail against the old CHECK; the server log names this migration
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000400`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing
@@ -340,9 +357,11 @@ CREATE TRIGGER on_auth_user_created
 
 | Action | Implementation |
 |--------|----------------|
-| Start drilling an item | Upsert `user_progress` with `onConflict: 'user_id,knowledge_item_id'` |
-| Correct answer | `mastery_level = LEAST(mastery_level + 1, 3)`, set `last_practiced_at = now()` |
-| Fooled by a trap | `mistake_count + 1`, `mastery_level = GREATEST(mastery_level - 1, 0)`, set `last_practiced_at = now()` |
+| Start drilling an item | Insert the `user_progress` row (user client); later answers update `mastery_level`, `mistake_count`, `last_practiced_at` only. A unique-violation race on the first answer falls back to update |
+| First mastery of an item | Answer lands on 5/5 and `coin_awarded_at` is NULL → `award_mastery_coin(user, item)` (admin client) sets it and adds 1 to `users.coins` in one call; returns `{ coins_earned, total_coins }` |
+| Correct answer | `mastery_level = LEAST(mastery_level + 1, 5)`, set `last_practiced_at = now()` |
+| Fooled by a trap | `mistake_count + 1`, `mastery_level = GREATEST(mastery_level - 1, 0)` (a mastered 5/5 item drops to 4/5 too), set `last_practiced_at = now()` |
 | Load deck progress | `getProgressByDecks`: item IDs per deck (via `decks` server API) + `user_progress` rows of the user |
-| Tree health | `Σ mastery_level / (3 × item count) × 100`, unpractised items count as 0 (computed, not stored) |
+| Tree health | `Σ mastery_level / (5 × item count) × 100`, unpractised items count as 0 (computed, not stored). 100% = every item at 5/5 |
+| Practice queue | `getDrillSession` reads the player's levels (`progress/server` `fetchMasteryLevels`): items at 5/5 rest (excluded) unless `includeMastered` (review mode, `?review=1`). Nothing left → `DRILL_ALL_MASTERED` ("fully cultivated") |
 | Daily streak | `recordPracticeDay` (admin client): upsert `practice_days (user_id, today)` with `ignoreDuplicates`, recompute current/best from all days, sync `users.streak_count` + `last_active_at`. Current = run ending today or yesterday (alive until a whole day is missed); best = longest run. Migration `20260928000200_practice_days.sql` |

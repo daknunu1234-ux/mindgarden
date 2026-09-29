@@ -14,35 +14,38 @@ const ITEMS = [
 const row = (level: number, lastPracticedAt: string | null = null): PracticeRow => ({ level, lastPracticedAt })
 
 describe('summarizeDeckProgress', () => {
-  it('computes Σ level / (3 × items) × 100', () => {
+  it('computes Σ level / (5 × items) × 100', () => {
     const rows = new Map([
-      ['a', row(3)],
-      ['b', row(1)],
+      ['a', row(5)],
+      ['b', row(2)],
     ])
-    // (3 + 1 + 0) / 9 = 44.4…% → 44
+    // (5 + 2 + 0) / 15 = 46.6…% → 47
     expect(summarizeDeckProgress(DECK, ITEMS, rows, UTC)).toMatchObject({
       deckId: DECK,
-      masteryPercent: 44,
+      masteryPercent: 47,
       itemCount: 3,
       items: [
-        { itemId: 'a', masteryLevel: 3 },
-        { itemId: 'b', masteryLevel: 1 },
+        { itemId: 'a', masteryLevel: 5 },
+        { itemId: 'b', masteryLevel: 2 },
         { itemId: 'c', masteryLevel: 0 },
       ],
     })
   })
 
-  it('is 0 for a deck without items and 100 when everything is mastered', () => {
+  it('is 0 for a deck without items and 100 only when everything is at 5/5', () => {
     expect(summarizeDeckProgress(DECK, [], new Map(), UTC).masteryPercent).toBe(0)
-    const all = new Map(['a', 'b', 'c'].map((id) => [id, row(3)]))
+    const all = new Map(['a', 'b', 'c'].map((id) => [id, row(5)]))
     expect(summarizeDeckProgress(DECK, ITEMS, all, UTC)).toMatchObject({ masteryPercent: 100, mightyRoots: 2 })
+    // The old top level (3) is 60% on the new scale.
+    const old = new Map(['a', 'b', 'c'].map((id) => [id, row(3)]))
+    expect(summarizeDeckProgress(DECK, ITEMS, old, UTC)).toMatchObject({ masteryPercent: 60, mightyRoots: 0 })
   })
 
-  it('counts a Mighty Root only when every item of the root is at 3/3', () => {
+  it('counts a Mighty Root only when every item of the root is at 5/5', () => {
     const rows = new Map([
-      ['a', row(3)],
-      ['b', row(2)],
-      ['c', row(3)],
+      ['a', row(5)],
+      ['b', row(4)],
+      ['c', row(5)],
     ])
     expect(summarizeDeckProgress(DECK, ITEMS, rows, UTC).mightyRoots).toBe(1)
   })

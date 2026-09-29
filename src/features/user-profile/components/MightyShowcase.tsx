@@ -16,7 +16,7 @@ function MightyShowcase({ trees }: MightyShowcaseProps) {
       <p className="mb-5 text-center text-sm font-medium text-amber-100/85">
         {earned > 0
           ? `${plural(earned, 'tree has', 'trees have')} grown Mighty Roots. Master every statement of a root to add more.`
-          : 'Master every statement of a root (3/3) to hang your first trophy here.'}
+          : 'Master every statement of a root (5/5) to hang your first trophy here.'}
       </p>
       <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         {slots.map((slot) =>

@@ -14,8 +14,11 @@ export type DrillResult = GradedAnswer & {
   mistakeCount: number
   // Current daily streak after this answer; null if it couldn't be saved (the answer still counts).
   streakCount: number | null
+  // 🪙 paid by this answer: 1 the first time the item reaches 5/5, otherwise 0.
+  coinsEarned: number
+  // Balance after this answer; null if it couldn't be read (the answer still counts).
+  totalCoins: number | null
 }
 
-// getFarmHud payload: gardener level + daily streak for the farm HUD.
-// coins: 🪙 5 per mastery step (display only, nothing to spend yet).
+// getFarmHud payload: gardener level + daily streak + 🪙 balance (users.coins) for the farm HUD.
 export type FarmHud = { level: GardenerLevel; streak: Streaks; coins: number }

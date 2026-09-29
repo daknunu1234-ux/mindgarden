@@ -3,13 +3,12 @@
 import Link from 'next/link'
 import { GameButton, GameProgressBar } from '@/shared/components/game'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
+import { isMastered, MASTERY_NAMES, masteryFraction, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
 import { cn } from '@/shared/utils/cn'
 import { statementTitle } from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery, isMightyRoot } from '../hooks/nodeMastery'
 import type { ItemLevels, RootNodeView } from '../types'
 import { MasteryRing } from './MasteryRing'
-
-const LEVEL_NAMES = ['Seed', 'Sprout', 'Sapling', 'Mighty Root'] as const
 
 type NodeInspectorProps = {
   node: RootNodeView | null
@@ -40,7 +39,12 @@ function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onMana
 function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<NodeInspectorProps, 'node' | 'onOpenChange'> & { node: RootNodeView }) {
   const mastery = displayMastery(node, levels)
   const mighty = isMightyRoot(mastery)
-  const branchCount = branchItemIds(node).length
+  const branchIds = branchItemIds(node)
+  const branchCount = branchIds.length
+  // Normal rounds skip 5/5 items; once the whole branch is mastered, review is the only way in.
+  const masteredCount = branchIds.filter((id) => isMastered(levels[id])).length
+  const allMastered = branchCount > 0 && masteredCount === branchCount
+  const drillHref = `/deck/${deckSlug}/drill?nodeId=${node.id}`
 
   return (
     <>
@@ -56,16 +60,25 @@ function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<Nod
             <SheetDescription className="text-amber-100/80">
               {node.items.length} {node.items.length === 1 ? 'statement' : 'statements'}
               {node.children.length > 0 && ` · ${node.children.length} sub-${node.children.length === 1 ? 'branch' : 'branches'}`}
-              {mastery !== null && ` · ${Number.isInteger(mastery) ? mastery : mastery.toFixed(1)}/3`}
+              {mastery !== null && ` · ${masteryFraction(mastery)}`}
               {mighty && ' · 💎 Mighty Root'}
             </SheetDescription>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {branchCount > 0 ? (
-            <GameButton asChild tone="sky">
-              <Link href={`/deck/${deckSlug}/drill?nodeId=${node.id}`}>💧 Practice Branch</Link>
-            </GameButton>
+            <>
+              {!allMastered && (
+                <GameButton asChild tone="sky">
+                  <Link href={drillHref}>💧 Practice Branch</Link>
+                </GameButton>
+              )}
+              {masteredCount > 0 && (
+                <GameButton asChild tone={allMastered ? 'sky' : 'cream'} title="Include Mastered Items (Review Mode)">
+                  <Link href={`${drillHref}&review=1`}>{allMastered ? '🌿 Review Mastered' : '🌿 Review'}</Link>
+                </GameButton>
+              )}
+            </>
           ) : (
             <GameButton tone="sky" disabled>
               Nothing to practice yet
@@ -88,22 +101,31 @@ function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<Nod
         ) : (
           <ul className="space-y-2.5">
             {node.items.map((item, i) => {
-              const lvl = Math.min(3, Math.max(0, Math.round(levels[item.id] ?? 0)))
+              const lvl = toMasteryLevel(Math.round(levels[item.id] ?? 0))
               return (
                 <li
                   key={item.id}
                   className={cn(
                     'rounded-2xl border-2 px-3 py-2.5',
-                    lvl === 3
+                    isMastered(lvl)
                       ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_3px_0_#ca8a04,0_0_14px_rgba(234,179,8,0.35)]'
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
                   )}
                 >
                   <p className="text-sm font-semibold text-stone-800">{statementTitle(item.prompt, node.title, i + 1)}</p>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <GameProgressBar value={lvl} max={3} segments={3} size="sm" tone={lvl === 3 ? 'gold' : 'leaf'} label={`Mastery ${lvl} of 3`} className="w-20" />
+                    <GameProgressBar
+                      value={lvl}
+                      max={MAX_MASTERY}
+                      segments={MAX_MASTERY}
+                      size="sm"
+                      tone={isMastered(lvl) ? 'gold' : 'leaf'}
+                      label={`Mastery ${lvl} of ${MAX_MASTERY}`}
+                      className="w-24"
+                    />
                     <span className="font-game text-xs font-bold text-amber-900/70 tabular-nums">
-                      {lvl}/3 · {LEVEL_NAMES[lvl]}
+                      {lvl}/{MAX_MASTERY} · {MASTERY_NAMES[lvl]}
+                      {isMastered(lvl) && ' · resting'}
                     </span>
                   </div>
                 </li>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { submitDrillResult } from '@/features/progress'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
+import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useStreak } from '@/shared/stores/StreakProvider'
 import type { ErrorCode } from '@/shared/types/errors'
 import { checkDrillAnswer } from '../actions/checkDrillAnswer'
@@ -21,6 +22,8 @@ export type RoundStats = {
   // Items whose saved mastery went up this round, and items that reached Mighty Root.
   improved: number
   mastered: number
+  // 🪙 gold paid this round (first mastery of an item, once per item ever).
+  coinsEarned: number
 }
 
 // Walks through a session one question at a time. Correct answers come only from the
@@ -28,9 +31,10 @@ export type RoundStats = {
 export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean) {
   const { open: openLogin } = useLoginDialog()
   const { streak, setStreak } = useStreak()
+  const { setCoins } = useCoins()
   const [index, setIndex] = useState(0)
   const [state, setState] = useState<DrillState>({ status: 'answering' })
-  const [stats, setStats] = useState<RoundStats>({ correct: 0, improved: 0, mastered: 0 })
+  const [stats, setStats] = useState<RoundStats>({ correct: 0, improved: 0, mastered: 0, coinsEarned: 0 })
   const [saving, setSaving] = useState(isSignedIn)
   const [isPending, startTransition] = useTransition()
 
@@ -50,7 +54,13 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
       const saved = saving ? await submitDrillResult({ ...input, timeZone }) : null
       if (saved?.success) {
         answer = { isCorrect: saved.data.isCorrect, correctTag: saved.data.correctTag }
-        progress = { masteryLevel: saved.data.masteryLevel, previousMasteryLevel: saved.data.previousMasteryLevel }
+        progress = {
+          masteryLevel: saved.data.masteryLevel,
+          previousMasteryLevel: saved.data.previousMasteryLevel,
+          coinsEarned: saved.data.coinsEarned,
+        }
+        // Update the farm HUD's 🪙 balance in place (same reason as the streak below).
+        if (saved.data.totalCoins !== null) setCoins(saved.data.totalCoins)
         if (saved.data.streakCount !== null) {
           // Update the header badge in place; a page refresh would restart the round.
           const current = saved.data.streakCount
@@ -77,6 +87,7 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
         correct: s.correct + (answer.isCorrect ? 1 : 0),
         improved: s.improved + (leveledUp(progress) ? 1 : 0),
         mastered: s.mastered + (becameMighty(progress) ? 1 : 0),
+        coinsEarned: s.coinsEarned + (progress?.coinsEarned ?? 0),
       }))
       setState({ status: 'feedback', picked: tag, answer, progress })
     })

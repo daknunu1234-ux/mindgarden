@@ -12,7 +12,7 @@ export type DeckProgress = {
   masteryPercent: number
   itemCount: number
   items: { itemId: string; masteryLevel: MasteryLevel }[]
-  // Roots whose items are all at 3/3.
+  // Roots whose items are all at 5/5.
   mightyRoots: number
   // Newest practice of any item in the deck, as the player's local day ('YYYY-MM-DD').
   lastPracticedDay: string | null

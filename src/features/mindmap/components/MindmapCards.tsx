@@ -1,13 +1,15 @@
 import Link from 'next/link'
+import { isMastered, MASTERY_NAMES, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
 import { cn } from '@/shared/utils/cn'
 import { isMightyRoot } from '../hooks/nodeMastery'
 import type { MindmapCard } from '../hooks/mindmapLayout'
 import { MasteryRing } from './MasteryRing'
 
 // Mindmap node cards. Category / branch pills toggle collapse; statement cards show mastery and a
-// shortcut to drill their branch. Anything at 3/3 glows gold (Mighty Root).
+// shortcut to drill their branch. Anything at 5/5 glows gold (Mighty Root).
 
-const LEVEL_NAMES = ['Seed', 'Sprout', 'Sapling', 'Mighty Root'] as const
+// One pip per mastery step (1…5).
+const MASTERY_STEPS = Array.from({ length: MAX_MASTERY }, (_, i) => i + 1)
 const GOLD_AURA = 'border-yellow-400 bg-yellow-50 shadow-[0_0_0_3px_rgba(250,204,21,0.35),0_0_22px_rgba(234,179,8,0.55)]'
 
 const fmt = (m: number) => (Number.isInteger(m) ? String(m) : m.toFixed(1))
@@ -45,7 +47,7 @@ export function NodePill({ card, mastery, collapsed, onToggle, statementCount, o
         onClick={onToggle}
         disabled={!card.collapsible}
         aria-expanded={card.collapsible ? !collapsed : undefined}
-        aria-label={`${card.title}${mastery === null ? '' : `, mastery ${fmt(mastery)} of 3`}${mighty ? ', Mighty Root' : ''}${
+        aria-label={`${card.title}${mastery === null ? '' : `, mastery ${fmt(mastery)} of ${MAX_MASTERY}`}${mighty ? ', Mighty Root' : ''}${
           card.collapsible ? (collapsed ? `, collapsed (${card.hiddenCount} hidden)` : ', expanded') : ''
         }`}
         className="flex min-w-0 flex-1 items-center gap-2 rounded-full py-0.5 text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default"
@@ -95,11 +97,11 @@ type StatementProps = { card: MindmapCard; level: number; drillHref: string }
 
 // Statement (knowledge item) card. The statement text is the drill answer, so it is never shown here.
 export function StatementCard({ card, level, drillHref }: StatementProps) {
-  const lvl = Math.min(3, Math.max(0, Math.round(level)))
-  const mighty = lvl === 3
+  const lvl = toMasteryLevel(Math.round(level))
+  const mighty = isMastered(lvl)
   return (
     <article
-      aria-label={`${card.title}: ${LEVEL_NAMES[lvl]}, mastery ${lvl} of 3`}
+      aria-label={`${card.title}: ${MASTERY_NAMES[lvl]}, mastery ${lvl} of ${MAX_MASTERY}`}
       className={cn(
         'flex size-full flex-col justify-between rounded-xl border-2 px-3 py-2 shadow-sm transition-[border-color,box-shadow,background-color] duration-300',
         mighty ? GOLD_AURA : 'border-amber-800/15 bg-white/95',
@@ -113,16 +115,16 @@ export function StatementCard({ card, level, drillHref }: StatementProps) {
       </p>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="flex gap-0.5" aria-hidden>
-            {[1, 2, 3].map((step) => (
+          <span className="flex gap-[3px]" aria-hidden>
+            {MASTERY_STEPS.map((step) => (
               <span
                 key={step}
-                className={cn('size-2 rounded-full', lvl >= step ? (mighty ? 'bg-yellow-500' : 'bg-emerald-500') : 'bg-stone-300')}
+                className={cn('size-1.5 rounded-full', lvl >= step ? (mighty ? 'bg-yellow-500' : 'bg-emerald-500') : 'bg-stone-300')}
               />
             ))}
           </span>
           <span className={cn('tabular-nums', mighty && 'font-semibold text-yellow-700')}>
-            {lvl}/3 · {LEVEL_NAMES[lvl]}
+            {lvl}/{MAX_MASTERY} · {MASTERY_NAMES[lvl]}
             {mighty && ' ✨'}
           </span>
         </span>

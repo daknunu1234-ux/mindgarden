@@ -36,13 +36,6 @@ export function xpFromLevels(levels: Iterable<number>): number {
   return steps * XP_PER_MASTERY_STEP
 }
 
-// 🪙 Harvest coins (HUD only, nothing to spend yet): 5 per mastery step, from the same data as XP.
-export const COINS_PER_MASTERY_STEP = 5
-
-export function coinsFromLevels(levels: Iterable<number>): number {
-  return (xpFromLevels(levels) / XP_PER_MASTERY_STEP) * COINS_PER_MASTERY_STEP
-}
-
 export function gardenerLevel(xp: number): GardenerLevel {
   const total = Math.max(0, Math.floor(xp))
   let level = 1

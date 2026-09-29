@@ -1,12 +1,22 @@
 import { cn } from '@/shared/utils/cn'
-import { burstParticles } from './particles'
+import { burstParticles, GOLD_GLYPHS } from './particles'
 
-// A one-shot burst of leaves/sparkles from the centre of its (relative) parent. Re-mount it
-// (change `key`) to replay. Hidden entirely for reduced-motion users (see globals.css).
-function ParticleBurst({ count = 18, radius = 110, className }: { count?: number; radius?: number; className?: string }) {
+// A one-shot burst of leaves/sparkles (or gold coins) from the centre of its (relative) parent.
+// Re-mount it (change `key`) to replay. Hidden entirely for reduced-motion users (see globals.css).
+function ParticleBurst({
+  count = 18,
+  radius = 110,
+  variant = 'garden',
+  className,
+}: {
+  count?: number
+  radius?: number
+  variant?: 'garden' | 'gold'
+  className?: string
+}) {
   return (
     <span aria-hidden className={cn('pointer-events-none absolute inset-0 z-20 flex items-center justify-center', className)}>
-      {burstParticles(count, radius).map((p, i) => (
+      {burstParticles(count, radius, variant === 'gold' ? GOLD_GLYPHS : undefined).map((p, i) => (
         <span
           key={i}
           className="mg-burst absolute leading-none"

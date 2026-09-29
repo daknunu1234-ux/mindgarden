@@ -1,11 +1,13 @@
+import { MAX_MASTERY } from '@/shared/lib/mastery'
+
 const R = 12
 const CIRCUMFERENCE = 2 * Math.PI * R
 
 type MasteryRingProps = { value: number | null; mighty: boolean }
 
-// Circular 0–3 mastery meter with the level in the middle ("–" when there is nothing to master).
+// Circular 0–5 mastery meter with the level in the middle ("–" when there is nothing to master).
 function MasteryRing({ value, mighty }: MasteryRingProps) {
-  const fraction = value === null ? 0 : Math.min(3, Math.max(0, value)) / 3
+  const fraction = value === null ? 0 : Math.min(MAX_MASTERY, Math.max(0, value)) / MAX_MASTERY
   const label = value === null ? '–' : Number.isInteger(value) ? String(value) : value.toFixed(1)
 
   return (

@@ -31,28 +31,31 @@ describe('summarizeGarden', () => {
     expect(s.trees.every((t) => t.masteryPercent === 0 && t.mightyRoots === 0)).toBe(true)
   })
 
-  it('counts a Mighty Root only when every item of that root is at 3/3', () => {
+  it('counts a Mighty Root only when every item of that root is at 5/5', () => {
     const levels = new Map([
-      ['i1', 3],
-      ['i2', 3], // n1: 3 + 3 → Mighty Root
-      ['i3', 2], // n2: 2 → not yet
-      ['i4', 3], // n3: 3 → Mighty Root
+      ['i1', 5],
+      ['i2', 5], // n1: 5 + 5 → Mighty Root
+      ['i3', 4], // n2: 4 → not yet
+      ['i4', 5], // n3: 5 → Mighty Root
     ])
     const s = summarizeGarden(DECKS, levels)
     expect(s.mightyRootCount).toBe(2)
     expect(s.trees.map((t) => t.mightyRoots)).toEqual([1, 1, 0])
+    expect(s.trees.map((t) => t.masteredCount)).toEqual([2, 1, 0])
   })
 
   it('weights overall mastery by item, not by tree', () => {
-    // bio: 3 + 3 + 0 = 6 of 9; chem: 0 of 3 → overall 6 / 12 = 50%, per tree 67% and 0%.
-    const s = summarizeGarden(DECKS, new Map([['i1', 3], ['i2', 3]]))
+    // bio: 5 + 5 + 0 = 10 of 15; chem: 0 of 5 → overall 10 / 20 = 50%, per tree 67% and 0%.
+    const s = summarizeGarden(DECKS, new Map([['i1', 5], ['i2', 5]]))
     expect(s.masteryPercent).toBe(50)
     expect(s.trees.map((t) => t.masteryPercent)).toEqual([67, 0, 0])
   })
 
-  it('reaches 100% when everything is mastered', () => {
-    const levels = new Map(['i1', 'i2', 'i3', 'i4'].map((id) => [id, 3]))
+  it('reaches 100% only when everything is at 5/5', () => {
+    const levels = new Map(['i1', 'i2', 'i3', 'i4'].map((id) => [id, 5]))
     expect(summarizeGarden(DECKS, levels)).toMatchObject({ masteryPercent: 100, mightyRootCount: 3 })
+    const old = new Map(['i1', 'i2', 'i3', 'i4'].map((id) => [id, 3]))
+    expect(summarizeGarden(DECKS, old)).toMatchObject({ masteryPercent: 60, mightyRootCount: 0 })
   })
 
   it('handles a gardener with no trees', () => {

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
 import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, ResourcePill } from '@/shared/components/game'
+import { freshestCoins, useCoins } from '@/shared/stores/CoinsProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import type { FarmHudView } from '../types'
@@ -23,9 +24,11 @@ function LevelBadge({ level }: { level: FarmHudView['level'] }) {
   return <LevelCrest level={level.level} title={level.title} xpIntoLevel={level.xpIntoLevel} xpForNextLevel={level.xpForNextLevel} />
 }
 
-// Top-right: streak flame, coins, gems.
+// Top-right: streak flame, gold coins, gems.
 function Counters({ hud }: { hud: FarmHudView }) {
   const streak = hud.streak
+  // Balance from the latest drill answer this visit, if newer than the server's figure.
+  const { coins: liveCoins } = useCoins()
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
       <ResourcePill
@@ -41,8 +44,14 @@ function Counters({ hud }: { hud: FarmHudView }) {
             : 'Sign in to keep a streak'
         }
       />
-      <ResourcePill icon="coin" tone="gold" value={hud.coins ?? 0} label="Coins" hint="5 coins for every mastery step you earn" />
-      <ResourcePill icon="gem" tone="gem" value={hud.gems} label="Gems" hint="One gem per Mighty Root (all statements at 3/3) on this island" />
+      <ResourcePill
+        icon="coin"
+        tone="gold"
+        value={freshestCoins(hud.coins, liveCoins) ?? 0}
+        label="Gold coins"
+        hint="1 gold coin the first time you master a statement (5/5)"
+      />
+      <ResourcePill icon="gem" tone="gem" value={hud.gems} label="Gems" hint="One gem per Mighty Root (all statements at 5/5) on this island" />
     </div>
   )
 }

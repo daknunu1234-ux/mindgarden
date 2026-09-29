@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { GameButton, GamePanel, GameProgressBar, GameSlab, KeyChip, ParticleBurst } from '@/shared/components/game'
+import { GameButton, GameIcon, GamePanel, GameProgressBar, GameSlab, KeyChip, ParticleBurst } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import { useDrillSession, type DrillState } from '../hooks/useDrillSession'
@@ -102,6 +102,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
               💎 {stats.mastered} reached Mighty Root!
             </p>
           )}
+          {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} />}
           {!saving && (
             <p className="mt-4 text-center text-sm font-medium">
               <button type="button" onClick={openLogin} className="font-game font-bold text-emerald-800 underline underline-offset-4">
@@ -158,7 +159,25 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   )
 }
 
-type SummaryStatProps = { icon: string; value: number; label: string; tone: 'gold' | 'cream' | 'leaf'; className?: string }
+// The round's gold, front and centre on the trophy panel: a bouncy coin plaque with a gold shower.
+function GoldReward({ coins }: { coins: number }) {
+  return (
+    <div
+      role="status"
+      className="mg-spring relative mx-auto mt-5 flex w-fit items-center gap-3 rounded-[22px] border-[3px] border-[#b45309] bg-gradient-to-b from-[#fff7ae] via-[#fcd34d] to-[#f59e0b] py-2.5 pr-5 pl-2.5 shadow-[inset_0_2px_0_rgba(255,255,255,0.7),0_6px_0_#8a4a0c,0_0_32px_rgba(250,204,21,0.7)]"
+    >
+      <ParticleBurst variant="gold" count={22} radius={150} />
+      <span className="mg-bob flex size-12 items-center justify-center rounded-full border-[3px] border-[#8a4a0c] bg-gradient-to-b from-[#fffbe0] to-[#ffe28a] shadow-[inset_0_2px_0_#fff,0_3px_0_#8a4a0c]">
+        <GameIcon name="coin" className="size-8" />
+      </span>
+      <span className="font-game text-2xl leading-none font-extrabold text-[#5a2a02] [text-shadow:0_2px_0_rgba(255,255,255,0.6)]">
+        +{coins} 🪙 Gold Earned!
+      </span>
+    </div>
+  )
+}
+
+type SummaryStatProps ={ icon: string; value: number; label: string; tone: 'gold' | 'cream' | 'leaf'; className?: string }
 
 function SummaryStat({ icon, value, label, tone, className }: SummaryStatProps) {
   return (

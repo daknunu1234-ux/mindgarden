@@ -22,6 +22,8 @@ export type PlantedTreeView = {
   treeType: string
   isPublic: boolean
   itemCount: number
+  // Items at 5/5 (shown as "n/total at 5/5"); optional for older callers.
+  masteredCount?: number
   masteryPercent: number
   mightyRoots: number
   // Optional picture composed by the page (e.g. garden's TreeStageSvg).

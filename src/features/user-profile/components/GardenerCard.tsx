@@ -1,13 +1,20 @@
 import { CalendarDays, Mail } from 'lucide-react'
-import { GamePanel, GameProgressBar, Ribbon } from '@/shared/components/game'
+import { GameIcon, GamePanel, GameProgressBar, Ribbon } from '@/shared/components/game'
 import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { formatJoined, gardenerName } from '../lib/format'
 import type { GardenerLevelView, GardenerView } from '../types'
 
-type GardenerCardProps = { gardener: GardenerView; masteryPercent: number; level?: GardenerLevelView | null }
+type GardenerCardProps = {
+  gardener: GardenerView
+  masteryPercent: number
+  level?: GardenerLevelView | null
+  // 🪙 stored gold balance (users.coins); hidden when unknown.
+  coins?: number | null
+}
 
-// The hall's nameplate: a carved wooden board with a gold-framed portrait and the level gauge.
-function GardenerCard({ gardener, masteryPercent, level }: GardenerCardProps) {
+// The hall's nameplate: a carved wooden board with a gold-framed portrait, the level gauge and the
+// gardener's gold.
+function GardenerCard({ gardener, masteryPercent, level, coins }: GardenerCardProps) {
   const name = gardenerName(gardener.email)
   return (
     <GamePanel tone="wood" className="text-amber-50">
@@ -32,6 +39,16 @@ function GardenerCard({ gardener, masteryPercent, level }: GardenerCardProps) {
           <div className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2 sm:justify-start">
             <Ribbon tone="leaf">🧑‍🌾 {level ? level.title : 'Gardener'}</Ribbon>
             {masteryPercent >= GOLDEN_BLOOM_PERCENT && <Ribbon tone="gold">✨ Golden garden</Ribbon>}
+            {coins !== undefined && coins !== null && (
+              <span
+                title="1 gold coin the first time you master a statement (5/5)"
+                className="inline-flex items-center gap-1.5 rounded-full border-[3px] border-[#8a4a0c] bg-gradient-to-b from-[#fff7ae] via-[#fcd34d] to-[#f59e0b] py-0.5 pr-3 pl-1 font-game text-base font-extrabold text-[#5a2a02] shadow-[inset_0_2px_0_rgba(255,255,255,0.7),0_3px_0_#5a2a0c]"
+              >
+                <GameIcon name="coin" className="size-6" />
+                <span className="tabular-nums">{coins.toLocaleString('en-US')}</span>
+                <span className="text-sm">gold</span>
+              </span>
+            )}
           </div>
           {level && (
             <GameProgressBar

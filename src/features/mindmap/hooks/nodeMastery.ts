@@ -1,9 +1,10 @@
+import { MAX_MASTERY } from '@/shared/lib/mastery'
 import type { ItemLevels, RootNodeView } from '../types'
 
 const average = (ids: string[], levels: ItemLevels) =>
   ids.reduce((sum, id) => sum + (levels[id] ?? 0), 0) / ids.length
 
-// Average mastery (0–3) of a node's own items; null when the node has no items.
+// Average mastery (0–5) of a node's own items; null when the node has no items.
 export function nodeMastery(node: Pick<RootNodeView, 'items'>, levels: ItemLevels): number | null {
   if (node.items.length === 0) return null
   return average(
@@ -27,10 +28,10 @@ export function displayMastery(node: RootNodeView, levels: ItemLevels): number |
 }
 
 // A root is a "Mighty Root" when everything it displays is fully mastered.
-export const isMightyRoot = (mastery: number | null) => mastery !== null && mastery >= 3
+export const isMightyRoot = (mastery: number | null) => mastery !== null && mastery >= MAX_MASTERY
 
-// frontend/ARCHITECTURE.md §5: 0.35 + 0.65 × (mastery / 3). Nodes without items stay at the floor.
+// frontend/ARCHITECTURE.md §5: 0.35 + 0.65 × (mastery / 5). Nodes without items stay at the floor.
 export function rootOpacity(mastery: number | null): number {
-  const m = Math.min(3, Math.max(0, mastery ?? 0))
-  return 0.35 + 0.65 * (m / 3)
+  const m = Math.min(MAX_MASTERY, Math.max(0, mastery ?? 0))
+  return 0.35 + 0.65 * (m / MAX_MASTERY)
 }

@@ -15,10 +15,11 @@ describe('leveledUp', () => {
 })
 
 describe('becameMighty', () => {
-  it('is true only on the step into 3/3', () => {
-    expect(becameMighty({ masteryLevel: 3, previousMasteryLevel: 2 })).toBe(true)
-    expect(becameMighty({ masteryLevel: 3, previousMasteryLevel: 3 })).toBe(false)
-    expect(becameMighty({ masteryLevel: 2, previousMasteryLevel: 1 })).toBe(false)
+  it('is true only on the step into 5/5', () => {
+    expect(becameMighty({ masteryLevel: 5, previousMasteryLevel: 4 })).toBe(true)
+    expect(becameMighty({ masteryLevel: 5, previousMasteryLevel: 5 })).toBe(false)
+    expect(becameMighty({ masteryLevel: 3, previousMasteryLevel: 2 })).toBe(false)
+    expect(becameMighty({ masteryLevel: 4, previousMasteryLevel: 5 })).toBe(false)
     expect(becameMighty(null)).toBe(false)
   })
 })

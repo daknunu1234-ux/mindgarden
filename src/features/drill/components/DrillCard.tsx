@@ -1,6 +1,6 @@
 'use client'
 
-import { MASTERY_NAMES } from '@/features/progress'
+import { isMastered, MASTERY_NAMES, MAX_MASTERY } from '@/shared/lib/mastery'
 import { GamePanel, GameProgressBar, GameSlab, ParticleBurst } from '@/shared/components/game'
 import type { DrillState } from '../hooks/useDrillSession'
 import { becameMighty, leveledUp } from '../lib/masteryChange'
@@ -67,13 +67,18 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
             </div>
           )}
           {state.progress && <MasteryMeter progress={state.progress} />}
+          {state.progress && state.progress.coinsEarned > 0 && (
+            <p className="mg-spring mt-3 inline-flex items-center gap-1.5 rounded-full border-[2.5px] border-[#b45309] bg-gradient-to-b from-[#fff7ae] to-[#fcd34d] px-3 py-1 font-game text-sm font-extrabold text-[#5a2a02] shadow-[0_3px_0_#8a4a0c]">
+              +{state.progress.coinsEarned} 🪙 First mastery bonus
+            </p>
+          )}
         </GameSlab>
       )}
     </div>
   )
 }
 
-// Root mastery as a 3-notch capsule: gold as it climbs to Mighty Root.
+// Root mastery as a 5-notch capsule (one notch per correct answer): gold at Mighty Root.
 function MasteryMeter({ progress }: { progress: DrillProgress }) {
   const { masteryLevel } = progress
   const up = leveledUp(progress)
@@ -81,14 +86,15 @@ function MasteryMeter({ progress }: { progress: DrillProgress }) {
     <div className="mt-4 flex items-center gap-3">
       <GameProgressBar
         value={masteryLevel}
-        max={3}
-        segments={3}
-        tone={masteryLevel === 3 ? 'gold' : 'leaf'}
+        max={MAX_MASTERY}
+        segments={MAX_MASTERY}
+        tone={isMastered(masteryLevel) ? 'gold' : 'leaf'}
         label="Root mastery"
         className="flex-1"
       />
       <span className={up ? 'mg-spring font-game text-sm font-bold text-amber-900' : 'font-game text-sm font-bold text-amber-900/80'}>
-        {MASTERY_NAMES[masteryLevel]} · {masteryLevel}/3{up && ' ⬆'}
+        {MASTERY_NAMES[masteryLevel]} · {masteryLevel}/{MAX_MASTERY}
+        {up && ' ⬆'}
       </span>
     </div>
   )

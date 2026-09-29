@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { PencilLine } from 'lucide-react'
 import { GameButton, GamePanel, GameProgressBar, GameSlab } from '@/shared/components/game'
+import { MAX_MASTERY } from '@/shared/lib/mastery'
 import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { plural } from '../lib/format'
@@ -64,12 +65,20 @@ function PlantedTreeList({ trees }: PlantedTreeListProps) {
                     <span className="text-xs font-semibold text-amber-900/70 tabular-nums">
                       {tree.masteryPercent}% · {plural(tree.itemCount, 'statement', 'statements')}
                     </span>
+                    {tree.masteredCount !== undefined && tree.itemCount > 0 && (
+                      <Chip tone={tree.masteredCount === tree.itemCount ? 'gold' : 'leaf'} title={`Statements at ${MAX_MASTERY}/${MAX_MASTERY}`}>
+                        🌟 {tree.masteredCount}/{tree.itemCount} at {MAX_MASTERY}/{MAX_MASTERY}
+                      </Chip>
+                    )}
                   </div>
                 </div>
                 <div className="flex w-full shrink-0 gap-2 sm:w-auto">
                   {tree.itemCount > 0 && (
                     <GameButton asChild tone="sky" size="sm" className="flex-1 sm:flex-none">
-                      <Link href={`/deck/${tree.slug}/drill`}>💧 Water</Link>
+                      {/* Fully mastered trees have nothing to water: go straight to review mode. */}
+                      <Link href={`/deck/${tree.slug}/drill${tree.masteredCount === tree.itemCount ? '?review=1' : ''}`}>
+                        {tree.masteredCount === tree.itemCount ? '🌿 Review' : '💧 Water'}
+                      </Link>
                     </GameButton>
                   )}
                   <GameButton asChild tone="cream" size="sm" className="flex-1 sm:flex-none">

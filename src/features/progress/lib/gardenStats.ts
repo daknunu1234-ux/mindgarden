@@ -12,6 +12,8 @@ export type GardenTree = {
   treeType: string
   isPublic: boolean
   itemCount: number
+  // Items at 5/5 (resting from normal rounds).
+  masteredCount: number
   masteryPercent: number
   mightyRoots: number
 }
@@ -19,9 +21,9 @@ export type GardenTree = {
 export type GardenStats = {
   treeCount: number
   itemCount: number
-  // Roots (mindmap nodes) with at least one item whose average mastery is 3/3.
+  // Roots (mindmap nodes) with at least one item whose average mastery is 5/5.
   mightyRootCount: number
-  // Σ mastery_level / (3 × item count) × 100 over every owned item, rounded; 0 without items.
+  // Σ mastery_level / (5 × item count) × 100 over every owned item, rounded; 0 without items.
   masteryPercent: number
   trees: GardenTree[]
 }
@@ -46,8 +48,9 @@ export function summarizeGarden(decks: GardenDeckInput[], levels: ReadonlyMap<st
       deckTotal += level
       byNode.set(nodeId, [...(byNode.get(nodeId) ?? []), level])
     }
-    // Average 3/3 means every item in the root is at level 3.
+    // Average 5/5 means every item in the root is at level 5.
     const mightyRoots = [...byNode.values()].filter((ls) => ls.every((l) => l === MAX_MASTERY)).length
+    const masteredCount = [...byNode.values()].flat().filter((l) => l === MAX_MASTERY).length
 
     itemCount += items.length
     levelTotal += deckTotal
@@ -60,6 +63,7 @@ export function summarizeGarden(decks: GardenDeckInput[], levels: ReadonlyMap<st
       treeType: deck.treeType,
       isPublic: deck.isPublic,
       itemCount: items.length,
+      masteredCount,
       masteryPercent: percent(deckTotal, items.length),
       mightyRoots,
     }

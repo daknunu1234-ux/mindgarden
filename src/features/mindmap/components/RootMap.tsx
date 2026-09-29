@@ -35,7 +35,7 @@ type RootMapProps = {
 
 // "Inspect Roots": the deck's knowledge as a mindmap growing out of the tree. Crown under the
 // trunk → category pills in a row → statements and sub-branches stacked in columns, joined by
-// Bezier roots. Pills collapse their branch; everything at 3/3 glows gold. Layout is pure
+// Bezier roots. Pills collapse their branch; everything at 5/5 glows gold. Layout is pure
 // (hooks/mindmapLayout.ts); the camera (drag, pinch, Ctrl/⌘ + wheel, fit) is shared with the farm.
 function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onManage, onAddRoot }: RootMapProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())

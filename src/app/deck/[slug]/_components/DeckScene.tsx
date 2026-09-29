@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
+import { isMastered } from '@/shared/lib/mastery'
 import { getTreeSizeTier } from '@/shared/lib/treeSkins'
+import { drillHref } from '@/features/drill'
 import { countDeckTree, DeckDangerZone, DeckEditor, type DeckDetail, type DeckEditorData } from '@/features/decks'
 import { GrowthBar, TREE_BASE_RATIO, TreeStageSvg, useTreeStage } from '@/features/garden'
 import type { ItemLevels } from '@/features/mindmap'
@@ -28,6 +30,7 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
   // so the root conduit still attaches exactly at the trunk.
   const treeBox = Math.round(TREE_SIZE * size.scale)
   const levels: ItemLevels = Object.fromEntries(progress?.items.map((i) => [i.itemId, i.masteryLevel]) ?? [])
+  const masteredCount = progress?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0
 
   return (
     <main className="mg-meadow-bg w-full flex-1">
@@ -64,9 +67,24 @@ function DeckScene({ detail, progress, editor }: DeckSceneProps) {
                 <Stat icon="📜" label="Statements" value={itemCount} />
               </dl>
               {itemCount > 0 && (
-                <GameButton asChild tone="sky" size="lg" className="flex-1">
-                  <Link href={`/deck/${deck.slug}/drill`}>💧 Water Tree</Link>
-                </GameButton>
+                <div className="flex flex-1 flex-col gap-2">
+                  {masteredCount < itemCount && (
+                    <GameButton asChild tone="sky" size="lg">
+                      <Link href={drillHref(deck.slug)}>💧 Water Tree</Link>
+                    </GameButton>
+                  )}
+                  {/* Review Mode: 5/5 items rest in normal rounds; this mixes them back in. */}
+                  {masteredCount > 0 && (
+                    <GameButton
+                      asChild
+                      tone={masteredCount >= itemCount ? 'sky' : 'cream'}
+                      size={masteredCount >= itemCount ? 'lg' : 'sm'}
+                      title={`Include Mastered Items (Review Mode): ${masteredCount} at 5/5`}
+                    >
+                      <Link href={drillHref(deck.slug, { review: true })}>🌿 Review Mastered ({masteredCount})</Link>
+                    </GameButton>
+                  )}
+                </div>
               )}
             </div>
           </div>

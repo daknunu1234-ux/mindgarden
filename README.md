@@ -17,6 +17,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    | 1 | `20260928000000_initial_schema.sql` | Tables, signup trigger, cascades, indexes, RLS policies |
    | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges that hide drill answers |
    | 3 | `20260928000200_practice_days.sql` | Daily streak log |
+   | 4 | `20260928000300_user_coins.sql` | 🪙 Gold coins (one per statement mastered for the first time) |
+   | 5 | `20260928000400_mastery_scale_5.sql` | Mastery scale 0–5 (5 correct answers to master a statement) |
 
    With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
    Supabase Dashboard → SQL Editor, and paste and run each file in the order above.

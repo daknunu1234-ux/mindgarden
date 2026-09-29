@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Network, PencilLine, Trash2 } from 'lucide-react'
 import { GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
@@ -21,7 +22,8 @@ function FarmPlotDialog({ plot, onOpenChange, onUproot }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
-        {plot && <PlotDetails plot={plot} onUproot={onUproot} />}
+        {/* key: the review switch starts off for every plot. */}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} />}
       </GameDialogContent>
     </GameDialog>
   )
@@ -31,6 +33,11 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
+  const allMastered = canWater && plot.masteredCount >= plot.itemCount
+  // Review mode: mix 5/5 items back in. Forced on when everything is mastered (nothing else to water).
+  const [review, setReview] = useState(false)
+  const reviewing = review || allMastered
+  const waterHref = `/deck/${plot.slug}/drill${reviewing ? '?review=1' : ''}`
 
   return (
     <div className="space-y-4">
@@ -55,11 +62,34 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
 
       <div className="grid gap-3">
         {canWater ? (
-          <GameButton asChild tone="sky" size="lg">
-            <Link href={`/deck/${plot.slug}/drill`}>
-              <Droplets aria-hidden /> Water Tree
-            </Link>
-          </GameButton>
+          <>
+            <GameButton asChild tone="sky" size="lg">
+              <Link href={waterHref}>
+                <Droplets aria-hidden /> {allMastered ? 'Review Mastered 🌿' : reviewing ? 'Water Tree (Review Mode)' : 'Water Tree'}
+              </Link>
+            </GameButton>
+            {allMastered ? (
+              <p className="text-center font-game text-sm font-bold text-emerald-800">🌳 Fully cultivated: every statement is at 5/5.</p>
+            ) : (
+              plot.masteredCount > 0 && (
+                <label className="flex cursor-pointer items-center justify-center gap-2.5 font-game text-sm font-bold text-amber-950">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={review}
+                    onChange={(e) => setReview(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <span
+                    aria-hidden
+                    className="relative h-6 w-11 rounded-full border-[2.5px] border-stone-400 bg-stone-300 shadow-[inset_0_2px_3px_rgba(0,0,0,0.2)] transition-colors peer-checked:border-emerald-700 peer-checked:bg-emerald-500 peer-focus-visible:ring-4 peer-focus-visible:ring-yellow-300 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-[0_1.5px_0_rgba(0,0,0,0.25)] after:transition-[left] peer-checked:after:left-[22px]"
+                  />
+                  Include Mastered Items (Review Mode)
+                  <span className="font-sans text-xs font-semibold text-amber-900/60">· {plot.masteredCount} at 5/5</span>
+                </label>
+              )
+            )}
+          </>
         ) : (
           <GameButton tone="sky" size="lg" disabled>
             <Droplets aria-hidden /> Nothing to water yet

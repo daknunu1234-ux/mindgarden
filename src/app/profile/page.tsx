@@ -31,6 +31,7 @@ export default async function ProfilePage() {
 
   const [stats, hud] = await Promise.all([getGardenStats(), getFarmHud()])
   const level = hud.success && hud.data ? hud.data.level : null
+  const coins = hud.success && hud.data ? hud.data.coins : null
   const trees = stats.success ? stats.data.trees.map(toTreeView) : []
 
   return (
@@ -39,6 +40,7 @@ export default async function ProfilePage() {
         <GardenerCard
           gardener={{ email: user.email, joinedAt: user.createdAt }}
           masteryPercent={stats.success ? stats.data.masteryPercent : 0}
+          coins={coins}
           level={
             level && { level: level.level, title: level.title, xpIntoLevel: level.xpIntoLevel, xpForNextLevel: level.xpForNextLevel }
           }
@@ -71,6 +73,7 @@ function toTreeView(tree: GardenTree): PlantedTreeView {
     treeType: tree.treeType,
     isPublic: tree.isPublic,
     itemCount: tree.itemCount,
+    masteredCount: tree.masteredCount,
     masteryPercent: tree.masteryPercent,
     mightyRoots: tree.mightyRoots,
     illustration: (

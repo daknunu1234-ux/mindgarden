@@ -52,8 +52,13 @@ describe('splitMutation', () => {
 
 describe('drill DTOs', () => {
   it('accepts a slug or a deck id, with a default limit', () => {
-    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 20 })
-    expect(GetDrillSessionDto.parse({ deckId: ITEM, limit: '5' })).toEqual({ deckId: ITEM, limit: 5 })
+    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 20, includeMastered: false })
+    expect(GetDrillSessionDto.parse({ deckId: ITEM, limit: '5' })).toEqual({ deckId: ITEM, limit: 5, includeMastered: false })
+  })
+
+  it('turns review mode on only when asked (includeMastered: true)', () => {
+    expect(GetDrillSessionDto.parse({ slug: 'ok', includeMastered: true }).includeMastered).toBe(true)
+    expect(GetDrillSessionDto.safeParse({ slug: 'ok', includeMastered: 'yes' }).success).toBe(false)
   })
 
   it('rejects bad input', () => {

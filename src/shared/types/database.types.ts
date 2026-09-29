@@ -37,6 +37,7 @@ export type Database = {
           avatar_url: string | null
           streak_count: number
           last_active_at: string | null
+          coins: number
           created_at: string
         }
         Insert: {
@@ -47,6 +48,7 @@ export type Database = {
           avatar_url?: string | null
           streak_count?: number
           last_active_at?: string | null
+          coins?: number
           created_at?: string
         }
         Update: {
@@ -57,6 +59,7 @@ export type Database = {
           avatar_url?: string | null
           streak_count?: number
           last_active_at?: string | null
+          coins?: number
           created_at?: string
         }
         Relationships: [
@@ -221,6 +224,7 @@ export type Database = {
           mastery_level: number
           mistake_count: number
           last_practiced_at: string | null
+          coin_awarded_at: string | null
         }
         Insert: {
           id?: string
@@ -229,6 +233,7 @@ export type Database = {
           mastery_level?: number
           mistake_count?: number
           last_practiced_at?: string | null
+          coin_awarded_at?: string | null
         }
         Update: {
           id?: string
@@ -237,6 +242,7 @@ export type Database = {
           mastery_level?: number
           mistake_count?: number
           last_practiced_at?: string | null
+          coin_awarded_at?: string | null
         }
         Relationships: [
           {
@@ -260,7 +266,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      // Migration 20260928000300_user_coins.sql. Service role only.
+      award_mastery_coin: {
+        Args: { p_user_id: string; p_item_id: string }
+        Returns: { coins_earned: number; total_coins: number }[]
+      }
     }
     Enums: {
       [_ in never]: never

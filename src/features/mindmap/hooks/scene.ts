@@ -1,3 +1,4 @@
+import { MAX_MASTERY } from '@/shared/lib/mastery'
 import { isMightyRoot, rootOpacity } from './nodeMastery'
 
 // Something drawn above the ground (the deck's tree), with the point inside it where the
@@ -86,19 +87,22 @@ export type RootStroke = {
   from: string
   to: string
   opacity: number
-  // 'gold' for Mighty Roots, 'soft' for well-mastered roots (≥ 2/3), else none.
+  // 'gold' for Mighty Roots, 'soft' for well-mastered roots (≥ two thirds of the way), else none.
   glow: 'none' | 'soft' | 'gold'
   width: number
 }
 
-// Line style for the root a line leads into. Opacity always follows 0.35 + 0.65 × mastery / 3.
+// Well mastered: at least two thirds of the way to 5/5 (a 4/5 item, or a branch averaging ≥ 3.3).
+export const STRONG_MASTERY = (MAX_MASTERY * 2) / 3
+
+// Line style for the root a line leads into. Opacity always follows 0.35 + 0.65 × mastery / 5.
 export function rootStroke(
   mastery: number | null,
   colors: { bark: string; glow: string; gold: string },
   highlighted = false,
 ): RootStroke {
   const mighty = isMightyRoot(mastery)
-  const strong = !mighty && mastery !== null && mastery >= 2
+  const strong = !mighty && mastery !== null && mastery >= STRONG_MASTERY
   return {
     from: colors.bark,
     to: mighty ? colors.gold : strong ? colors.glow : colors.bark,

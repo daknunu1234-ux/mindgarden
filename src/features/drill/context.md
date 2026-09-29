@@ -8,17 +8,19 @@ None. Reads items through `@/features/decks/server`.
 ## Exports (`index.ts`)
 | Export | Notes |
 |--------|-------|
-| `getDrillSession({ slug } \| { deckId }, nodeId?, limit?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `NODE_NOT_FOUND`, `DRILL_NO_ITEMS`. Auth: Optional. `nodeId` limits the round to that root and its sub-roots (`lib/branch.ts` `collectBranch`); the session carries `focus` |
+| `getDrillSession({ slug } \| { deckId }, nodeId?, limit?, includeMastered?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `NODE_NOT_FOUND`, `DRILL_NO_ITEMS`, `DRILL_ALL_MASTERED`. Auth: Optional. `nodeId` limits the round to that root and its sub-roots (`lib/branch.ts` `collectBranch`); the session carries `focus`. Signed in: 5/5 items rest unless `includeMastered` (`lib/queue.ts` `selectPracticeItems`, levels via `progress/server` `fetchMasteryLevels`); the session carries `masteredCount` and `includeMastered` |
+| `ReviewModeToggle({ on, href, masteredCount })` | "🌿 Include Mastered Items (Review Mode)" switch (a link, so the mode lives in `?review=1`) |
+| `drillHref(slug, { nodeId?, review? })`, `isReviewParam(v)` | Pure URL helpers for rounds and review mode (`lib/drillHref.ts`) |
 | `checkDrillAnswer({ itemId, seed, tag })` | Server Action → `ActionResult<DrillAnswer>`. Grades via `progress/server`, saves nothing. Auth: Public |
 | `DrillOverlay({ session, isSignedIn })` | Client. The "Watering Session": round gauge, `WateringScene` (can pours on the roots after each answer; roots glow gold or amber), question plaque, tactile choice slabs with `[1] [2] [3]` key chips → feedback (gold / amber + `MutationHighlight`, 3-notch mastery gauge and a `ParticleBurst` on level-up when saved) → trophy summary, confetti if any root grew |
 | types | `DrillSession`, `DrillQuestion`, `DrillAnswer`, `DrillChoice`, `DrillTag` |
 
 ## Internals
 - `services/drillSession.ts`: seed per item = `drillSeed(itemId, sessionId)`, passes the node's other statements as `siblings`, skips `INSUFFICIENT_MUTATIONS`, shuffles with `seededRandom(sessionId)`
-- `hooks/useDrillSession.ts`: signed in → `progress.submitDrillResult` (saves, sends the browser timezone, pushes `streakCount` into `shared/stores/StreakProvider` so the header badge updates without a reload); signed out or session expired → `checkDrillAnswer` + open the login dialog. `answering → checking → feedback → … → done`, `error` with retry
+- `hooks/useDrillSession.ts`: signed in → `progress.submitDrillResult` (saves, sends the browser timezone, pushes `streakCount` into `shared/stores/StreakProvider` and `totalCoins` into `shared/stores/CoinsProvider` so the header badge and farm HUD update without a reload; sums `coinsEarned` into the round stats for the "+X 🪙 Gold Earned!" trophy plaque with a gold `ParticleBurst`); signed out or session expired → `checkDrillAnswer` + open the login dialog. `answering → checking → feedback → … → done`, `error` with retry
 - `lib/drillSeed.ts`, `lib/splitMutation.ts` (changed-words span for highlights), `lib/masteryChange.ts` (`leveledUp`, `becameMighty`: round stats and celebrations)
 - Keyboard: `lib/shortcuts.ts` `shortcutFor` (pure) + `hooks/useDrillShortcuts.ts`: `1`/`2`/`3` or `A`/`B`/`C` answer (no `C` on 2-choice), `Enter`/`Space` go to the next question during feedback. Ignored while typing, with Ctrl/Cmd/Alt, on key repeat, while the login dialog is open, and for Enter/Space on a focused button (it clicks itself). Choices show a `KeyChip` (hidden below `sm`) and `aria-keyshortcuts`
-- Tests: `__tests__/trapEngine.test.ts`, `__tests__/siblingSwaps.test.ts` (engine in `shared/lib`), `__tests__/drillHelpers.test.ts`, `__tests__/branch.test.ts`, `__tests__/shortcuts.test.ts`, `__tests__/masteryChange.test.ts`
+- Tests: `__tests__/trapEngine.test.ts`, `__tests__/siblingSwaps.test.ts` (engine in `shared/lib`), `__tests__/drillHelpers.test.ts`, `__tests__/branch.test.ts`, `__tests__/shortcuts.test.ts`, `__tests__/masteryChange.test.ts`, `__tests__/queue.test.ts` (normal vs review queue, fully cultivated)
 
 ## Rules
 - The client never receives `correctStmt` or `correctTag` before answering
@@ -29,4 +31,4 @@ None. Reads items through `@/features/decks/server`.
 `getDrillQuestion` (superseded by `getDrillSession({ nodeId })`)
 
 ## May import
-`@/shared/*`, `@/features/decks/server`, `@/features/progress` (actions, DTO, `MASTERY_NAMES`), `@/features/progress/server`
+`@/shared/*` (mastery scale: `shared/lib/mastery.ts`), `@/features/decks/server`, `@/features/progress` (actions, DTO), `@/features/progress/server` (`gradeSubmission`, `fetchMasteryLevels`)
