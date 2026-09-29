@@ -3,7 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDrillItems } from '@/features/decks/server'
 import { generateTraps } from '@/shared/lib/trapEngine'
-import { canPractice, VISITOR_PRACTICE_MESSAGE } from '@/shared/lib/visitor'
+import { canPractice, tournamentAccess, VISITOR_PRACTICE_MESSAGE } from '@/shared/lib/visitor'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
@@ -20,18 +20,31 @@ import type { DrillQuestion, DrillSession } from '../types'
 // signed-out visitor, gets FORBIDDEN_VISITOR_PRACTICE and must clone the tree first.
 // `loadLevels` returns the player's mastery for the given items: 5/5 items sit out unless
 // input.includeMastered (review mode).
-export type LoadLevels = (itemIds: string[]) => Promise<ReadonlyMap<string, number>>
+export type LoadLevels = (itemIds: string[], deckId: string) => Promise<ReadonlyMap<string, number>>
+
+// 'practice': the owner's own round (levels = user_progress). 'tournament': a Mind Tournament round
+// on someone else's public, hosting tree (levels = the contestant's isolated tournament progress;
+// the host can't compete). Tournament rounds never mix mastered items back in.
+export type DrillMode = 'practice' | 'tournament'
 
 export async function buildDrillSession(
   supabase: SupabaseClient<Database>,
   input: GetDrillSessionInput,
   sessionId: string,
-  { viewerId, loadLevels }: { viewerId: string | null; loadLevels?: LoadLevels },
+  { viewerId, loadLevels, mode = 'practice' }: { viewerId: string | null; loadLevels?: LoadLevels; mode?: DrillMode },
 ): Promise<ActionResult<DrillSession>> {
   const ref = 'deckId' in input ? { deckId: input.deckId } : { slug: input.slug }
   const res = await listDrillItems(supabase, ref)
   if (!res.success) return res
-  if (!canPractice(res.data.deck.ownerId, viewerId)) return fail('FORBIDDEN_VISITOR_PRACTICE', VISITOR_PRACTICE_MESSAGE)
+  if (mode === 'tournament') {
+    const access = tournamentAccess(res.data.deck, viewerId)
+    if (access === 'closed') return fail('TOURNAMENT_CLOSED', 'This tree is not hosting a Mind Tournament right now')
+    if (access === 'signed-out') return fail('AUTH_UNAUTHORIZED', 'Sign in to compete in the Mind Tournament')
+    if (access === 'host') return fail('AUTH_FORBIDDEN', 'You host this tournament: practise your own tree instead')
+  } else if (!canPractice(res.data.deck.ownerId, viewerId)) {
+    return fail('FORBIDDEN_VISITOR_PRACTICE', VISITOR_PRACTICE_MESSAGE)
+  }
+  const includeMastered = mode === 'practice' && input.includeMastered
 
   let items = res.data.items
   let focus: DrillSession['focus'] = null
@@ -56,8 +69,11 @@ export async function buildDrillSession(
     drillable.push({ itemId: item.id, nodeTitle: item.nodeTitle, prompt: item.prompt, seed, choices: traps.choices })
   }
 
-  const levels = loadLevels && drillable.length > 0 ? await loadLevels(drillable.map((q) => q.itemId)) : new Map<string, number>()
-  const { queue, masteredCount } = selectPracticeItems(drillable, levels, input.includeMastered)
+  const levels = loadLevels && drillable.length > 0 ? await loadLevels(
+          drillable.map((q) => q.itemId),
+          res.data.deck.id,
+        ) : new Map<string, number>()
+  const { queue, masteredCount } = selectPracticeItems(drillable, levels, includeMastered)
   const empty = emptyRoundReason(drillable.length, queue.length)
   if (empty === 'no-items') {
     return fail('DRILL_NO_ITEMS', focus ? 'This branch has no drillable items yet' : 'This deck has no drillable items yet')
@@ -67,13 +83,15 @@ export async function buildDrillSession(
   }
 
   const round = seededShuffle(queue, seededRandom(sessionId)).slice(0, input.limit)
+  const { id, slug, title, treeType } = res.data.deck
   return ok({
-    deck: res.data.deck,
+    deck: { id, slug, title, treeType },
+    mode,
     sessionId,
     focus,
     questions: round,
     skippedCount,
     masteredCount,
-    includeMastered: input.includeMastered,
+    includeMastered,
   })
 }

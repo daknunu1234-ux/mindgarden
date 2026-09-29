@@ -5,6 +5,7 @@ import { GamePanel } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
 import { countsAsVisit, getDeckBySlug, getDeckEditor, getDeckReader, TreeVisitTracker } from '@/features/decks'
 import { getFarmHud, getProgressByDecks } from '@/features/progress'
+import { getTournamentBoards } from '@/features/tournament'
 import { DeckScene } from './_components/DeckScene'
 
 // generateMetadata and the page share one query per request.
@@ -46,10 +47,12 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
   const isOwner = signedIn && userRes.data?.id === res.data.deck.userId
   // Owner → editor. Visitor (strict read-only mode) → the statements to read + their purse for
   // the clone fee.
-  const [editor, reader, hud] = await Promise.all([
+  // Mind Tournament boards exist only on shared trees.
+  const [editor, reader, hud, boards] = await Promise.all([
     isOwner ? getDeckEditor({ deckId }) : null,
     isOwner ? null : getDeckReader({ deckId }),
     !isOwner && signedIn ? getFarmHud() : null,
+    res.data.deck.isPublic ? getTournamentBoards({ deckId }) : null,
   ])
   const purse = hud?.success && hud.data ? hud.data : null
   // Visited Gardens: a signed-in player opening someone else's shared tree. Recorded from the
@@ -67,6 +70,11 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
         detail={res.data}
         progress={progress.success ? (progress.data[0] ?? null) : null}
         editor={editor?.success ? editor.data : null}
+        tournament={{
+          isOpen: res.data.deck.isPublic && res.data.deck.isTournamentOpen,
+          boards: boards?.success ? boards.data : null,
+          viewerId: userRes.success ? (userRes.data?.id ?? null) : null,
+        }}
         visitor={
           isOwner ? null : { reader: reader?.success ? reader.data : null, signedIn, coins: purse?.coins ?? null, coinsAsOf: purse?.coinsAsOf }
         }

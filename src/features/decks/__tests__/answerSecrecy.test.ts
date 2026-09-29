@@ -8,12 +8,14 @@ const SRC = join(__dirname, '..', '..', '..')
 const ANSWERS = ['features', 'decks', 'services', 'answers.ts'].join(sep)
 const ADMIN = ['shared', 'lib', 'supabase', 'admin.ts'].join(sep)
 // The only modules allowed to use the service-role client (it bypasses RLS):
-// answers (read correct_stmt / trap_rules), streak (write practice_days, users counters) and
-// coins (award_mastery_coin, the only writer of users.coins).
+// answers (read correct_stmt / trap_rules), streak (write practice_days, users counters),
+// coins (award_mastery_coin, the only writer of users.coins) and tournament answers
+// (record_tournament_answer, the only writer of the Mind Tournament tables).
 const ADMIN_USERS = [
   ANSWERS,
   ['features', 'progress', 'services', 'streak.ts'].join(sep),
   ['features', 'progress', 'services', 'coins.ts'].join(sep),
+  ['features', 'tournament', 'services', 'answers.ts'].join(sep),
 ]
 
 function sourceFiles(dir: string): string[] {

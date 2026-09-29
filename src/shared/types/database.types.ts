@@ -82,6 +82,8 @@ export type Database = {
           is_public: boolean
           tree_type: string
           created_at: string
+          // Migration 20260928000900: the owner hosts a Mind Tournament on this (public) tree.
+          is_tournament_open: boolean
         }
         Insert: {
           id?: string
@@ -92,6 +94,7 @@ export type Database = {
           is_public?: boolean
           tree_type?: string
           created_at?: string
+          is_tournament_open?: boolean
         }
         Update: {
           id?: string
@@ -102,6 +105,7 @@ export type Database = {
           is_public?: boolean
           tree_type?: string
           created_at?: string
+          is_tournament_open?: boolean
         }
         Relationships: [
           {
@@ -216,6 +220,99 @@ export type Database = {
           },
         ]
       }
+      // Migration 20260928000900_mind_tournament.sql. Players read their own rows; only
+      // record_tournament_answer() (service role) writes.
+      deck_tournament_participants: {
+        Row: {
+          id: string
+          deck_id: string
+          user_id: string
+          current_points: number
+          max_points: number
+          mastery_percentage: number | null
+          days_count: number
+          is_graduated: boolean
+          graduated_at: string | null
+          last_practiced_date: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          deck_id: string
+          user_id: string
+          current_points?: number
+          max_points?: number
+          days_count?: number
+          is_graduated?: boolean
+          graduated_at?: string | null
+          last_practiced_date?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          deck_id?: string
+          user_id?: string
+          current_points?: number
+          max_points?: number
+          days_count?: number
+          is_graduated?: boolean
+          graduated_at?: string | null
+          last_practiced_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'deck_tournament_participants_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'deck_tournament_participants_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      deck_tournament_item_progress: {
+        Row: {
+          id: string
+          participant_id: string
+          knowledge_item_id: string
+          mastery_level: number
+        }
+        Insert: {
+          id?: string
+          participant_id: string
+          knowledge_item_id: string
+          mastery_level?: number
+        }
+        Update: {
+          id?: string
+          participant_id?: string
+          knowledge_item_id?: string
+          mastery_level?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'deck_tournament_item_progress_participant_id_fkey'
+            columns: ['participant_id']
+            isOneToOne: false
+            referencedRelation: 'deck_tournament_participants'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'deck_tournament_item_progress_knowledge_item_id_fkey'
+            columns: ['knowledge_item_id']
+            isOneToOne: false
+            referencedRelation: 'knowledge_items'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       // Migration 20260928000800_tree_visits.sql. Players read their own rows; record_tree_visit() writes.
       tree_visits: {
         Row: {
@@ -324,6 +421,52 @@ export type Database = {
       record_tree_visit: {
         Args: { p_deck_id: string }
         Returns: boolean
+      }
+      // Migration 20260928000900 (service role only): one graded tournament answer.
+      record_tournament_answer: {
+        Args: {
+          p_user_id: string
+          p_deck_id: string
+          p_item_id: string
+          p_is_correct: boolean
+          p_day: string
+          p_drillable_item_ids: string[]
+        }
+        Returns: {
+          mastery_level: number
+          previous_level: number
+          current_points: number
+          max_points: number
+          mastery_percentage: number | null
+          days_count: number
+          is_graduated: boolean
+          just_graduated: boolean
+        }[]
+      }
+      // Migration 20260928000900: public boards of a readable tree (no emails).
+      get_tournament_active_board: {
+        Args: { p_deck_id: string }
+        Returns: {
+          rank: number
+          user_id: string
+          display_name: string | null
+          current_points: number
+          max_points: number
+          mastery_percentage: number | null
+          days_count: number
+          updated_at: string
+        }[]
+      }
+      get_tournament_hall_of_fame: {
+        Args: { p_deck_id: string }
+        Returns: {
+          rank: number
+          user_id: string
+          display_name: string | null
+          max_points: number
+          days_count: number
+          graduated_at: string
+        }[]
       }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {

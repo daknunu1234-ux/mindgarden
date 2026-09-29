@@ -7,7 +7,7 @@
 
 - **What**: Gamified micro-learning. A Deck is a living Tree, mindmap nodes are underground Roots, knowledge items are plain-text statements drilled with trap choices. Mastery goes 0 → 5 per user per item (`shared/lib/mastery.ts`, `MAX_MASTERY`). Planting a tree costs 🪙 coins; only a tree's owner can practise it (visitors read, then clone).
 - **Stack**: Next.js App Router (React 19, TypeScript strict), Tailwind + shadcn/ui, Supabase (PostgreSQL + Auth + RLS)
-- **Architecture**: Monolith, feature-based. One folder per feature for server + UI: `src/features/{auth,decks,progress,drill,garden,mindmap,user-profile}` + `src/shared/`
+- **Architecture**: Monolith, feature-based. One folder per feature for server + UI: `src/features/{auth,decks,progress,drill,garden,mindmap,user-profile,tournament}` + `src/shared/`
 - **Team**: Solo developer + AI assistants. Docs are the shared memory: keep them in sync with code.
 
 ## Read before you code

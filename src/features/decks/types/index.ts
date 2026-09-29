@@ -8,6 +8,8 @@ export type Deck = {
   isPublic: boolean
   treeType: string
   createdAt: string
+  // The owner hosts a Mind Tournament on it (only meaningful while isPublic).
+  isTournamentOpen: boolean
 }
 
 // One shared tree the player has opened (Visited Gardens, getVisitedGardens). ownerId = the tree's gardener.

@@ -1,5 +1,8 @@
 // Daily streak math. Pure: days are 'YYYY-MM-DD' strings in the player's local timezone.
 
+// Local calendar days live in shared/lib/localDay.ts (the tournament counts days the same way).
+export { localDay, resolveTimeZone } from '@/shared/lib/localDay'
+
 export const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 365] as const
 
 export type Streaks = {
@@ -17,28 +20,6 @@ const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 function dayNumber(day: string): number {
   const [y, m, d] = day.split('-').map(Number)
   return Date.UTC(y, m - 1, d) / DAY_MS
-}
-
-// A valid IANA timezone, or UTC for anything unknown/garbled (the value comes from the browser).
-export function resolveTimeZone(timeZone: string | null | undefined): string {
-  if (!timeZone) return 'UTC'
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone })
-    return timeZone
-  } catch {
-    return 'UTC'
-  }
-}
-
-// The calendar day of `at` in `timeZone`, as 'YYYY-MM-DD'.
-export function localDay(at: Date, timeZone: string): string {
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: resolveTimeZone(timeZone),
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(at)
 }
 
 export function computeStreaks(days: readonly string[], today: string): Streaks {

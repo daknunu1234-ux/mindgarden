@@ -9,6 +9,7 @@ import type { CloneDeckInput } from '../dto/CloneDeckDto'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
+import type { SetTournamentOpenInput } from '../dto/SetTournamentOpenDto'
 import type { DeleteDeckInput } from '../dto/DeleteDeckDto'
 import type { UpdateDeckInput } from '../dto/UpdateDeckDto'
 import type { DeleteKnowledgeItemInput, DeleteMindmapNodeInput, UpdateMindmapNodeInput } from '../dto/ManageRootsDto'
@@ -318,6 +319,32 @@ export async function updateDeckSettings(
   if (error) {
     console.error('[decks] updateDeckSettings failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not update this tree')
+  }
+  return ok(toDeck(data))
+}
+
+// Owner-only: open or close the tree's Mind Tournament. Opening needs a shared (public) tree:
+// visitors can only reach public trees. Closing keeps every participant row, so graduates stay
+// engraved and a re-opened tournament continues where it stopped.
+export async function setDeckTournament(
+  supabase: Client,
+  userId: string,
+  { deckId, isOpen }: SetTournamentOpenInput,
+): Promise<ActionResult<Deck>> {
+  const { data: deck, error: readError } = await supabase.from('decks').select('user_id, is_public').eq('id', deckId).maybeSingle()
+  if (readError) {
+    console.error('[decks] setDeckTournament read failed', readError)
+    return fail('INTERNAL_ERROR', 'Could not load this tree')
+  }
+  if (!deck) return fail('DECK_NOT_FOUND', 'Deck not found')
+  if (deck.user_id !== userId) return fail('AUTH_FORBIDDEN', "Only the tree's owner can host its tournament")
+  if (isOpen && !deck.is_public) return fail('VALIDATION_FAILED', 'Share the tree with the community first, so visitors can join')
+
+  const { data, error } = await supabase.from('decks').update({ is_tournament_open: isOpen }).eq('id', deckId).select('*').single()
+  if (error) {
+    // 42703 / PGRST204: the column is missing (run 20260928000900_mind_tournament.sql).
+    console.error('[decks] setDeckTournament failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', isOpen ? 'Could not open the tournament' : 'Could not close the tournament')
   }
   return ok(toDeck(data))
 }

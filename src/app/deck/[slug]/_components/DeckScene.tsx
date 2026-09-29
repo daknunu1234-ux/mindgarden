@@ -11,27 +11,43 @@ import {
   DeckEditor,
   DeckReader,
   DeckShareToggle,
+  TournamentHostToggle,
   type DeckDetail,
   type DeckEditorData,
 } from '@/features/decks'
 import { GrowthBar, neighborName, TREE_BASE_RATIO, TreeStageSvg, useTreeStage, visitHref } from '@/features/garden'
 import type { ItemLevels } from '@/features/mindmap'
 import type { DeckProgress } from '@/features/progress'
+import { TournamentBoard, TournamentLiveBadge, type TournamentBoards, type TournamentStanding } from '@/features/tournament'
 import { DeckRootsPanel } from './DeckRootsPanel'
 
 // Someone else's tree (strict read-only visitor mode): the statements to read (null if they could
 // not be loaded) and the visitor's purse for the clone fee.
 export type DeckVisitor = { reader: DeckEditorData | null; signedIn: boolean; coins: number | null; coinsAsOf?: number }
 
+// Mind Tournament on a shared tree: whether the owner hosts one now, and its boards (null on a
+// private tree or when they couldn't be loaded).
+export type DeckTournament = {
+  isOpen: boolean
+  boards: (TournamentBoards & { standing: TournamentStanding | null }) | null
+  viewerId: string | null
+}
+
 // editor is set only for the deck owner; visitor only for everyone else.
-type DeckSceneProps = { detail: DeckDetail; progress: DeckProgress | null; editor: DeckEditorData | null; visitor: DeckVisitor | null }
+type DeckSceneProps = {
+  detail: DeckDetail
+  progress: DeckProgress | null
+  editor: DeckEditorData | null
+  visitor: DeckVisitor | null
+  tournament: DeckTournament
+}
 
 // Rendered size of a Standard (md) tree in the scene; its trunk base is where the roots attach.
 const TREE_SIZE = 176
 
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
 // ground line and the mindmap roots grow out of its trunk into the soil.
-function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
+function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneProps) {
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
   const masteryPercent = progress?.masteryPercent ?? 0
@@ -60,6 +76,17 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
         size={size}
       />
     )
+  const tournamentHref = `/deck/${deck.slug}/tournament`
+  // Visitors join while it's live; the boards stay up after the host closes it (graduates are engraved).
+  const canJoin = visitor !== null && tournament.isOpen && itemCount > 0
+  const hasEntries = (tournament.boards?.active.length ?? 0) + (tournament.boards?.hallOfFame.length ?? 0) > 0
+  const showBoards = tournament.boards !== null && (tournament.isOpen || hasEntries)
+  const joinButton = (size: 'sm' | 'md' | 'lg') =>
+    canJoin && (
+      <GameButton asChild tone="sun" size={size}>
+        <Link href={tournamentHref}>⚔️ Tham gia Mind Tournament</Link>
+      </GameButton>
+    )
 
   return (
     <main className="mg-meadow-bg w-full flex-1">
@@ -73,7 +100,10 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
             <p className="font-game text-sm font-extrabold text-[#1f4d25] sm:text-base">
               🌿 You are exploring {neighborName(deck.userId)}&apos;s Tree (Read-Only)
             </p>
-            {cloneButton('sm')}
+            <div className="flex flex-wrap items-center gap-2">
+              {joinButton('sm')}
+              {cloneButton('sm')}
+            </div>
           </div>
         </div>
       )}
@@ -107,6 +137,7 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
                   <span title={`${size.name}: ${itemCount} ${itemCount === 1 ? 'statement' : 'statements'}`}>{size.badge}</span>
                 </Ribbon>
                 {!deck.isPublic && <Ribbon tone="berry">🔒 Private</Ribbon>}
+                {tournament.isOpen && <TournamentLiveBadge />}
               </div>
               {deck.description && <p className="mt-4 whitespace-pre-wrap text-amber-900/75">{deck.description}</p>}
               <GrowthBar percent={masteryPercent} className="mt-5 max-w-md" />
@@ -122,6 +153,7 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
                   <GameButton tone="sky" size="lg" disabled title="Visitors can explore but not practise: clone this tree to your garden first">
                     Clone to practice this tree 🌱
                   </GameButton>
+                  {joinButton('md')}
                   {cloneButton('md')}
                 </div>
               )}
@@ -190,6 +222,25 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
           />
         </section>
 
+        {showBoards && tournament.boards && (
+          <section id="tournament" aria-labelledby="tournament-heading" className="mt-12 scroll-mt-24">
+            <GamePanel tone="parchment" ribbon="gold" title={<span id="tournament-heading">Tournament Leaderboard 📜</span>}>
+              <p className="mb-4 text-center text-sm text-amber-900/75">
+                {tournament.isOpen
+                  ? 'Master every statement (5/5) in the fewest practice days. Graduates are engraved on the Bia Trạng Nguyên forever.'
+                  : 'The host closed this tournament. Its graduates stay engraved on the Bia Trạng Nguyên.'}
+              </p>
+              <TournamentBoard
+                active={tournament.boards.active}
+                hallOfFame={tournament.boards.hallOfFame}
+                viewerId={tournament.viewerId}
+                standing={tournament.boards.standing}
+              />
+              {canJoin && <div className="mt-6 flex justify-center">{joinButton('lg')}</div>}
+            </GamePanel>
+          </section>
+        )}
+
         {visitor && (
           <section aria-labelledby="read-heading" className="mt-12">
             <GamePanel tone="wood" ribbon="leaf" title={<span id="read-heading">📖 Read this Tree</span>}>
@@ -214,6 +265,9 @@ function DeckScene({ detail, progress, editor, visitor }: DeckSceneProps) {
               </p>
               <div className="mb-5">
                 <DeckShareToggle deckId={deck.id} slug={deck.slug} isPublic={deck.isPublic} />
+              </div>
+              <div className="mb-5">
+                <TournamentHostToggle deckId={deck.id} isPublic={deck.isPublic} isOpen={deck.isTournamentOpen} />
               </div>
               <DeckEditor editor={editor} />
               <div className="mt-8">

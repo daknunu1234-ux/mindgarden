@@ -53,7 +53,8 @@ src/
 │   └── deck/[slug]/
 │       ├── page.tsx                # Single tree + root explorer
 │       ├── _components/DeckScene.tsx   # Composes garden + mindmap (route-private)
-│       └── drill/page.tsx          # Focused drill overlay, reads ?nodeId=<id>
+│       ├── drill/page.tsx          # Focused drill overlay, reads ?nodeId=<id>
+│       └── tournament/page.tsx     # Mind Tournament round (DrillOverlay in tournament mode) for visitors
 ├── shared/
 │   ├── components/game/            # Game design system (see §4a): GameButton, GamePanel, GameDialog, GameTabs, GameProgressBar, HUD pieces
 │   ├── components/ui/              # shadcn/ui primitives (Sheet, Skeleton…); game screens use components/game instead
@@ -88,6 +89,7 @@ src/
 | `mindmap` | Mindmap layout (crown → categories → statements), collapse, 🔍 inspector drawer, owner ✏️ hooks (wired to decks in `app/`) | `RootMap`, `NodePill`, `StatementCard`, `layoutMindmap` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
+| `tournament` | Mind Tournament boards on `/deck/[slug]` (📜 Bia Trạng Nguyên, 🌱 Đang Rèn Luyện) and the live badge | `TournamentBoard`, `TournamentLiveBadge` | Draw rounds (drill does, in `mode: 'tournament'`) | Boards + the viewer's standing from `getTournamentBoards` | Owner switch lives in decks (`TournamentHostToggle`); "⚔️ Tham gia Mind Tournament" links to `/deck/[slug]/tournament` |
 | `user-profile` | Gardener's Trophy & Record Hall on `/profile` | `GardenerCard`, `GardenStatsGrid`, `MightyShowcase`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features

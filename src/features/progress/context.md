@@ -14,7 +14,7 @@ Per-player mastery for knowledge items.
 | `index.ts` | `getFarmHud()` | Server Action. Auth: Optional. `FarmHud { level: GardenerLevel, streak, coins }` or null (coins = stored 🪙 balance `users.coins`, `services/coins.ts` `readCoins`) (`lib/gardenerLevel.ts`, `services/farmHud.ts`) |
 | `index.ts` | `getStreak()` | Server Action. Auth: Optional. `Streaks { current, best, practicedToday, lastDay }` or null |
 | `index.ts` | `StreakBadge` | Client. Header badge "🔥 N days" / "🌱 N days" (not yet today) from `shared/stores/StreakProvider`; hidden at 0 |
-| `index.ts` | `STREAK_MILESTONES`, `streakMilestone`, `nextStreakMilestone`, `type Streaks` | Pure (`lib/streak.ts`, with `computeStreaks`, `localDay`, `resolveTimeZone`) |
+| `index.ts` | `STREAK_MILESTONES`, `streakMilestone`, `nextStreakMilestone`, `type Streaks` | Pure (`lib/streak.ts`, with `computeStreaks`; `localDay` / `resolveTimeZone` now live in `shared/lib/localDay.ts` and are re-exported, since the Mind Tournament counts practice days the same way) |
 | `index.ts` | `type GardenStats`, `GardenStatsWithStreak`, `GardenTree` | |
 | `index.ts` | `type DeckProgress` | Pure summary in `lib/deckProgress.ts` (`summarizeDeckProgress`) |
 | `index.ts` | `DrillSubmissionDto` | Zod `{ itemId, seed, tag }`, also used by drill's `checkDrillAnswer` |

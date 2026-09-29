@@ -23,6 +23,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    | 7 | `20260928000600_profiles_and_sharing.sql` | Starter purse for every signup (incl. Google), private-by-default trees |
    | 8 | `20260928000700_clone_deck.sql` | Clone a shared tree into your garden for min(100 + statements, 150) 🪙 |
    | 9 | `20260928000800_tree_visits.sql` | Visited Gardens: the shared trees each player has opened |
+   | 10 | `20260928000900_mind_tournament.sql` | Mind Tournament: hosting switch, isolated contestant scores, both leaderboards |
 
    With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
    Supabase Dashboard → SQL Editor, and paste and run each file in the order above.

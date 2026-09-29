@@ -1,26 +1,10 @@
 // Visited Gardens (pure, unit-tested): the shared trees a player has opened, grouped into
 // neighbour gardens.
-//
-// Players can't read each other's profiles (users RLS: self only), so a neighbour is shown with a
-// friendly name derived from their id: stable for everyone, reveals nothing personal.
+// Neighbours are named with shared/lib/neighborName (profiles aren't readable across players).
 
-const ADJECTIVES = ['Sunny', 'Mossy', 'Breezy', 'Dewy', 'Golden', 'Misty', 'Cheery', 'Leafy', 'Rosy', 'Starry', 'Maple', 'Clover']
-const CREATURES = ['Otter', 'Robin', 'Hedgehog', 'Fox', 'Bunny', 'Owl', 'Wren', 'Badger', 'Finch', 'Squirrel', 'Deer', 'Duckling']
+import { neighborName } from '@/shared/lib/neighborName'
 
-function hash(text: string): number {
-  let h = 2166136261
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-
-// "Mossy Owl" for a given gardener id, the same on every page and for every visitor.
-export function neighborName(ownerId: string): string {
-  const h = hash(ownerId)
-  return `${ADJECTIVES[h % ADJECTIVES.length]} ${CREATURES[Math.floor(h / ADJECTIVES.length) % CREATURES.length]}`
-}
+export { neighborName }
 
 // One visited tree, as the page passes it in (from decks' getVisitedGardens).
 export type VisitedTreeView = {

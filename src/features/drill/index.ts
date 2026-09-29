@@ -1,6 +1,7 @@
 // Client-safe public API. Never re-export services/ from here.
 export { getDrillSession } from './actions/getDrillSession'
 export { checkDrillAnswer } from './actions/checkDrillAnswer'
+export { getTournamentSession } from './actions/getTournamentSession'
 export { DrillOverlay } from './components/DrillOverlay'
 export { ReviewModeToggle } from './components/ReviewModeToggle'
 export { drillHref, isReviewParam } from './lib/drillHref'

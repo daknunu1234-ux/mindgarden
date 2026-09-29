@@ -60,6 +60,7 @@
 | is_public | BOOLEAN | NOT NULL, DEFAULT FALSE | Shared with the community: readable (read-only) by everyone with the link, and listed in the Visited Gardens of players who opened it. Private until the owner shares it (the default was TRUE before migration `20260928000600`; existing trees kept their value) |
 | tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Species: oak, pine, sakura, bamboo, apple, saguaro (validated by Zod from `shared/lib/treeSkins.ts`; unknown values render as oak) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| is_tournament_open | BOOLEAN | NOT NULL, DEFAULT FALSE | The owner hosts a Mind Tournament on this tree (migration `20260928000900`). Only meaningful while `is_public`: visitors join only public, hosting trees. Owner-only switch (`setTournamentOpen`); closing keeps every result |
 
 **mindmap_nodes** (self-referencing adjacency list) — *Nodes are underground Roots*
 | Column | Type | Constraints | Description |
@@ -109,6 +110,53 @@ Example `trap_rules`:
 Applied to `"Mitochondria produce ATP through cellular respiration."` → traps like `"Mitochondria produce DNA through cellular respiration."`
 
 **Items created in the app** (`createKnowledgeItem`): authors write only the statement. The server stores `trap_rules = {"negate": true}` and `prompt` = the root's title; traps then come from the built-in dictionary (`shared/lib/trapDictionary.ts`). `swaps` stay supported for seeded or imported items.
+
+### Mind Tournament Feature
+
+*Migration `20260928000900_mind_tournament.sql`. Owners host a mastery race on a shared tree; visitors compete with an ISOLATED score that never touches `user_progress`, `practice_days` (streaks) or coins.*
+
+**deck_tournament_participants** — *One contestant on one tree*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | UUID | PK, DEFAULT gen_random_uuid() | |
+| deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | The hosting tree |
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | The contestant (never the host) |
+| current_points | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 and ≤ max_points | Σ tournament `mastery_level` over the tree's current drillable statements |
+| max_points | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | 5 × N, N = drillable statements (the ones the trap engine can ask), refreshed on every answer |
+| mastery_percentage | NUMERIC(5,2) | GENERATED ALWAYS AS `round(current_points / nullif(max_points, 0) × 100, 2)` STORED | NULL when the tree has no drillable statement |
+| days_count | INT | NOT NULL, DEFAULT 1, CHECK ≥ 1 | Distinct local calendar days with at least one answer on this tree |
+| is_graduated | BOOLEAN | NOT NULL, DEFAULT FALSE | Every drillable statement reached 5/5. Set once, never cleared |
+| graduated_at | TIMESTAMPTZ | NULLABLE; set exactly when is_graduated (CHECK) | When they graduated (Bia Trạng Nguyên tie-break) |
+| last_practiced_date | DATE | NOT NULL, DEFAULT CURRENT_DATE | Latest practice day (the contestant's local date) |
+| updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Latest answer (Active board tie-break) |
+| *(deck_id, user_id)* | — | UNIQUE `unique_deck_participant` | One run per contestant per tree |
+
+**deck_tournament_item_progress** — *The contestant's tournament mastery per statement*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | UUID | PK, DEFAULT gen_random_uuid() | |
+| participant_id | UUID | FK → deck_tournament_participants, NOT NULL, ON DELETE CASCADE | |
+| knowledge_item_id | UUID | FK → knowledge_items, NOT NULL, ON DELETE CASCADE | The statement |
+| mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–5 | Same ±1 rule as `user_progress` (correct +1 up to 5, wrong −1 down to 0), kept separately |
+| *(participant_id, knowledge_item_id)* | — | UNIQUE `unique_participant_statement` | |
+
+**Rules** (the same numbers live in `features/tournament/lib/scoring.ts`; a test checks the SQL still says so):
+
+| Rule | Enforced by |
+|------|-------------|
+| Mastery % = current_points / (N × 5) × 100; N = drillable statements (a non-drillable one can never be asked, so 100% stays reachable) | Generated column; `record_tournament_answer` gets the tree's drillable ids from the server and sums only those |
+| A practice day counts once: a later local day adds 1; more answers that day (or an earlier date) add nothing | `days_count = case when p_day > last_practiced_date then days_count + 1`, `last_practiced_date = greatest(...)`; `p_day` = the contestant's local day (browser timezone, UTC fallback, as for `practice_days`) |
+| Graduation at 100% is permanent, and a graduate's run is frozen | `is_graduated` is set when `max_points > 0 and current_points >= max_points`; later answers raise `TOURNAMENT_GRADUATED`; `graduated_at` is CHECK-paired with it |
+| Only a signed-in visitor on a public, hosting tree competes; never the host | `shared/lib/visitor.ts` `tournamentAccess` in the app, re-checked in `record_tournament_answer` (`TOURNAMENT_CLOSED`, `TOURNAMENT_HOST`) |
+| Points can't be posted: the server grades every answer (trap engine) | Players have **no** INSERT/UPDATE/DELETE on either table; `record_tournament_answer` is EXECUTE-able by `service_role` only (`features/tournament/services/answers.ts`, admin client) |
+| Isolation: `user_progress`, `practice_days`, `users.coins` never change | The function writes only the two tournament tables (tests check the SQL, and that the service never touches those tables) |
+| Boards never show emails | `get_tournament_active_board` / `get_tournament_hall_of_fame` return `users.full_name` only; the app falls back to the id-derived pseudonym |
+
+**Boards** (`SECURITY DEFINER`, EXECUTE for anon + authenticated; rows only for a tree the caller can read, i.e. public or their own; still readable after the host closes the tournament):
+- `get_tournament_active_board(deck_id)` (🌱 Đang Rèn Luyện): not graduated, `ORDER BY mastery_percentage DESC NULLS LAST, days_count ASC, updated_at ASC LIMIT 50` → `rank, user_id, display_name, current_points, max_points, mastery_percentage, days_count, updated_at`
+- `get_tournament_hall_of_fame(deck_id)` (📜 Bia Trạng Nguyên): graduated, `ORDER BY days_count ASC, graduated_at ASC` (every graduate) → `rank, user_id, display_name, max_points, days_count, graduated_at`
+
+⚠️ Known limits: visitors can read a shared tree's true statements (strict read-only mode, `getDeckReader`), so a contestant can look answers up; and a contestant who answers every statement five times in one sitting graduates in 1 day. The board measures days, not honesty or spacing.
 
 ### Progress & Gamification Feature
 
@@ -173,8 +221,10 @@ roles
             │                             │
             ├─1:N─► user_progress ◄─N:1───┘
             │       (N:M bridge: one row per user per knowledge_item)
-            └─1:N─► tree_visits ◄─N:1── decks
-                    (N:M bridge: one row per visitor per shared tree)
+            ├─1:N─► tree_visits ◄─N:1── decks
+            │       (N:M bridge: one row per visitor per shared tree)
+            └─1:N─► deck_tournament_participants ◄─N:1── decks
+                      └─1:N─► deck_tournament_item_progress ◄─N:1── knowledge_items
 ```
 
 ---
@@ -191,6 +241,7 @@ roles
 | mindmap_nodes → knowledge_items | 1:N | CASCADE |
 | **users ↔ knowledge_items** | N:M via `user_progress` | ⚠️ Decoupled progress: same public deck, separate progress per player |
 | users ↔ decks (visits) | N:M via `tree_visits` | Visited Gardens; both sides CASCADE |
+| users ↔ decks (tournament) | N:M via `deck_tournament_participants` | One run per contestant per tree; item levels in `deck_tournament_item_progress`; all CASCADE |
 
 ---
 
@@ -222,6 +273,10 @@ CREATE INDEX idx_knowledge_items_node_id ON public.knowledge_items(node_id);
 CREATE INDEX idx_tree_visits_user_visited_at ON public.tree_visits(user_id, visited_at DESC);
 CREATE INDEX idx_tree_visits_deck_id ON public.tree_visits(deck_id);   -- fast cascade deletes
 
+-- Mind Tournament (the UNIQUE constraints cover deck_id / participant_id lookups)
+CREATE INDEX idx_tournament_participants_user_id ON public.deck_tournament_participants(user_id);
+CREATE INDEX idx_tournament_item_progress_item_id ON public.deck_tournament_item_progress(knowledge_item_id);
+
 -- Progress
 CREATE UNIQUE INDEX idx_user_progress_user_item
   ON public.user_progress(user_id, knowledge_item_id);                    -- doubles as UNIQUE + upsert target
@@ -244,6 +299,8 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 | tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
+| deck_tournament_participants | Owner (boards through the two board functions) | ✗ (service role: `record_tournament_answer`) | ✗ (same) | ✗ (cascades only) |
+| deck_tournament_item_progress | Owner (through the participant) | ✗ (service role) | ✗ (service role) | ✗ (cascades only) |
 
 ```sql
 -- Decks: public or own
@@ -328,6 +385,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 7 | `20260928000600_profiles_and_sharing.sql` | Signup trigger reads Google metadata; `ensure_user_profile()` + backfill of missing profile rows (300 🪙); `decks.is_public` default `false`; `plant_deck()` ensures the profile first and plants private by default |
   | 8 | `20260928000700_clone_deck.sql` | `clone_deck()`: charge min(100 + statements, 150) 🪙 and deep-copy another gardener's public tree (roots + statements, no progress) into a private deck of the caller. Needs file 7 |
   | 9 | `20260928000800_tree_visits.sql` | `tree_visits` + RLS (read own) + `record_tree_visit()`, the only writer (another gardener's public tree only). Needs file 7 |
+  | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
 - ⚠️ **Existing hosted project**: its base schema was built in the dashboard before file 1 existed, and files 2 and 3 are already applied there. Don't run file 1 on it: it is re-runnable (`if not exists`, `drop policy if exists`), but it can't reconcile differences with the dashboard schema, and dashboard policies with other names would stay next to its policies (permissive policies OR together)
@@ -336,8 +394,9 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **Deploy order for file 6 on the hosted project**: run it together with the app deploy. The new app plants through `plant_deck`, which doesn't exist before the migration. The old app inserts decks directly, which is refused after it
 - **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
+- **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000800`
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000900`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing

@@ -8,7 +8,16 @@ import { answersByNode, readAnswersForNodes } from './answers'
 
 // Server-only shapes: these carry correctStmt, so they must never reach the client.
 // ownerId: only the owner may practise a deck (visitors are read-only; see drill/services/drillSession).
-export type DrillDeck = { id: string; slug: string; title: string; treeType: string; ownerId: string }
+// isPublic + isTournamentOpen: the one exception, Mind Tournament rounds (shared/lib/visitor tournamentAccess).
+export type DrillDeck = {
+  id: string
+  slug: string
+  title: string
+  treeType: string
+  ownerId: string
+  isPublic: boolean
+  isTournamentOpen: boolean
+}
 export type DrillSourceItem = {
   id: string
   nodeId: string
@@ -32,7 +41,9 @@ export async function listDrillItems(
   supabase: SupabaseClient<Database>,
   ref: DeckRef,
 ): Promise<ActionResult<{ deck: DrillDeck; nodes: DrillNode[]; items: DrillSourceItem[] }>> {
-  const deckQuery = supabase.from('decks').select('id, slug, title, tree_type, user_id')
+  // '*' (decks holds nothing secret) so this still works before migration 20260928000900 adds
+  // is_tournament_open.
+  const deckQuery = supabase.from('decks').select('*')
   const { data: deck, error: deckError } = await ('deckId' in ref
     ? deckQuery.eq('id', ref.deckId)
     : deckQuery.eq('slug', ref.slug)
@@ -86,7 +97,15 @@ export async function listDrillItems(
   )
 
   return ok({
-    deck: { id: deck.id, slug: deck.slug, title: deck.title, treeType: deck.tree_type, ownerId: deck.user_id },
+    deck: {
+      id: deck.id,
+      slug: deck.slug,
+      title: deck.title,
+      treeType: deck.tree_type,
+      ownerId: deck.user_id,
+      isPublic: deck.is_public,
+      isTournamentOpen: deck.is_tournament_open ?? false,
+    },
     nodes: nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })),
     items,
   })

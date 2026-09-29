@@ -17,6 +17,8 @@ export const toDeck = (row: Tables<'decks'>): Deck => ({
   isPublic: row.is_public,
   treeType: row.tree_type,
   createdAt: row.created_at,
+  // Before migration 20260928000900 the column doesn't exist: no tournament.
+  isTournamentOpen: row.is_tournament_open ?? false,
 })
 
 // The player's own garden: ONLY decks they own (user_id = the session user), public or private.

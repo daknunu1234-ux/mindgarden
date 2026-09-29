@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { submitDrillResult } from '@/features/progress'
+import { submitTournamentAnswer, type TournamentAnswer } from '@/features/tournament'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useStreak } from '@/shared/stores/StreakProvider'
@@ -26,9 +27,14 @@ export type RoundStats = {
   coinsEarned: number
 }
 
+// A Mind Tournament round: answers go to the contestant's isolated tournament progress on this tree.
+export type TournamentRound = { deckId: string }
+
 // Walks through a session one question at a time. Correct answers come only from the
 // server after the player picks: submitDrillResult (saves) when signed in, else checkDrillAnswer.
-export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean) {
+// In a tournament round every pick goes to submitTournamentAnswer instead (never user_progress),
+// and `standing` follows the contestant's tournament score after each answer.
+export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean, tournament: TournamentRound | null = null) {
   const { open: openLogin } = useLoginDialog()
   const { streak, setStreak } = useStreak()
   const { setCoins } = useCoins()
@@ -37,6 +43,7 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
   const [stats, setStats] = useState<RoundStats>({ correct: 0, improved: 0, mastered: 0, coinsEarned: 0 })
   const [saving, setSaving] = useState(isSignedIn)
   const [isPending, startTransition] = useTransition()
+  const [standing, setStanding] = useState<TournamentAnswer | null>(null)
 
   const question = questions[index]
 
@@ -50,6 +57,26 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
       let answer: DrillAnswer
       let progress: DrillProgress | null = null
+
+      if (tournament) {
+        const res = await submitTournamentAnswer({ ...input, deckId: tournament.deckId, timeZone })
+        if (!res.success) {
+          if (res.error.code === 'AUTH_UNAUTHORIZED') openLogin()
+          setState({ status: 'error', picked: tag, error: res.error })
+          return
+        }
+        answer = { isCorrect: res.data.isCorrect, correctTag: res.data.correctTag }
+        progress = { masteryLevel: res.data.masteryLevel, previousMasteryLevel: res.data.previousMasteryLevel, coinsEarned: 0 }
+        setStanding(res.data)
+        setStats((s) => ({
+          correct: s.correct + (answer.isCorrect ? 1 : 0),
+          improved: s.improved + (leveledUp(progress) ? 1 : 0),
+          mastered: s.mastered + (becameMighty(progress) ? 1 : 0),
+          coinsEarned: s.coinsEarned,
+        }))
+        setState({ status: 'feedback', picked: tag, answer, progress })
+        return
+      }
 
       const saved = saving ? await submitDrillResult({ ...input, timeZone }) : null
       if (saved?.success) {
@@ -106,5 +133,5 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
     setState({ status: 'answering' })
   }
 
-  return { question, index, total: questions.length, state, stats, saving, isPending, pick, retry, next }
+  return { question, index, total: questions.length, state, stats, saving: saving || tournament !== null, standing, isPending, pick, retry, next }
 }

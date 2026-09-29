@@ -14,6 +14,8 @@ export type DrillQuestion = {
 
 export type DrillSession = {
   deck: { id: string; slug: string; title: string; treeType: string }
+  // 'tournament': answers go to the Mind Tournament (submitTournamentAnswer), never user_progress.
+  mode: 'practice' | 'tournament'
   sessionId: string
   // Set when the round covers one branch (nodeId); null for the whole deck.
   focus: { nodeId: string; title: string } | null

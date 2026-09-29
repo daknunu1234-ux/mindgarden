@@ -23,3 +23,16 @@ export const GetDrillSessionDto = z.union([
 ])
 
 export type GetDrillSessionInput = z.infer<typeof GetDrillSessionDto>
+
+// A Mind Tournament round (/deck/[slug]/tournament): always the whole tree, mastered items rest.
+export const GetTournamentSessionDto = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(1, 'Slug is required')
+    .max(160, 'Slug is too long')
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be kebab-case'),
+  limit,
+})
+
+export type GetTournamentSessionInput = z.infer<typeof GetTournamentSessionDto>

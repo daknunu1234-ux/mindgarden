@@ -15,4 +15,8 @@ export type ErrorCode =
   | 'INSUFFICIENT_COINS'
   // Practising / grading a tree you don't own: visitors are read-only (clone it to practise).
   | 'FORBIDDEN_VISITOR_PRACTICE'
+  // Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (any more).
+  | 'TOURNAMENT_CLOSED'
+  // Mind Tournament: this contestant already graduated (engraved on the Bia Trạng Nguyên).
+  | 'TOURNAMENT_GRADUATED'
   | 'INTERNAL_ERROR'

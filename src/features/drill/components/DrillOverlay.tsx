@@ -1,10 +1,21 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { GameButton, GameIcon, GamePanel, GameProgressBar, GameSlab, KeyChip, ParticleBurst } from '@/shared/components/game'
+import { formatPracticeDays, type TournamentAnswer } from '@/features/tournament'
+import {
+  GameButton,
+  GameDialog,
+  GameDialogContent,
+  GameIcon,
+  GamePanel,
+  GameProgressBar,
+  GameSlab,
+  KeyChip,
+  ParticleBurst,
+} from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import { useDrillSession, type DrillState } from '../hooks/useDrillSession'
@@ -34,7 +45,15 @@ function moodOf(state: DrillState): WaterMood {
 function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   const router = useRouter()
   const { open: openLogin } = useLoginDialog()
-  const { question, index, total, state, stats, saving, isPending, pick, retry, next } = useDrillSession(session.questions, isSignedIn)
+  const isTournament = session.mode === 'tournament'
+  const { question, index, total, state, stats, saving, standing, isPending, pick, retry, next } = useDrillSession(
+    session.questions,
+    isSignedIn,
+    isTournament ? { deckId: session.deck.id } : null,
+  )
+  // The answer that completed the tree opens the graduation celebration once.
+  const [graduationSeen, setGraduationSeen] = useState(false)
+  const showGraduation = standing?.justGraduated === true && !graduationSeen
   useDrillShortcuts({
     status: state.status,
     tags: question?.choices.map((c) => c.tag) ?? [],
@@ -47,7 +66,10 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   useEffect(() => {
     if (isDone && grewRoots) celebrate()
   }, [isDone, grewRoots])
-  const deckHref = `/deck/${session.deck.slug}`
+  useEffect(() => {
+    if (showGraduation) celebrate()
+  }, [showGraduation])
+  const deckHref = isTournament ? `/deck/${session.deck.slug}#tournament` : `/deck/${session.deck.slug}`
   const answered = index + (state.status === 'feedback' || state.status === 'done' ? 1 : 0)
 
   return (
@@ -103,6 +125,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
             </p>
           )}
           {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} />}
+          {isTournament && standing && <TournamentScore standing={standing} />}
           {!saving && (
             <p className="mt-4 text-center text-sm font-medium">
               <button type="button" onClick={openLogin} className="font-game font-bold text-emerald-800 underline underline-offset-4">
@@ -113,10 +136,10 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
           )}
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <GameButton tone="leaf" size="lg" onClick={() => router.refresh()}>
-              💧 Water again
+              {isTournament ? '⚔️ Next round' : '💧 Water again'}
             </GameButton>
             <GameButton asChild tone="wood" size="lg">
-              <Link href={deckHref}>Back to tree</Link>
+              <Link href={deckHref}>{isTournament ? '📜 Leaderboard' : 'Back to tree'}</Link>
             </GameButton>
           </div>
         </GamePanel>
@@ -149,12 +172,48 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
         )
       )}
 
+      {isTournament && (
+        <GameDialog open={showGraduation} onOpenChange={(open) => !open && setGraduationSeen(true)}>
+          <GameDialogContent title="🎓 Đỗ Trạng Nguyên!" ribbon="gold" tone="gold">
+            <ParticleBurst variant="gold" count={28} radius={170} />
+            <p className="text-center font-game text-2xl font-extrabold text-amber-950">You mastered every statement of “{session.deck.title}”!</p>
+            <p className="mt-2 text-center text-amber-900/80">
+              {standing ? `It took you ${formatPracticeDays(standing.daysCount)}. ` : ''}Your name is now engraved on the 📜 Bia Trạng Nguyên,
+              forever.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <GameButton asChild tone="sun" size="lg">
+                <Link href={deckHref}>See the Bia Trạng Nguyên 📜</Link>
+              </GameButton>
+              <GameButton tone="cream" size="lg" onClick={() => setGraduationSeen(true)}>
+                Keep going
+              </GameButton>
+            </div>
+          </GameDialogContent>
+        </GameDialog>
+      )}
+
       {session.skippedCount > 0 && (
         <p className="text-center text-xs font-medium text-amber-900/60">
           {session.skippedCount} {session.skippedCount === 1 ? 'item was' : 'items were'} skipped: their statements have no word the
           trap engine can flip yet.
         </p>
       )}
+    </div>
+  )
+}
+
+// Tournament round summary: the contestant's score on this tree after the last answer.
+function TournamentScore({ standing }: { standing: TournamentAnswer }) {
+  const percent = standing.masteryPercentage ?? 0
+  return (
+    <div className="mt-5 rounded-[20px] border-[2.5px] border-[#e0a818] bg-gradient-to-b from-[#fffdf0] to-[#ffeaa0] p-4 text-center shadow-[inset_0_2px_0_#fff,0_4px_0_#c28c0e]">
+      <p className="font-game text-sm font-bold tracking-wide text-amber-900/70 uppercase">⚔️ Mind Tournament</p>
+      <p className="font-game text-3xl font-extrabold text-amber-950 tabular-nums">{percent.toFixed(Number.isInteger(percent) ? 0 : 2)}%</p>
+      <p className="text-sm font-semibold text-amber-900/75 tabular-nums">
+        {standing.currentPoints} / {standing.maxPoints} mastery points · {formatPracticeDays(standing.daysCount)}
+      </p>
+      {standing.isGraduated && <p className="mt-2 font-game font-bold text-amber-900">🎓 Engraved on the Bia Trạng Nguyên!</p>}
     </div>
   )
 }

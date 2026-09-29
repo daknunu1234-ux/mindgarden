@@ -20,7 +20,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 
 - **Session**: Supabase session cookie via `createServerClient` (`@supabase/ssr`) in `src/shared/lib/supabase/server.ts`
 - **Identity**: `supabase.auth.getUser()` on the server; `userId` is never accepted from the client
-- **Anonymous**: may explore and read public decks (strict read-only). Drills are **owner-only**: `getDrillSession`, `checkDrillAnswer` and `submitDrillResult` need a session AND the deck's owner, else `FORBIDDEN_VISITOR_PRACTICE` (`shared/lib/visitor.ts` `canPractice`). Visitors clone a tree (`cloneDeck`) to practise it
+- **Anonymous**: may explore and read public decks (strict read-only), and read Mind Tournament boards. Drills are **owner-only**: `getDrillSession`, `checkDrillAnswer` and `submitDrillResult` need a session AND the deck's owner, else `FORBIDDEN_VISITOR_PRACTICE` (`shared/lib/visitor.ts` `canPractice`). Visitors clone a tree (`cloneDeck`) to practise it. The one exception is a **Mind Tournament**: a signed-in visitor may drill a public tree whose owner hosts one (`getTournamentSession`, `submitTournamentAnswer`), with an isolated score
 
 | Auth | Meaning |
 |------|---------|
@@ -68,6 +68,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `DRILL_NO_ITEMS` | 422 | Node has no drillable item (none left, or all `INSUFFICIENT_MUTATIONS`) |
 | `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs 100 🪙 (`createDeck`), cloning one costs min(100 + statements, 150) 🪙 (`cloneDeck`) |
 | `FORBIDDEN_VISITOR_PRACTICE` | 403 | Practising or grading a tree you don't own (strict read-only visitor mode, signed out included). Message: "You must clone this tree to your garden to practice it!" (`getDrillSession`, `checkDrillAnswer`, `submitDrillResult`) |
+| `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
+| `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved on the Bia Trạng Nguyên); your run is frozen |
 | `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
@@ -97,6 +99,10 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `updateMindmapNode` | Action/POST | Owner renames a root | Required |
 | Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root | Required |
 | Decks | `deleteKnowledgeItem` | Action/POST | Owner removes a statement | Required |
+| Decks | `setTournamentOpen` | Action/POST | Owner opens or closes the tree's Mind Tournament (public trees only) | Required (owner) |
+| Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
+| Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
+| Tournament | `getTournamentBoards` | Action | Bia Trạng Nguyên + Active Learners boards, and your own standing | Optional |
 | Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
@@ -248,6 +254,56 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - Strict read-only visitor mode: `/deck/[slug]` shows visitors every statement (mindmap cards, root inspector, the "📖 Read this Tree" list) with no edit controls and no drill links. The deck's `is_public` (or ownership) is checked with the player's client before `answers.ts` reads with the service role
 - Revealing statements is safe here because visitors can't be graded on this tree (`FORBIDDEN_VISITOR_PRACTICE`), so knowing them earns no mastery or coins
 
+### `setTournamentOpen` (decks)
+```typescript
+// Input (SetTournamentOpenDto): { deckId: string; isOpen: boolean }
+// data: the updated deck (getDecks row shape, with isTournamentOpen)
+// Errors: VALIDATION_FAILED (also: opening a private tree, "Share the tree with the community first"),
+//         AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- Owner-only "🏆 Host Mind Tournament (Allow visitors to compete)" switch in the Tree Workshop (`TournamentHostToggle`). Closing keeps every result: the boards stay readable and graduates stay engraved; re-opening continues the same runs
+- `revalidatePath('/deck/<slug>')`
+
+### `getTournamentSession` (drill)
+```typescript
+// Input (GetTournamentSessionDto): { slug: string; limit?: number /* 1–50, default 20 */ }
+// data: a DrillSession with mode: 'tournament' (same shape as getDrillSession; focus null, includeMastered false)
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (you host it), TOURNAMENT_CLOSED (private tree, or not hosting),
+//         TOURNAMENT_GRADUATED, DECK_NOT_FOUND, DRILL_NO_ITEMS, DRILL_ALL_MASTERED, INTERNAL_ERROR
+```
+- The one exception to strict read-only visitor mode: a signed-in visitor drills someone else's **public** tree while its owner hosts a tournament (`shared/lib/visitor.ts` `tournamentAccess`). Page: `/deck/[slug]/tournament`
+- The whole tree; the contestant's **tournament** levels (`tournament/server` `fetchTournamentLevels`, never `user_progress`) rest 5/5 statements; review mode doesn't apply
+
+### `submitTournamentAnswer` (tournament)
+```typescript
+// Input (SubmitTournamentAnswerDto): { deckId: string; itemId: string; seed: string; tag: 'A' | 'B' | 'C'; timeZone?: string }
+// data
+{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
+  masteryLevel: 0–5; previousMasteryLevel: 0–5;          // this statement's TOURNAMENT level
+  currentPoints: number; maxPoints: number;              // Σ levels / 5 × N (N = drillable statements)
+  masteryPercentage: number | null;                      // 2 decimals; null without drillable statements
+  daysCount: number;                                     // distinct local practice days on this tree
+  isGraduated: boolean; justGraduated: boolean }         // justGraduated: this answer completed the tree
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (the host), TOURNAMENT_CLOSED,
+//         TOURNAMENT_GRADUATED, DECK_NOT_FOUND, ITEM_NOT_FOUND (not a drillable statement of this tree), INTERNAL_ERROR
+```
+- **Grading** on the server, exactly like `submitDrillResult` (re-run the trap engine with the seed and the node's siblings); then `record_tournament_answer` (service role) applies ±1, counts a new local day once, recomputes points over the tree's current drillable statements and graduates at 100% (DATABASE.md "Mind Tournament")
+- **Isolated**: never writes `user_progress`, `practice_days` (streak) or coins. A graduate's run is frozen (`TOURNAMENT_GRADUATED`)
+- The drill overlay shows the score after each round and a "🎓 Đỗ Trạng Nguyên!" dialog with confetti on `justGraduated`
+
+### `getTournamentBoards` (tournament)
+```typescript
+// Input: { deckId: string }
+// data
+{ hallOfFame: { rank; userId; name; maxPoints; daysCount; graduatedAt }[];            // 📜 Bia Trạng Nguyên: days ASC, graduatedAt ASC
+  active: { rank; userId; name; currentPoints; maxPoints; masteryPercentage; daysCount; updatedAt }[];  // 🌱 Đang Rèn Luyện: % DESC, days ASC, updatedAt ASC (top 50)
+  standing: { currentPoints; maxPoints; masteryPercentage; daysCount; isGraduated; graduatedAt } | null }  // the signed-in viewer's own run
+// Errors: VALIDATION_FAILED, INTERNAL_ERROR
+```
+- Auth optional; rows only for a readable tree (public, or your own), also after the host closed the tournament
+- `name` = the contestant's profile name, else the app-wide pseudonym (`shared/lib/neighborName`). Emails are never returned
+- Before migration `20260928000900` the board functions don't exist: empty boards (logged)
+
 ### `getDrillQuestion` (drill)
 ```typescript
 // Input (DrillQuestionDto): { nodeId: string; sessionId: string; excludeItemIds?: string[] /* max 50 */ }
@@ -268,6 +324,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // includeMastered: review mode: mix the player's 5/5 items back in (normally they rest)
 // data
 { deck: { id: string; slug: string; title: string; treeType: string };
+  mode: 'practice' | 'tournament';           // 'tournament' only from getTournamentSession
   sessionId: string;                          // crypto.randomUUID() per call
   focus: { nodeId: string; title: string } | null;   // set for a branch round
   questions: { itemId: string; nodeTitle: string; prompt: string;
