@@ -7,13 +7,14 @@ import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
 const ID = '6f1c2a8e-2b1e-4c8a-9d3f-1a2b3c4d5e6f'
 
 describe('CreateDeckDto', () => {
-  it('fills the documented defaults and turns an empty description into null', () => {
+  it('fills the documented defaults (private until shared) and turns an empty description into null', () => {
     expect(CreateDeckDto.parse({ title: '  Sinh học  ', description: '' })).toEqual({
       title: 'Sinh học',
       description: null,
       treeType: 'oak',
-      isPublic: true,
+      isPublic: false,
     })
+    expect(CreateDeckDto.parse({ title: 'x', isPublic: true }).isPublic).toBe(true)
   })
 
   it('rejects an empty title and unknown tree skins', () => {

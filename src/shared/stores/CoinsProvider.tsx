@@ -1,22 +1,26 @@
 'use client'
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+
+// A balance with the moment it was known (epoch ms).
+export type CoinsSnapshot = { coins: number; at: number }
 
 type CoinsContextValue = {
-  // Latest 🪙 balance the client has seen (from a saved drill answer); null until then.
-  coins: number | null
-  setCoins: (next: number | null) => void
+  // Latest 🪙 balance this client learned from an action (drill answer, planting, top-up).
+  live: CoinsSnapshot | null
+  setCoins: (coins: number | null) => void
 }
 
 const CoinsContext = createContext<CoinsContextValue | null>(null)
 
-// The gold balance as seen during this visit. The drill writes it after each saved answer (the
-// server returns totalCoins), so the farm HUD shows the new balance right away, even when the
-// router reuses a cached farm page. Revalidating in the drill action instead would re-render the
-// drill route and restart the round (same reason as StreakProvider).
+// The gold balance as seen during this visit. Actions that change it (a drill answer's first
+// mastery, planting a seed, a shop top-up) push the new total here, so the HUD and the planting
+// form update right away, even when the router reuses a cached page. Server pages pass their own
+// snapshot with its time; whichever is newer is shown (freshestCoins).
 function CoinsProvider({ children }: { children: ReactNode }) {
-  const [coins, setCoins] = useState<number | null>(null)
-  const value = useMemo(() => ({ coins, setCoins }), [coins])
+  const [live, setLive] = useState<CoinsSnapshot | null>(null)
+  const setCoins = useCallback((coins: number | null) => setLive(coins === null ? null : { coins, at: Date.now() }), [])
+  const value = useMemo(() => ({ live, setCoins }), [live, setCoins])
   return <CoinsContext.Provider value={value}>{children}</CoinsContext.Provider>
 }
 
@@ -26,12 +30,18 @@ function useCoins(): CoinsContextValue {
   return ctx
 }
 
-// What to display: the newest of the server's figure and the client's. Coins only ever go up
-// (nothing to spend yet), so the larger value is the newer one.
-export function freshestCoins(server: number | null, client: number | null): number | null {
-  if (server === null) return client
-  if (client === null) return server
-  return Math.max(server, client)
+// Pure: the balance to display. Coins can go down now (planting spends them), so the newer
+// snapshot wins, not the larger one. On a tie the client's (it came from an action) wins.
+export function freshestCoins(server: CoinsSnapshot | null, client: CoinsSnapshot | null): number | null {
+  if (!server) return client?.coins ?? null
+  if (!client) return server.coins
+  return client.at >= server.at ? client.coins : server.coins
 }
 
-export { CoinsProvider, useCoins }
+// Convenience for components: the displayed balance given the server's figure and when it was read.
+function useDisplayedCoins(serverCoins: number | null, serverAt: number | undefined): number | null {
+  const { live } = useCoins()
+  return freshestCoins(serverCoins === null ? null : { coins: serverCoins, at: serverAt ?? 0 }, live)
+}
+
+export { CoinsProvider, useCoins, useDisplayedCoins }

@@ -38,9 +38,30 @@ export async function readSessionUser(supabase: SupabaseClient<Database>): Promi
   return user ? { id: user.id, email: user.email ?? '', createdAt: user.created_at } : null
 }
 
-// For /auth/callback. Returns false when the code is missing, expired or from another browser.
+// For /auth/callback (magic links and OAuth such as Google both land there). Returns false when
+// the code is missing, expired or from another browser. On success, makes sure the player's
+// profile row exists (with the 300 🪙 starter purse) even if the signup trigger didn't run.
 export async function exchangeAuthCode(supabase: SupabaseClient<Database>, code: string): Promise<boolean> {
   const { error } = await supabase.auth.exchangeCodeForSession(code)
-  if (error) console.error('[auth] exchangeCodeForSession failed', error.status, error.code)
-  return !error
+  if (error) {
+    console.error('[auth] exchangeCodeForSession failed', error.status, error.code)
+    return false
+  }
+  await ensureUserProfile(supabase)
+  return true
+}
+
+// Creates the signed-in player's missing public.users row (300 coins) and returns their balance;
+// an existing row is never changed. Never blocks sign-in: failures are logged and return null.
+export async function ensureUserProfile(supabase: SupabaseClient<Database>): Promise<number | null> {
+  const { data, error } = await supabase.rpc('ensure_user_profile')
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      console.error('[auth] ensure_user_profile is missing: run supabase/migrations/20260928000600_profiles_and_sharing.sql')
+    } else {
+      console.error('[auth] ensureUserProfile failed', error.code, error.message)
+    }
+    return null
+  }
+  return typeof data === 'number' ? data : null
 }

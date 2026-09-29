@@ -271,6 +271,21 @@ export type Database = {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]
       }
+      // Migration 20260928000500_seed_economy.sql. Runs as the caller (auth.uid()); charges 100 🪙.
+      plant_deck: {
+        Args: { p_title: string; p_slug: string; p_description: string | null; p_is_public: boolean; p_tree_type: string }
+        Returns: { deck_id: string; remaining_coins: number }[]
+      }
+      // Migration 20260928000600: the caller's profile row (created with 300 🪙 if missing) → balance.
+      ensure_user_profile: {
+        Args: Record<string, never>
+        Returns: number
+      }
+      // Service role only: test top-ups (Coin Shop dev mode).
+      dev_grant_coins: {
+        Args: { p_user_id: string; p_amount: number }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

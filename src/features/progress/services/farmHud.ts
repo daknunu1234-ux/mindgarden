@@ -25,6 +25,7 @@ export async function loadFarmHud(supabase: SupabaseClient<Database>, userId: st
     level: gardenerLevel(xpFromLevels(masteryLevels)),
     // A missing balance (e.g. before the coins migration) shows as 0 rather than hiding the HUD.
     coins: coins.success ? coins.data : 0,
+    coinsAsOf: Date.now(),
     // A missing streak shows as 0 rather than hiding the HUD.
     streak: streaks.success ? streaks.data : { current: 0, best: 0, practicedToday: false, lastDay: null },
   })

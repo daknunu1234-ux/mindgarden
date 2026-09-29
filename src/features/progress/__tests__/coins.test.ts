@@ -3,11 +3,18 @@ import { freshestCoins } from '@/shared/stores/CoinsProvider'
 import { COINS_PER_MASTERED_ITEM, shouldAwardMasteryCoin } from '../lib/coins'
 
 describe('freshestCoins (HUD balance)', () => {
-  it('shows the newer of the server and client balances (coins only go up)', () => {
-    expect(freshestCoins(4, 5)).toBe(5)
-    expect(freshestCoins(7, 5)).toBe(7)
-    expect(freshestCoins(null, 3)).toBe(3)
-    expect(freshestCoins(2, null)).toBe(2)
+  it('shows the newer snapshot, even when it is lower (coins can be spent)', () => {
+    // Planted a seed after the page loaded: 300 → 200 must win over the cached 300.
+    expect(freshestCoins({ coins: 300, at: 1_000 }, { coins: 200, at: 2_000 })).toBe(200)
+    // The page was re-read after an older live value: the server wins.
+    expect(freshestCoins({ coins: 250, at: 3_000 }, { coins: 200, at: 2_000 })).toBe(250)
+    // Same moment: the action's value wins.
+    expect(freshestCoins({ coins: 10, at: 5 }, { coins: 11, at: 5 })).toBe(11)
+  })
+
+  it('falls back to whichever exists', () => {
+    expect(freshestCoins(null, { coins: 3, at: 1 })).toBe(3)
+    expect(freshestCoins({ coins: 2, at: 1 }, null)).toBe(2)
     expect(freshestCoins(null, null)).toBeNull()
   })
 })

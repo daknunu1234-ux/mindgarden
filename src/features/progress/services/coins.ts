@@ -37,12 +37,41 @@ export async function awardMasteryCoin(userId: string, itemId: string): Promise<
   return ok({ coinsEarned: row?.coins_earned ?? 0, totalCoins: row?.total_coins ?? 0 })
 }
 
-// The player's balance (their own users row, readable with their session).
+// Test top-up for the Coin Shop's dev mode (no payment yet). The action refuses it in production;
+// dev_grant_coins is service-role only and capped at 100 per call in the database.
+export async function grantDevCoins(userId: string, amount: number): Promise<ActionResult<number>> {
+  const admin = createAdminClient()
+  if (!admin) {
+    console.error('[progress] grantDevCoins: SUPABASE_SERVICE_ROLE_KEY is not set')
+    return fail('INTERNAL_ERROR', 'Could not add test coins')
+  }
+  const { data, error } = await admin.rpc('dev_grant_coins', { p_user_id: userId, p_amount: amount })
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      console.error('[progress] grantDevCoins: run supabase/migrations/20260928000500_seed_economy.sql')
+    } else {
+      logCoinError('grantDevCoins', error)
+    }
+    return fail('INTERNAL_ERROR', 'Could not add test coins')
+  }
+  return ok(typeof data === 'number' ? data : 0)
+}
+
+// The player's balance (their own users row, readable with their session). No row means the signup
+// trigger never created the profile: ensure_user_profile() creates it with the 300 🪙 starter purse
+// (migration 20260928000600) instead of silently reporting 0.
 export async function readCoins(supabase: SupabaseClient<Database>, userId: string): Promise<ActionResult<number>> {
   const { data, error } = await supabase.from('users').select('coins').eq('id', userId).maybeSingle()
   if (error) {
     logCoinError('readCoins', error)
     return fail('INTERNAL_ERROR', 'Could not load your coins')
   }
-  return ok(data?.coins ?? 0)
+  if (data) return ok(data.coins ?? 0)
+
+  const healed = await supabase.rpc('ensure_user_profile')
+  if (healed.error) {
+    logCoinError('readCoins (ensure_user_profile)', healed.error)
+    return ok(0)
+  }
+  return ok(typeof healed.data === 'number' ? healed.data : 0)
 }

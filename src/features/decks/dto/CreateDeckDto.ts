@@ -14,7 +14,8 @@ export const CreateDeckDto = z.object({
     .optional()
     .transform((v) => v || null),
   treeType: z.enum(TREE_TYPES).default('oak'),
-  isPublic: z.boolean().default(true),
+  // Private until the owner shares it (DB default false, migration 20260928000600).
+  isPublic: z.boolean().default(false),
 })
 
 export type CreateDeckInput = z.infer<typeof CreateDeckDto>

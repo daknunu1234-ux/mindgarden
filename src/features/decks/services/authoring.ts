@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
+import { SEED_PRICE_COINS } from '@/shared/lib/economy'
 import { slugify } from '@/shared/utils/slugify'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
@@ -30,27 +31,46 @@ function* slugCandidates(title: string) {
   yield `${base}-${crypto.randomUUID().slice(0, 6)}`
 }
 
-export async function insertDeck(supabase: Client, userId: string, input: CreateDeckInput): Promise<ActionResult<Deck>> {
+export type PlantedDeck = { deck: Deck; remainingCoins: number }
+
+// Plants a tree for SEED_PRICE_COINS through plant_deck() (migration 20260928000500), which charges
+// the signed-in player and inserts the deck in one transaction. A slug collision (23505) rolls the
+// charge back, so trying the next slug never charges twice. Players can't INSERT into decks
+// directly, so the fee can't be skipped.
+export async function plantDeck(supabase: Client, input: CreateDeckInput): Promise<ActionResult<PlantedDeck>> {
   for (const slug of slugCandidates(input.title)) {
-    const { data, error } = await supabase
-      .from('decks')
-      .insert({
-        user_id: userId,
-        title: input.title,
-        slug,
-        description: input.description,
-        is_public: input.isPublic,
-        tree_type: input.treeType,
-      })
-      .select('*')
-      .single()
+    const { data, error } = await supabase.rpc('plant_deck', {
+      p_title: input.title,
+      p_slug: slug,
+      p_description: input.description,
+      p_is_public: input.isPublic,
+      p_tree_type: input.treeType,
+    })
 
-    if (!error) return ok(toDeck(data))
-    if (error.code === UNIQUE_VIOLATION) continue
+    if (error) {
+      if (error.code === UNIQUE_VIOLATION) continue
+      if (error.message?.includes('INSUFFICIENT_COINS')) {
+        return fail('INSUFFICIENT_COINS', `You need ${SEED_PRICE_COINS} coins to buy a seed for a new tree!`)
+      }
+      if (error.message?.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to plant a tree')
+      // PGRST202 / 42883: plant_deck is missing (run 20260928000500_seed_economy.sql).
+      // 23503: the player has no public.users row (handle_new_user trigger missing?).
+      console.error('[decks] plantDeck failed', error.code, error.message)
+      return fail('INTERNAL_ERROR', 'Could not plant this tree')
+    }
 
-    // 23503 here: the player has no public.users row (handle_new_user trigger missing?).
-    console.error('[decks] insertDeck failed', error.code, error.message)
-    return fail('INTERNAL_ERROR', 'Could not plant this tree')
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) {
+      console.error('[decks] plantDeck returned no row')
+      return fail('INTERNAL_ERROR', 'Could not plant this tree')
+    }
+    // Read the new deck back with the player's own client (RLS: owner).
+    const { data: deck, error: readError } = await supabase.from('decks').select('*').eq('id', row.deck_id).single()
+    if (readError || !deck) {
+      console.error('[decks] plantDeck read-back failed', readError)
+      return fail('INTERNAL_ERROR', 'Your tree was planted, but we could not load it')
+    }
+    return ok({ deck: toDeck(deck), remainingCoins: row.remaining_coins })
   }
   return fail('INTERNAL_ERROR', 'Could not find a free link for this tree')
 }

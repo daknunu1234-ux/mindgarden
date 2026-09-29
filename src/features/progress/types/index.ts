@@ -21,4 +21,5 @@ export type DrillResult = GradedAnswer & {
 }
 
 // getFarmHud payload: gardener level + daily streak + 🪙 balance (users.coins) for the farm HUD.
-export type FarmHud = { level: GardenerLevel; streak: Streaks; coins: number }
+// coinsAsOf: when the balance was read (epoch ms), so the client can tell it from newer live values.
+export type FarmHud = { level: GardenerLevel; streak: Streaks; coins: number; coinsAsOf: number }

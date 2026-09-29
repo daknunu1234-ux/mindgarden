@@ -72,7 +72,24 @@ const MEDALLIONS: Record<PillTone, string> = {
 
 // Top-right: one floating stat pod (🔥 streak, 🪙 coins, 💎 Mighty Root gems). `icon` is a
 // GameIcon name, or any node (e.g. an emoji).
-function ResourcePill({ icon, value, label, hint, tone }: { icon: GameIconName | React.ReactNode; value: React.ReactNode; label: string; hint?: string; tone: PillTone }) {
+function ResourcePill({
+  icon,
+  value,
+  label,
+  hint,
+  tone,
+  onAdd,
+  addLabel,
+}: {
+  icon: GameIconName | React.ReactNode
+  value: React.ReactNode
+  label: string
+  hint?: string
+  tone: PillTone
+  // Optional chunky "+" on the right end (e.g. open the Coin Shop).
+  onAdd?: () => void
+  addLabel?: string
+}) {
   return (
     <div title={hint} className="pointer-events-auto relative flex items-center pb-1">
       <PodShadow className="w-[70%]" />
@@ -82,10 +99,27 @@ function ResourcePill({ icon, value, label, hint, tone }: { icon: GameIconName |
       >
         {typeof icon === 'string' && isIconName(icon) ? <GameIcon name={icon} className="size-7" /> : icon}
       </span>
-      <span className={cn(POD, '-ml-4 flex h-9 min-w-16 items-center justify-end rounded-l-none pr-3.5 pl-6 font-game text-lg leading-none font-extrabold text-[#4a2511] tabular-nums')}>
+      <span
+        className={cn(
+          POD,
+          '-ml-4 flex h-9 min-w-16 items-center justify-end rounded-l-none pl-6 font-game text-lg leading-none font-extrabold text-[#4a2511] tabular-nums',
+          onAdd ? 'pr-8' : 'pr-3.5',
+        )}
+      >
         <span className="sr-only">{label}: </span>
         {value}
       </span>
+      {onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-label={addLabel ?? `Get more ${label.toLowerCase()}`}
+          title={addLabel ?? `Get more ${label.toLowerCase()}`}
+          className="absolute top-0.5 -right-2 z-10 flex size-8 items-center justify-center rounded-full border-[2.5px] border-[#0b6b3a] bg-gradient-to-b from-[#6ee7a0] via-[#34c774] to-[#16a34a] font-game text-xl leading-none font-extrabold text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.45),0_3px_0_#0b6b3a] [text-shadow:0_1.5px_0_rgba(6,78,59,0.6)] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] hover:scale-110 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:translate-y-0.5 active:shadow-none"
+        >
+          +
+        </button>
+      )}
     </div>
   )
 }

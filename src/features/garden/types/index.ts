@@ -35,6 +35,8 @@ export type FarmHudView = {
   streak: { current: number; practicedToday: boolean } | null
   // 🪙 5 per mastery step earned in any deck.
   coins: number | null
+  // When `coins` was read on the server (epoch ms); newer live balances from actions win.
+  coinsAsOf?: number
   // 💎 Mighty Roots on this island.
   gems: number
 }

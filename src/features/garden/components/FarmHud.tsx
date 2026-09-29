@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
 import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, ResourcePill } from '@/shared/components/game'
-import { freshestCoins, useCoins } from '@/shared/stores/CoinsProvider'
+import { SEED_PRICE_COINS } from '@/shared/lib/economy'
+import { useCoinShop } from '@/shared/stores/CoinShopProvider'
+import { useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import type { FarmHudView } from '../types'
@@ -27,8 +29,10 @@ function LevelBadge({ level }: { level: FarmHudView['level'] }) {
 // Top-right: streak flame, gold coins, gems.
 function Counters({ hud }: { hud: FarmHudView }) {
   const streak = hud.streak
-  // Balance from the latest drill answer this visit, if newer than the server's figure.
-  const { coins: liveCoins } = useCoins()
+  // The newer of the server's balance and the latest one an action reported this visit.
+  const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
+  const { open: openShop } = useCoinShop()
+  const signedIn = hud.level !== null
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
       <ResourcePill
@@ -47,9 +51,11 @@ function Counters({ hud }: { hud: FarmHudView }) {
       <ResourcePill
         icon="coin"
         tone="gold"
-        value={freshestCoins(hud.coins, liveCoins) ?? 0}
+        value={coins ?? 0}
         label="Gold coins"
-        hint="1 gold coin the first time you master a statement (5/5)"
+        hint={`A tree seed costs ${SEED_PRICE_COINS} coins. Earn 1 the first time you master a statement (5/5)`}
+        onAdd={signedIn ? openShop : undefined}
+        addLabel="Open the Coin Shop"
       />
       <ResourcePill icon="gem" tone="gem" value={hud.gems} label="Gems" hint="One gem per Mighty Root (all statements at 5/5) on this island" />
     </div>
