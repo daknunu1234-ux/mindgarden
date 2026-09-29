@@ -11,7 +11,7 @@ import { collapsibleNodeIds, indexNodes } from '../hooks/collapse'
 import { ancestorKeys, branchNodeIds, CROWN_Y, descendantKeys, layoutMindmap, nodeKey, type MindmapCard } from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery } from '../hooks/nodeMastery'
 import { conduitPath, groundPath, rootStroke, sceneGeometry, type SurfaceBox } from '../hooks/scene'
-import type { ItemLevels, MindmapPractice, RootNodeView } from '../types'
+import type { ItemLevels, MindmapOwnerTools, MindmapPractice, RootNodeView } from '../types'
 import { NodePill, StatementCard } from './MindmapCards'
 import { NodeInspector } from './NodeInspector'
 
@@ -29,6 +29,8 @@ type RootMapProps = {
   // these to the decks feature; the mindmap itself never calls actions.
   onManage?: (nodeId: string) => void
   onAddRoot?: () => void
+  // Deck owners: 🗑️ delete a statement / 'Delete Root' in the root drawer (the page confirms).
+  ownerTools?: MindmapOwnerTools
   // Practice shortcuts ("Drill Root" / "Compete Root") open the page's launch pop-up. null = strict
   // read-only visitor mode: no practice at all (visitors clone, or join a hosted Mind Tournament).
   practice?: MindmapPractice | null
@@ -41,7 +43,7 @@ type RootMapProps = {
 // trunk → category pills in a row → statements and sub-branches stacked in columns, joined by
 // Bezier roots. Pills collapse their branch; everything at 5/5 glows gold. Layout is pure
 // (hooks/mindmapLayout.ts); the camera (drag, pinch, Ctrl/⌘ + wheel, fit) is shared with the farm.
-function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAddRoot, practice = null, statements }: RootMapProps) {
+function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAddRoot, ownerTools, practice = null, statements }: RootMapProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [activeKey, setActiveKey] = useState<string | null>(null)
   // Root shown in the inspector drawer (its branch is expanded and lit on the canvas).
@@ -315,6 +317,7 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
         onOpenChange={(open) => !open && setInspectedId(null)}
         onInspect={inspect}
         onManage={onManage}
+        ownerTools={ownerTools}
         practice={practice}
         statements={statements}
       />

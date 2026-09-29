@@ -100,8 +100,9 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `getDeckReader` | Action | Read-only roots + true statements of a public tree (or your own), for visitors | Optional |
 | Decks | `updateDeck` | Action/POST | Owner edits title, description, species, visibility | Required |
 | Decks | `updateMindmapNode` | Action/POST | Owner renames a root | Required |
-| Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root | Required |
-| Decks | `deleteKnowledgeItem` | Action/POST | Owner removes a statement | Required |
+| Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root (the UI now uses `deleteRootBranch`) | Required |
+| Decks | `deleteRootBranch` | Action/POST | Owner deletes a root with its sub-roots, statements and their progress | Required |
+| Decks | `deleteKnowledgeItem` | Action/POST | Owner deletes a statement and its progress | Required |
 | Decks | `setTournamentOpen` | Action/POST | Owner opens or closes the tree's Mind Tournament (public trees only) | Required (owner) |
 | Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
 | Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
@@ -418,14 +419,20 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - The slug never changes, so links stay stable
 
-### `updateMindmapNode` / `deleteMindmapNode` / `deleteKnowledgeItem` (decks)
+### `updateMindmapNode` / `deleteMindmapNode` / `deleteKnowledgeItem` / `deleteRootBranch` (decks)
 ```typescript
-// updateMindmapNode({ nodeId, title /* 1–150 */ }) → { id, title }
-// deleteMindmapNode({ nodeId })                   → { id }   only when the root has no statements and no sub-roots
-// deleteKnowledgeItem({ itemId })                 → { id }   players' user_progress rows for it cascade away
-// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND, ITEM_NOT_FOUND, NODE_NOT_EMPTY (delete root), INTERNAL_ERROR
+// updateMindmapNode({ nodeId, title /* 1–150 */ })  → { id, title }
+// deleteMindmapNode({ nodeId })                    → { id }   only when the root has no statements and no sub-roots
+// deleteKnowledgeItem({ deckId, itemId })          → { id }   everyone's user_progress + deck_tournament_item_progress on it cascade away
+// deleteRootBranch({ deckId, rootId })             → { rootId, deletedStatements, deletedSubRoots }
+//   one DELETE of the root row; the database cascades sub-roots (parent FK), their knowledge_items, and
+//   every user_progress / deck_tournament_item_progress row on those items
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (root not in this deck),
+//         ITEM_NOT_FOUND (statement not in this deck), NODE_NOT_EMPTY (deleteMindmapNode only), INTERNAL_ERROR
 ```
-- Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard; used by the mindmap's ✏️ manage dialog
+- Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The deletes revalidate `/deck/<slug>`
+- UI (owner only, never rendered for visitors or contestants): 🗑️ on each statement and "🗑️ Delete Root" in the Tree Workshop list, the root drawer and the ✏️ manage dialog, each behind a confirmation ("Delete Statement"; "Delete Root Branch" with the number of statements and sub-roots it removes). A deleted root open in the drawer / manage dialog closes on the refresh
+- ⚠️ Mind Tournament totals: a contestant's stored `current_points` / `max_points` are recomputed on their next answer, so the boards show the old totals for them until then
 
 ### `deleteDeck` (decks)
 ```typescript

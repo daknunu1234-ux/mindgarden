@@ -6,7 +6,7 @@ import { isMastered, MASTERY_NAMES, masteryFraction, MAX_MASTERY, toMasteryLevel
 import { cn } from '@/shared/utils/cn'
 import { statementLabel } from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery, isMightyRoot } from '../hooks/nodeMastery'
-import type { ItemLevels, MindmapPractice, RootNodeView } from '../types'
+import type { ItemLevels, MindmapOwnerTools, MindmapPractice, RootNodeView } from '../types'
 import { MasteryRing } from './MasteryRing'
 
 type NodeInspectorProps = {
@@ -17,6 +17,7 @@ type NodeInspectorProps = {
   onInspect: (nodeId: string) => void
   // Owners only.
   onManage?: (nodeId: string) => void
+  ownerTools?: MindmapOwnerTools
   // "Drill Root" / "Compete Root" open the page's launch pop-up; null = read-only visitor (clone to
   // practise), statements shown as text.
   practice?: MindmapPractice | null
@@ -25,7 +26,7 @@ type NodeInspectorProps = {
 
 // Side drawer for one root: its statements (the text when the page passes it), mastery, sub-branches
 // and the Drill Root / Compete Root shortcut. Opening/closing it never touches the canvas camera.
-function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, practice = null, statements }: NodeInspectorProps) {
+function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, ownerTools, practice = null, statements }: NodeInspectorProps) {
   return (
     <Sheet open={node !== null} onOpenChange={onOpenChange}>
       <SheetContent
@@ -38,6 +39,7 @@ function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, practi
             levels={levels}
             onInspect={onInspect}
             onManage={onManage}
+            ownerTools={ownerTools}
             practice={practice}
             statements={statements}
           />
@@ -52,6 +54,7 @@ function InspectorBody({
   levels,
   onInspect,
   onManage,
+  ownerTools,
   practice = null,
   statements,
 }: Omit<NodeInspectorProps, 'node' | 'onOpenChange'> & { node: RootNodeView }) {
@@ -118,6 +121,11 @@ function InspectorBody({
               ✏️ Manage
             </GameButton>
           )}
+          {ownerTools && (
+            <GameButton tone="danger" onClick={() => ownerTools.onDeleteRoot(node.id)}>
+              🗑️ Delete Root
+            </GameButton>
+          )}
         </div>
       </SheetHeader>
 
@@ -141,7 +149,20 @@ function InspectorBody({
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
                   )}
                 >
-                  <p className="text-sm font-semibold text-stone-800">{statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)}</p>
+                  <div className="flex items-start gap-2">
+                    <p className="min-w-0 flex-1 text-sm font-semibold text-stone-800">{statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)}</p>
+                    {ownerTools && (
+                      <button
+                        type="button"
+                        onClick={() => ownerTools.onDeleteStatement({ id: item.id, text: statementLabel(statements?.[item.id], item.prompt, node.title, i + 1) })}
+                        aria-label={`Delete statement ${i + 1}`}
+                        title="Delete statement"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-xs hover:bg-red-100 focus-visible:ring-4 focus-visible:ring-red-300 focus-visible:outline-none"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
                   <div className="mt-1.5 flex items-center gap-2">
                     <GameProgressBar
                       value={lvl}

@@ -8,8 +8,13 @@ export const UpdateMindmapNodeDto = z.object({
 
 export const DeleteMindmapNodeDto = z.object({ nodeId: z.uuid('Invalid root') })
 
-export const DeleteKnowledgeItemDto = z.object({ itemId: z.uuid('Invalid statement') })
+// deckId: the tree the statement is expected in (a statement of another tree is ITEM_NOT_FOUND).
+export const DeleteKnowledgeItemDto = z.object({ deckId: z.uuid('Invalid tree'), itemId: z.uuid('Invalid statement') })
+
+// A whole root branch: the root, its sub-roots and every statement in them (and their progress).
+export const DeleteRootBranchDto = z.object({ deckId: z.uuid('Invalid tree'), rootId: z.uuid('Invalid root') })
 
 export type UpdateMindmapNodeInput = z.infer<typeof UpdateMindmapNodeDto>
 export type DeleteMindmapNodeInput = z.infer<typeof DeleteMindmapNodeDto>
 export type DeleteKnowledgeItemInput = z.infer<typeof DeleteKnowledgeItemDto>
+export type DeleteRootBranchInput = z.infer<typeof DeleteRootBranchDto>

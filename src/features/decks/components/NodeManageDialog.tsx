@@ -18,10 +18,9 @@ import {
 import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
-import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
-import { deleteMindmapNode } from '../actions/deleteMindmapNode'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import { BulkStatementImporter } from './BulkStatementImporter'
+import { DeleteRootDialog, DeleteStatementDialog, type StatementToDelete } from './DeleteDialogs'
 import type { EditorItem } from '../types'
 
 export type ManagedNode = {
@@ -30,6 +29,9 @@ export type ManagedNode = {
   // Owner-only statement texts (from getDeckEditor); never shown to players.
   statements: EditorItem[]
   childCount: number
+  // What deleting the root takes with it: statements and sub-roots in the whole branch.
+  branchStatements: number
+  subRoots: number
 }
 
 type NodeManageDialogProps = {
@@ -41,7 +43,7 @@ type NodeManageDialogProps = {
 type Notice = { tone: 'gold' | 'amber'; text: string } | null
 
 // Owner tools for one root, opened from the mindmap, as a tabbed wooden drawer: Statements
-// (add / remove), Branches (add a sub-branch), Root (rename / delete when empty). Every change
+// (add / bulk add / delete), Branches (add a sub-branch), Root (rename / delete the whole branch). Every change
 // refreshes the page data in place, so the canvas keeps its zoom and pan.
 function NodeManageDialog({ deckId, node, onOpenChange }: NodeManageDialogProps) {
   return (
@@ -65,9 +67,9 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
   const [branch, setBranch] = useState('')
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<Notice>(null)
-  const [confirmItem, setConfirmItem] = useState<string | null>(null)
-  const [confirmRoot, setConfirmRoot] = useState(false)
-  const empty = node.statements.length === 0 && node.childCount === 0
+  // Confirmation dialogs (DeleteDialogs): a statement, or this whole root branch.
+  const [deleting, setDeleting] = useState<StatementToDelete | null>(null)
+  const [deletingRoot, setDeletingRoot] = useState(false)
 
   // Run an action, show its result, refresh the page data in place.
   const run = (action: () => Promise<{ success: boolean; error?: { message: string } }>, done: string, after?: () => void) => {
@@ -158,32 +160,22 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
                       <span className="font-game text-xs font-bold text-amber-900/50">#{i + 1} </span>
                       {item.statement}
                     </span>
-                    {confirmItem === item.id ? (
-                      <span className="flex shrink-0 items-center gap-1.5">
-                        <GameButton
-                          tone="clay"
-                          size="sm"
-                          disabled={isPending}
-                          onClick={() => run(() => deleteKnowledgeItem({ itemId: item.id }), 'Statement removed', () => setConfirmItem(null))}
-                        >
-                          Remove
-                        </GameButton>
-                        <GameButton tone="cream" size="sm" onClick={() => setConfirmItem(null)}>
-                          Keep
-                        </GameButton>
-                      </span>
-                    ) : (
-                      <GameButton tone="cream" size="icon-sm" aria-label={`Remove statement ${i + 1}`} onClick={() => setConfirmItem(item.id)}>
-                        <Trash2 className="size-4" />
-                      </GameButton>
-                    )}
+                    <GameButton
+                      tone="cream"
+                      size="icon-sm"
+                      aria-label={`Delete statement ${i + 1}`}
+                      title="Delete statement"
+                      onClick={() => setDeleting({ id: item.id, text: item.statement })}
+                    >
+                      <Trash2 className="size-4" />
+                    </GameButton>
                   </GameSlab>
                 </li>
               ))}
             </ul>
           )}
           {node.statements.length > 0 && (
-            <p className="text-xs text-amber-900/60">Removing a statement also removes players&apos; progress on it.</p>
+            <p className="text-xs text-amber-900/60">Deleting a statement also deletes everyone&apos;s progress on it.</p>
           )}
         </GameTabsContent>
 
@@ -215,31 +207,14 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
             </div>
           </form>
 
-          <div className="rounded-xl border-2 border-dashed border-amber-900/20 p-3">
-            {empty ? (
-              confirmRoot ? (
-                <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                  <span className="flex-1">Delete this root for good?</span>
-                  <GameButton
-                    tone="clay"
-                    size="sm"
-                    disabled={isPending}
-                    onClick={() => run(() => deleteMindmapNode({ nodeId: node.id }), 'Root deleted', onClose)}
-                  >
-                    Delete
-                  </GameButton>
-                  <GameButton tone="cream" size="sm" onClick={() => setConfirmRoot(false)}>
-                    Keep
-                  </GameButton>
-                </div>
-              ) : (
-                <GameButton tone="cream" size="sm" onClick={() => setConfirmRoot(true)}>
-                  <Trash2 className="size-4" /> Delete root
-                </GameButton>
-              )
-            ) : (
-              <p className="text-xs text-amber-900/65">Empty a root (no statements or sub-branches) to delete it.</p>
-            )}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-dashed border-[#f08c8c] bg-[#fff5f5]/70 p-3">
+            <p className="min-w-0 flex-1 text-xs text-[#7f1d1d]">
+              Deletes this root, {node.subRoots > 0 ? `its ${node.subRoots} ${node.subRoots === 1 ? 'sub-root' : 'sub-roots'}, ` : ''}
+              {node.branchStatements} {node.branchStatements === 1 ? 'statement' : 'statements'} and everyone&apos;s progress on them.
+            </p>
+            <GameButton tone="danger" size="sm" onClick={() => setDeletingRoot(true)}>
+              <Trash2 className="size-4" /> Delete Root
+            </GameButton>
           </div>
         </GameTabsContent>
       </GameTabs>
@@ -258,6 +233,24 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
           Done
         </GameButton>
       </div>
+
+      <DeleteStatementDialog
+        deckId={deckId}
+        statement={deleting}
+        onClose={(deleted) => {
+          setDeleting(null)
+          if (deleted) setNotice({ tone: 'gold', text: 'Statement deleted' })
+        }}
+      />
+      <DeleteRootDialog
+        deckId={deckId}
+        root={deletingRoot ? { id: node.id, title: node.title, statements: node.branchStatements, subRoots: node.subRoots } : null}
+        onClose={(deleted) => {
+          setDeletingRoot(false)
+          // The root is gone: close the manage dialog too (the page refresh removes it from the map).
+          if (deleted) onClose()
+        }}
+      />
     </div>
   )
 }

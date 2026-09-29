@@ -1,9 +1,20 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { AddRootDialog, NodeManageDialog, type DeckEditorData, type DeckTreeNode, type ManagedNode } from '@/features/decks'
+import {
+  AddRootDialog,
+  branchImpact,
+  DeleteRootDialog,
+  DeleteStatementDialog,
+  NodeManageDialog,
+  type DeckEditorData,
+  type DeckTreeNode,
+  type ManagedNode,
+  type RootToDelete,
+  type StatementToDelete,
+} from '@/features/decks'
 import { useSessionLaunch } from '@/features/drill'
-import { RootMap, type ItemLevels, type MindmapPractice } from '@/features/mindmap'
+import { RootMap, type ItemLevels, type MindmapOwnerTools, type MindmapPractice } from '@/features/mindmap'
 
 type DeckRootsPanelProps = {
   deckId: string
@@ -36,6 +47,10 @@ export function DeckRootsPanel({
 }: DeckRootsPanelProps) {
   const [manageId, setManageId] = useState<string | null>(null)
   const [addRootOpen, setAddRootOpen] = useState(false)
+  // Owner deletes from the root drawer (decks' confirmation dialogs). A deleted root that is open in
+  // the drawer or the manage dialog closes by itself after the refresh (its id no longer resolves).
+  const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
+  const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
   const practice: MindmapPractice | null = useMemo(
     () => (practiceMode && launch ? { mode: practiceMode, onPractice: (request) => launch.open(request) } : null),
@@ -56,8 +71,28 @@ export function DeckRootsPanel({
   // Rebuilt from fresh props after every refresh, so the dialog shows the latest statements.
   const managed: ManagedNode | null = useMemo(() => {
     const node = manageId ? editor?.nodes.find((n) => n.id === manageId) : undefined
-    return node ? { id: node.id, title: node.title, statements: node.items, childCount: childCount.get(node.id) ?? 0 } : null
-  }, [manageId, editor, childCount])
+    if (!node) return null
+    const impact = branchImpact(tree, node.id)
+    return {
+      id: node.id,
+      title: node.title,
+      statements: node.items,
+      childCount: childCount.get(node.id) ?? 0,
+      branchStatements: impact?.statements ?? node.items.length,
+      subRoots: impact?.subRoots ?? 0,
+    }
+  }, [manageId, editor, childCount, tree])
+
+  const ownerTools: MindmapOwnerTools | undefined = useMemo(
+    () => (editor ? { onDeleteStatement: setDeletingStatement, onDeleteRoot: setDeletingRootId } : undefined),
+    [editor],
+  )
+  const rootToDelete: RootToDelete | null = useMemo(() => {
+    if (!deletingRootId) return null
+    const title = editor?.nodes.find((n) => n.id === deletingRootId)?.title
+    const impact = branchImpact(tree, deletingRootId)
+    return title && impact ? { id: deletingRootId, title, ...impact } : null
+  }, [deletingRootId, editor, tree])
 
   return (
     <>
@@ -68,6 +103,7 @@ export function DeckRootsPanel({
         surface={surface}
         emptyLabel={emptyLabel}
         onManage={editor ? setManageId : undefined}
+        ownerTools={ownerTools}
         onAddRoot={editor ? () => setAddRootOpen(true) : undefined}
         practice={practice}
         statements={statements}
@@ -76,6 +112,8 @@ export function DeckRootsPanel({
         <>
           <NodeManageDialog deckId={deckId} node={managed} onOpenChange={(open) => !open && setManageId(null)} />
           <AddRootDialog deckId={deckId} open={addRootOpen} onOpenChange={setAddRootOpen} />
+          <DeleteStatementDialog deckId={deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
+          <DeleteRootDialog deckId={deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
         </>
       )}
     </>

@@ -13,7 +13,8 @@ import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
 import type { SetTournamentOpenInput } from '../dto/SetTournamentOpenDto'
 import type { DeleteDeckInput } from '../dto/DeleteDeckDto'
 import type { UpdateDeckInput } from '../dto/UpdateDeckDto'
-import type { DeleteKnowledgeItemInput, DeleteMindmapNodeInput, UpdateMindmapNodeInput } from '../dto/ManageRootsDto'
+import type { DeleteKnowledgeItemInput, DeleteMindmapNodeInput, DeleteRootBranchInput, UpdateMindmapNodeInput } from '../dto/ManageRootsDto'
+import { branchNodeIds } from '../lib/branch'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
 import { answersByNode, readAnswersForNodes } from './answers'
 import { toDeck } from './decks'
@@ -497,12 +498,14 @@ export async function removeMindmapNode(
   return ok({ id: nodeId })
 }
 
-// Removing a statement also removes players' progress on it (user_progress cascades).
+// Removing a statement also removes everyone's progress on it: user_progress and the Mind
+// Tournament's deck_tournament_item_progress reference it with ON DELETE CASCADE (foreign-key
+// cascades run regardless of RLS). Owner only; the statement must be in `deckId`.
 export async function removeKnowledgeItem(
   supabase: Client,
   userId: string,
-  { itemId }: DeleteKnowledgeItemInput,
-): Promise<ActionResult<{ id: string }>> {
+  { deckId, itemId }: DeleteKnowledgeItemInput,
+): Promise<ActionResult<{ id: string; slug: string }>> {
   const { data: item, error: itemError } = await supabase.from('knowledge_items').select('id, node_id').eq('id', itemId).maybeSingle()
   if (itemError) {
     console.error('[decks] removeKnowledgeItem lookup failed', itemError)
@@ -512,13 +515,60 @@ export async function removeKnowledgeItem(
 
   const node = await findNodeDeck(supabase, item.node_id)
   if (!node.success) return node
-  const owner = await checkDeckOwner(supabase, node.data.deckId, userId)
+  if (node.data.deckId !== deckId) return fail('ITEM_NOT_FOUND', 'Statement not found in this tree')
+  const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
 
-  const { error } = await supabase.from('knowledge_items').delete().eq('id', itemId)
+  // RETURNING id: 0 rows means RLS refused the delete (not the owner after all).
+  const { data, error } = await supabase.from('knowledge_items').delete().eq('id', itemId).select('id')
   if (error) {
     console.error('[decks] removeKnowledgeItem failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not remove the statement')
   }
-  return ok({ id: itemId })
+  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can delete statements')
+  return ok({ id: itemId, slug: owner.data.slug })
+}
+
+export type RemovedBranch = { rootId: string; slug: string; deletedStatements: number; deletedSubRoots: number }
+
+// Deletes a whole root branch: ONE delete of the root row, and the database cascades the rest
+// (sub-roots via the self-referencing FK, their knowledge_items, and everyone's user_progress and
+// deck_tournament_item_progress on those items). Owner only; the root must be in `deckId`. The
+// counts are taken first, for the confirmation / result message.
+export async function removeRootBranch(
+  supabase: Client,
+  userId: string,
+  { deckId, rootId }: DeleteRootBranchInput,
+): Promise<ActionResult<RemovedBranch>> {
+  const node = await findNodeDeck(supabase, rootId)
+  if (!node.success) return node
+  if (node.data.deckId !== deckId) return fail('NODE_NOT_FOUND', 'Root not found in this tree')
+  const owner = await checkDeckOwner(supabase, deckId, userId)
+  if (!owner.success) return owner
+
+  const { data: nodes, error: nodesError } = await supabase.from('mindmap_nodes').select('id, parent_id').eq('deck_id', deckId)
+  if (nodesError) {
+    console.error('[decks] removeRootBranch nodes failed', nodesError)
+    return fail('INTERNAL_ERROR', 'Could not delete the root')
+  }
+  const branch = branchNodeIds(
+    nodes.map((n) => ({ id: n.id, parentId: n.parent_id })),
+    rootId,
+  )
+  const { count, error: countError } = await supabase
+    .from('knowledge_items')
+    .select('id', { count: 'exact', head: true })
+    .in('node_id', [...branch])
+  if (countError) {
+    console.error('[decks] removeRootBranch count failed', countError)
+    return fail('INTERNAL_ERROR', 'Could not delete the root')
+  }
+
+  const { data, error } = await supabase.from('mindmap_nodes').delete().eq('id', rootId).select('id')
+  if (error) {
+    console.error('[decks] removeRootBranch failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not delete the root')
+  }
+  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can delete roots')
+  return ok({ rootId, slug: owner.data.slug, deletedStatements: count ?? 0, deletedSubRoots: branch.size - 1 })
 }

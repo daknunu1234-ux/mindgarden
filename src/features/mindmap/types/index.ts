@@ -16,4 +16,11 @@ export type MindmapPractice = {
   onPractice: (request: { rootId: string; review?: boolean }) => void
 }
 
+// Owner-only delete hooks for the root drawer (the page opens decks' confirmation dialogs; the
+// mindmap never deletes anything itself). Absent for everyone else.
+export type MindmapOwnerTools = {
+  onDeleteStatement: (statement: { id: string; text: string }) => void
+  onDeleteRoot: (rootId: string) => void
+}
+
 export type ItemLevels = Readonly<Record<string, number>>

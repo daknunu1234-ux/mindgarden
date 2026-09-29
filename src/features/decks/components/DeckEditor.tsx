@@ -7,7 +7,9 @@ import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
 import { updateDeck } from '../actions/updateDeck'
+import { flatBranchImpact } from '../lib/branch'
 import { BulkStatementImporter } from './BulkStatementImporter'
+import { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './DeleteDialogs'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
 
@@ -19,6 +21,13 @@ type DeckEditorProps = { editor: DeckEditorData }
 // Owner-only: add roots (optionally under another root) and plain-text statements.
 // Trap rules are never shown; items get { negate: true } on the server.
 function DeckEditor({ editor }: DeckEditorProps) {
+  // Confirmation dialogs for 🗑️ a statement / "Delete Root" (a root with its whole branch).
+  const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
+  const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
+  const rootNode = deletingRootId ? editor.nodes.find((n) => n.id === deletingRootId) : undefined
+  const impact = deletingRootId ? flatBranchImpact(editor.nodes, deletingRootId) : null
+  const rootToDelete: RootToDelete | null = rootNode && impact ? { id: rootNode.id, title: rootNode.title, ...impact } : null
+
   return (
     <div className="space-y-5">
       <SpeciesForm deckId={editor.deckId} treeType={editor.treeType} />
@@ -27,11 +36,13 @@ function DeckEditor({ editor }: DeckEditorProps) {
         <ul className="space-y-4">
           {editor.nodes.map((node) => (
             <li key={node.id} style={{ marginLeft: `${Math.min(node.depth, 4) * 1.25}rem` }}>
-              <NodeEditor deckId={editor.deckId} node={node} />
+              <NodeEditor deckId={editor.deckId} node={node} onDeleteStatement={setDeletingStatement} onDeleteRoot={() => setDeletingRootId(node.id)} />
             </li>
           ))}
         </ul>
       )}
+      <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
+      <DeleteRootDialog deckId={editor.deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
     </div>
   )
 }
@@ -119,7 +130,14 @@ function AddRootForm({ deckId, nodes }: { deckId: string; nodes: EditorNode[] })
   )
 }
 
-function NodeEditor({ deckId, node }: { deckId: string; node: EditorNode }) {
+type NodeEditorProps = {
+  deckId: string
+  node: EditorNode
+  onDeleteStatement: (statement: StatementToDelete) => void
+  onDeleteRoot: () => void
+}
+
+function NodeEditor({ deckId, node, onDeleteStatement, onDeleteRoot }: NodeEditorProps) {
   const router = useRouter()
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<{ tone: 'amber' | 'gold'; text: string } | null>(null)
@@ -140,7 +158,12 @@ function NodeEditor({ deckId, node }: { deckId: string; node: EditorNode }) {
 
   return (
     <GameSlab tone="leaf" className="p-4 text-emerald-950">
-      <p className="font-game text-lg font-bold">🌱 {node.title}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-game text-lg font-bold">🌱 {node.title}</p>
+        <GameButton type="button" tone="danger" size="sm" onClick={onDeleteRoot} aria-label={`Delete root ${node.title}`}>
+          🗑️ Delete Root
+        </GameButton>
+      </div>
 
       {node.items.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm">
@@ -149,10 +172,19 @@ function NodeEditor({ deckId, node }: { deckId: string; node: EditorNode }) {
               <span aria-hidden className="pt-0.5">
                 {item.drillable ? '✅' : '💧'}
               </span>
-              <span className="whitespace-pre-wrap">
+              <span className="min-w-0 flex-1 whitespace-pre-wrap">
                 {item.statement}
                 {!item.drillable && <span className="sr-only"> (not drillable yet)</span>}
               </span>
+              <button
+                type="button"
+                onClick={() => onDeleteStatement({ id: item.id, text: item.statement })}
+                aria-label="Delete statement"
+                title="Delete statement"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-xs hover:bg-red-100 focus-visible:ring-4 focus-visible:ring-red-300 focus-visible:outline-none"
+              >
+                🗑️
+              </button>
             </li>
           ))}
         </ul>
