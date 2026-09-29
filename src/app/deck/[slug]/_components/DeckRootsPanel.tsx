@@ -12,13 +12,28 @@ type DeckRootsPanelProps = {
   levels: ItemLevels
   // Owner-only editor data (statement texts); null for everyone else, who only inspect.
   editor: DeckEditorData | null
+  // Strict visitor mode: false hides every practice link (visitors must clone to practise), and
+  // visitorStatements (item id → text) lets them read the whole tree.
+  canPractice: boolean
+  visitorStatements?: Readonly<Record<string, string>>
   surface: { width: number; height: number; baseX: number; baseY: number; content: ReactNode }
   emptyLabel: string
 }
 
 // Route-level composition: the mindmap canvas (mindmap feature) + owner tools (decks feature).
 // Manage dialogs refresh page data in place, so the canvas keeps its camera and re-lays out.
-export function DeckRootsPanel({ deckId, deckSlug, treeType, tree, levels, editor, surface, emptyLabel }: DeckRootsPanelProps) {
+export function DeckRootsPanel({
+  deckId,
+  deckSlug,
+  treeType,
+  tree,
+  levels,
+  editor,
+  canPractice,
+  visitorStatements,
+  surface,
+  emptyLabel,
+}: DeckRootsPanelProps) {
   const [manageId, setManageId] = useState<string | null>(null)
   const [addRootOpen, setAddRootOpen] = useState(false)
 
@@ -50,6 +65,8 @@ export function DeckRootsPanel({ deckId, deckSlug, treeType, tree, levels, edito
         emptyLabel={emptyLabel}
         onManage={editor ? setManageId : undefined}
         onAddRoot={editor ? () => setAddRootOpen(true) : undefined}
+        canPractice={canPractice}
+        statements={visitorStatements}
       />
       {editor && (
         <>

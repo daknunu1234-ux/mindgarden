@@ -31,13 +31,18 @@ type RootMapProps = {
   // these to the decks feature; the mindmap itself never calls actions.
   onManage?: (nodeId: string) => void
   onAddRoot?: () => void
+  // Strict read-only visitor mode: false hides every drill / practice link (visitors must clone
+  // the tree to practise it). Defaults to true (the owner).
+  canPractice?: boolean
+  // Visitors only: item id → true statement text, so they can read the whole tree.
+  statements?: Readonly<Record<string, string>>
 }
 
 // "Inspect Roots": the deck's knowledge as a mindmap growing out of the tree. Crown under the
 // trunk → category pills in a row → statements and sub-branches stacked in columns, joined by
 // Bezier roots. Pills collapse their branch; everything at 5/5 glows gold. Layout is pure
 // (hooks/mindmapLayout.ts); the camera (drag, pinch, Ctrl/⌘ + wheel, fit) is shared with the farm.
-function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onManage, onAddRoot }: RootMapProps) {
+function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onManage, onAddRoot, canPractice = true, statements }: RootMapProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [activeKey, setActiveKey] = useState<string | null>(null)
   // Root shown in the inspector drawer (its branch is expanded and lit on the canvas).
@@ -278,7 +283,12 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
                     onBlur={() => setActiveKey((k) => (k === card.key ? null : k))}
                   >
                     {card.kind === 'statement' ? (
-                      <StatementCard card={card} level={masteryOf(card) ?? 0} drillHref={nodeHref} />
+                      <StatementCard
+                        card={card}
+                        level={masteryOf(card) ?? 0}
+                        drillHref={canPractice ? nodeHref : null}
+                        statement={card.itemId ? statements?.[card.itemId] : undefined}
+                      />
                     ) : (
                       <NodePill
                         card={card}
@@ -306,6 +316,8 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
         onOpenChange={(open) => !open && setInspectedId(null)}
         onInspect={inspect}
         onManage={onManage}
+        canPractice={canPractice}
+        statements={statements}
       />
     </div>
   )

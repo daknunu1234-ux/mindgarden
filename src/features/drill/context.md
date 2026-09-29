@@ -8,10 +8,10 @@ None. Reads items through `@/features/decks/server`.
 ## Exports (`index.ts`)
 | Export | Notes |
 |--------|-------|
-| `getDrillSession({ slug } \| { deckId }, nodeId?, limit?, includeMastered?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `NODE_NOT_FOUND`, `DRILL_NO_ITEMS`, `DRILL_ALL_MASTERED`. Auth: Optional. `nodeId` limits the round to that root and its sub-roots (`lib/branch.ts` `collectBranch`); the session carries `focus`. Signed in: 5/5 items rest unless `includeMastered` (`lib/queue.ts` `selectPracticeItems`, levels via `progress/server` `fetchMasteryLevels`); the session carries `masteredCount` and `includeMastered` |
+| `getDrillSession({ slug } \| { deckId }, nodeId?, limit?, includeMastered?)` | Server Action → `ActionResult<DrillSession>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `NODE_NOT_FOUND`, `DRILL_NO_ITEMS`, `DRILL_ALL_MASTERED`, `FORBIDDEN_VISITOR_PRACTICE`. Auth: owner only (strict read-only visitor mode: `services/drillSession.ts` refuses anyone but the deck's owner, signed out included, via `shared/lib/visitor.ts` `canPractice`, before building questions). `nodeId` limits the round to that root and its sub-roots (`lib/branch.ts` `collectBranch`); the session carries `focus`. Signed in: 5/5 items rest unless `includeMastered` (`lib/queue.ts` `selectPracticeItems`, levels via `progress/server` `fetchMasteryLevels`); the session carries `masteredCount` and `includeMastered` |
 | `ReviewModeToggle({ on, href, masteredCount })` | "🌿 Include Mastered Items (Review Mode)" switch (a link, so the mode lives in `?review=1`) |
 | `drillHref(slug, { nodeId?, review? })`, `isReviewParam(v)` | Pure URL helpers for rounds and review mode (`lib/drillHref.ts`) |
-| `checkDrillAnswer({ itemId, seed, tag })` | Server Action → `ActionResult<DrillAnswer>`. Grades via `progress/server`, saves nothing. Auth: Public |
+| `checkDrillAnswer({ itemId, seed, tag })` | Server Action → `ActionResult<DrillAnswer>`. Grades via `progress/server`, saves nothing. Auth: owner only (`FORBIDDEN_VISITOR_PRACTICE` otherwise) |
 | `DrillOverlay({ session, isSignedIn })` | Client. The "Watering Session": round gauge, `WateringScene` (can pours on the roots after each answer; roots glow gold or amber), question plaque, tactile choice slabs with `[1] [2] [3]` key chips → feedback (gold / amber + `MutationHighlight`, 3-notch mastery gauge and a `ParticleBurst` on level-up when saved) → trophy summary, confetti if any root grew |
 | types | `DrillSession`, `DrillQuestion`, `DrillAnswer`, `DrillChoice`, `DrillTag` |
 
@@ -24,6 +24,7 @@ None. Reads items through `@/features/decks/server`.
 
 ## Rules
 - The client never receives `correctStmt` or `correctTag` before answering
+- Only the deck's owner practises it. Visitors get `FORBIDDEN_VISITOR_PRACTICE` ("You must clone this tree to your garden to practice it!"); the drill page shows it with decks' `CloneTreeButton`. A clone has no progress rows, so it practises from 0/5 (`__tests__/queue.test.ts`)
 - Questions have 3 choices (A/B/C), or 2 (A/B) when the engine finds only one trap; items with no trap are skipped (`skippedCount`)
 - No hearts, lives or timers. Correct = gold, wrong = amber
 

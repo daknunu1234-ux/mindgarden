@@ -15,7 +15,7 @@ function GardenGrid({ decks }: GardenGridProps) {
         <p aria-hidden className="text-5xl">
           🌱
         </p>
-        <p className="mt-3 text-amber-900/75">Public decks will grow here as soon as someone plants one.</p>
+        <p className="mt-3 text-amber-900/75">Your own trees grow here. Neighbours&apos; shared trees are in Community Gardens on the farm.</p>
         <GameButton asChild tone="leaf" size="lg" className="mt-6">
           <Link href="/deck/new">Plant a Tree 🌱</Link>
         </GameButton>

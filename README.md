@@ -19,6 +19,9 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    | 3 | `20260928000200_practice_days.sql` | Daily streak log |
    | 4 | `20260928000300_user_coins.sql` | 🪙 Gold coins (one per statement mastered for the first time) |
    | 5 | `20260928000400_mastery_scale_5.sql` | Mastery scale 0–5 (5 correct answers to master a statement) |
+   | 6 | `20260928000500_seed_economy.sql` | 300 🪙 starting purse, 100 🪙 per tree seed, dev test top-ups |
+   | 7 | `20260928000600_profiles_and_sharing.sql` | Starter purse for every signup (incl. Google), private-by-default trees |
+   | 8 | `20260928000700_clone_deck.sql` | Clone a shared tree into your garden for min(100 + statements, 150) 🪙 |
 
    With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
    Supabase Dashboard → SQL Editor, and paste and run each file in the order above.

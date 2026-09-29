@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDrillItems } from '@/features/decks/server'
 import { generateTraps } from '@/shared/lib/trapEngine'
+import { canPractice, VISITOR_PRACTICE_MESSAGE } from '@/shared/lib/visitor'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
@@ -15,19 +16,22 @@ import type { DrillQuestion, DrillSession } from '../types'
 // Builds a shuffled practice round for a deck, or for one branch when input.nodeId is set
 // (that node and all its sub-roots). Answers stay on the server:
 // questions carry only choices + seed, and checkDrillAnswer re-runs the engine to grade.
-// `loadLevels` returns the player's mastery for the given items (omitted when signed out): 5/5
-// items sit out unless input.includeMastered (review mode).
+// Only the deck's OWNER may practise it (strict read-only visitor mode): anyone else, including a
+// signed-out visitor, gets FORBIDDEN_VISITOR_PRACTICE and must clone the tree first.
+// `loadLevels` returns the player's mastery for the given items: 5/5 items sit out unless
+// input.includeMastered (review mode).
 export type LoadLevels = (itemIds: string[]) => Promise<ReadonlyMap<string, number>>
 
 export async function buildDrillSession(
   supabase: SupabaseClient<Database>,
   input: GetDrillSessionInput,
   sessionId: string,
-  loadLevels?: LoadLevels,
+  { viewerId, loadLevels }: { viewerId: string | null; loadLevels?: LoadLevels },
 ): Promise<ActionResult<DrillSession>> {
   const ref = 'deckId' in input ? { deckId: input.deckId } : { slug: input.slug }
   const res = await listDrillItems(supabase, ref)
   if (!res.success) return res
+  if (!canPractice(res.data.deck.ownerId, viewerId)) return fail('FORBIDDEN_VISITOR_PRACTICE', VISITOR_PRACTICE_MESSAGE)
 
   let items = res.data.items
   let focus: DrillSession['focus'] = null

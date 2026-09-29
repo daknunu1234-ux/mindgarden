@@ -5,6 +5,7 @@ import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { SEED_PRICE_COINS } from '@/shared/lib/economy'
 import { slugify } from '@/shared/utils/slugify'
+import type { CloneDeckInput } from '../dto/CloneDeckDto'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
@@ -71,6 +72,54 @@ export async function plantDeck(supabase: Client, input: CreateDeckInput): Promi
       return fail('INTERNAL_ERROR', 'Your tree was planted, but we could not load it')
     }
     return ok({ deck: toDeck(deck), remainingCoins: row.remaining_coins })
+  }
+  return fail('INTERNAL_ERROR', 'Could not find a free link for this tree')
+}
+
+export type ClonedDeck = { deck: Deck; remainingCoins: number; cost: number }
+
+// Clones another gardener's shared tree through clone_deck() (migration 20260928000700), which
+// charges min(100 + statements, 150) 🪙 and deep-copies roots + statements in one transaction.
+// Like plantDeck, a slug collision (23505) rolls the charge back, so the next slug never
+// double-charges. Progress is never copied: the cloner starts every statement at 0/5.
+export async function cloneSharedDeck(supabase: Client, { deckId }: CloneDeckInput): Promise<ActionResult<ClonedDeck>> {
+  // Visible to the caller only if it's theirs or public (RLS); the RPC re-checks both.
+  const { data: source, error: sourceError } = await supabase.from('decks').select('title').eq('id', deckId).maybeSingle()
+  if (sourceError) {
+    console.error('[decks] cloneSharedDeck source lookup failed', sourceError)
+    return fail('INTERNAL_ERROR', 'Could not clone this tree')
+  }
+  if (!source) return fail('DECK_NOT_FOUND', 'This tree is not shared (anymore)')
+
+  for (const slug of slugCandidates(source.title)) {
+    const { data, error } = await supabase.rpc('clone_deck', { p_source_deck_id: deckId, p_slug: slug })
+
+    if (error) {
+      if (error.code === UNIQUE_VIOLATION) continue
+      const message = error.message ?? ''
+      if (message.includes('INSUFFICIENT_COINS')) {
+        const cost = /(\d+) coins/.exec(error.hint ?? '')?.[1]
+        return fail('INSUFFICIENT_COINS', cost ? `You need ${cost} coins to clone this tree!` : 'You need more coins to clone this tree!')
+      }
+      if (message.includes('CANNOT_CLONE_OWN_DECK')) return fail('AUTH_FORBIDDEN', 'This tree is already in your garden')
+      if (message.includes('DECK_NOT_FOUND')) return fail('DECK_NOT_FOUND', 'This tree is not shared (anymore)')
+      if (message.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to clone this tree')
+      // PGRST202 / 42883: clone_deck is missing (run 20260928000700_clone_deck.sql).
+      console.error('[decks] cloneSharedDeck failed', error.code, error.message)
+      return fail('INTERNAL_ERROR', 'Could not clone this tree')
+    }
+
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) {
+      console.error('[decks] cloneSharedDeck returned no row')
+      return fail('INTERNAL_ERROR', 'Could not clone this tree')
+    }
+    const { data: deck, error: readError } = await supabase.from('decks').select('*').eq('id', row.deck_id).single()
+    if (readError || !deck) {
+      console.error('[decks] cloneSharedDeck read-back failed', readError)
+      return fail('INTERNAL_ERROR', 'Your copy was planted, but we could not load it')
+    }
+    return ok({ deck: toDeck(deck), remainingCoins: row.remaining_coins, cost: row.cost })
   }
   return fail('INTERNAL_ERROR', 'Could not find a free link for this tree')
 }
@@ -173,18 +222,38 @@ export async function insertKnowledgeItem(
 export async function loadDeckEditor(supabase: Client, userId: string, deckId: string): Promise<ActionResult<DeckEditor>> {
   const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
+  return flattenDeckStatements(supabase, deckId, owner.data.treeType)
+}
 
+// Read-only visitor view (strict visitor mode): the same roots + true statements, for a tree that
+// is PUBLIC or the viewer's own. Visitors can read everything but can't practise it
+// (FORBIDDEN_VISITOR_PRACTICE), so knowing the statements earns nothing: to drill they must clone.
+// Private trees of others stay DECK_NOT_FOUND (RLS hides them, and is_public is re-checked here
+// because answers.ts reads through the service role).
+export async function loadDeckReader(supabase: Client, userId: string | null, deckId: string): Promise<ActionResult<DeckEditor>> {
+  const { data, error } = await supabase.from('decks').select('user_id, is_public, tree_type').eq('id', deckId).maybeSingle()
+  if (error) {
+    console.error('[decks] loadDeckReader failed', error)
+    return fail('INTERNAL_ERROR', 'Could not load this tree')
+  }
+  if (!data || !(data.is_public || data.user_id === userId)) return fail('DECK_NOT_FOUND', 'Deck not found')
+  return flattenDeckStatements(supabase, deckId, data.tree_type)
+}
+
+// Roots in tree order with their statements. Callers must authorize the deck first (answers.ts
+// reads with the service role).
+async function flattenDeckStatements(supabase: Client, deckId: string, treeType: string): Promise<ActionResult<DeckEditor>> {
   const { data: nodes, error } = await supabase
     .from('mindmap_nodes')
     .select('id, parent_id, title, sort_order')
     .eq('deck_id', deckId)
 
   if (error) {
-    console.error('[decks] loadDeckEditor failed', error)
+    console.error('[decks] flattenDeckStatements failed', error)
     return fail('INTERNAL_ERROR', 'Could not load the editor')
   }
 
-  // Statements come from answers.ts (oldest first); the owner check above authorizes the deck.
+  // Statements come from answers.ts (oldest first); the caller's check authorizes the deck.
   const answers = await readAnswersForNodes(
     supabase,
     nodes.map((n) => n.id),
@@ -221,7 +290,7 @@ export async function loadDeckEditor(supabase: Client, userId: string, deckId: s
   }
   visit(null, 0)
 
-  return ok({ deckId, treeType: owner.data.treeType, nodes: flat })
+  return ok({ deckId, treeType, nodes: flat })
 }
 
 // Owner-only settings change (title, description, species, visibility). RLS "decks: update own"

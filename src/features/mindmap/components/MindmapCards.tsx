@@ -93,10 +93,13 @@ export function NodePill({ card, mastery, collapsed, onToggle, statementCount, o
   )
 }
 
-type StatementProps = { card: MindmapCard; level: number; drillHref: string }
+// drillHref null = read-only visitor (no drill link). statement = the true text, passed only in
+// read-only visitor mode, where practice is locked (clone to drill).
+type StatementProps = { card: MindmapCard; level: number; drillHref: string | null; statement?: string }
 
-// Statement (knowledge item) card. The statement text is the drill answer, so it is never shown here.
-export function StatementCard({ card, level, drillHref }: StatementProps) {
+// Statement (knowledge item) card. The statement text is the drill answer, so it is shown only to
+// read-only visitors, who can't drill this tree.
+export function StatementCard({ card, level, drillHref, statement }: StatementProps) {
   const lvl = toMasteryLevel(Math.round(level))
   const mighty = isMastered(lvl)
   return (
@@ -107,11 +110,11 @@ export function StatementCard({ card, level, drillHref }: StatementProps) {
         mighty ? GOLD_AURA : 'border-amber-800/15 bg-white/95',
       )}
     >
-      <p className="line-clamp-2 text-xs leading-snug font-medium text-stone-800" title={card.title}>
+      <p className="line-clamp-2 text-xs leading-snug font-medium text-stone-800" title={statement ?? card.title}>
         <span aria-hidden className="mr-1">
           📜
         </span>
-        {card.title}
+        {statement ?? card.title}
       </p>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -128,14 +131,23 @@ export function StatementCard({ card, level, drillHref }: StatementProps) {
             {mighty && ' ✨'}
           </span>
         </span>
-        <Link
-          href={drillHref}
-          aria-label={`Drill the branch of ${card.title}`}
-          title="Drill this branch"
-          className="rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          🌿 Drill
-        </Link>
+        {drillHref === null ? (
+          <span
+            title="Read-only: clone this tree to practise it"
+            className="rounded-md border border-stone-300 bg-stone-50 px-1.5 py-0.5 text-[11px] font-medium text-stone-500"
+          >
+            👀 Read-only
+          </span>
+        ) : (
+          <Link
+            href={drillHref}
+            aria-label={`Drill the branch of ${card.title}`}
+            title="Drill this branch"
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            🌿 Drill
+          </Link>
+        )}
       </div>
     </article>
   )

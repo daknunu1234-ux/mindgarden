@@ -72,10 +72,16 @@ const ITEMS = [
   siblingStatements: all.filter((o) => o.id !== id).map((o) => o.stmt),
 }))
 
+const OWNER = 'owner-1'
+
 vi.mock('@/features/decks/server', () => ({
   listDrillItems: vi.fn(async () => ({
     success: true,
-    data: { deck: { id: 'd1', slug: 'bio', title: 'Bio', treeType: 'oak' }, nodes: [{ id: 'n1', parentId: null, title: 'Khí' }], items: ITEMS },
+    data: {
+      deck: { id: 'd1', slug: 'bio', title: 'Bio', treeType: 'oak', ownerId: OWNER },
+      nodes: [{ id: 'n1', parentId: null, title: 'Khí' }],
+      items: ITEMS,
+    },
   })),
 }))
 
@@ -83,10 +89,11 @@ import { buildDrillSession } from '../services/drillSession'
 
 const input = (includeMastered: boolean) => ({ slug: 'bio', limit: 20, includeMastered })
 const levels = (map: Record<string, number>) => async () => new Map(Object.entries(map))
+const asOwner = (map: Record<string, number>) => ({ viewerId: OWNER, loadLevels: levels(map) })
 
 describe('buildDrillSession queue', () => {
   it('rests the mastered item by default', async () => {
-    const res = await buildDrillSession({} as never, input(false), 'sess', levels({ 'i-mastered': 5, 'i-half': 3 }))
+    const res = await buildDrillSession({} as never, input(false), 'sess', asOwner({ 'i-mastered': 5, 'i-half': 3 }))
     expect(res.success).toBe(true)
     if (!res.success) return
     expect(res.data.questions.map((x) => x.itemId).sort()).toEqual(['i-half', 'i-seed'])
@@ -94,20 +101,38 @@ describe('buildDrillSession queue', () => {
   })
 
   it('includes it in review mode', async () => {
-    const res = await buildDrillSession({} as never, input(true), 'sess', levels({ 'i-mastered': 5 }))
+    const res = await buildDrillSession({} as never, input(true), 'sess', asOwner({ 'i-mastered': 5 }))
     expect(res.success && res.data.questions.map((x) => x.itemId).sort()).toEqual(['i-half', 'i-mastered', 'i-seed'])
   })
 
   it('reports a fully cultivated deck instead of an empty round', async () => {
-    const all = levels({ 'i-seed': 5, 'i-mastered': 5, 'i-half': 5 })
+    const all = asOwner({ 'i-seed': 5, 'i-mastered': 5, 'i-half': 5 })
     const res = await buildDrillSession({} as never, input(false), 'sess', all)
     expect(res).toMatchObject({ success: false, error: { code: 'DRILL_ALL_MASTERED' } })
     const review = await buildDrillSession({} as never, input(true), 'sess', all)
     expect(review.success && review.data.questions).toHaveLength(3)
   })
+})
 
-  it('filters nothing for a signed-out player (no level loader)', async () => {
-    const res = await buildDrillSession({} as never, input(false), 'sess')
+describe('buildDrillSession visitor guard', () => {
+  it('refuses a visitor (non-owner) with FORBIDDEN_VISITOR_PRACTICE', async () => {
+    const loadLevels = vi.fn(levels({}))
+    const res = await buildDrillSession({} as never, input(false), 'sess', { viewerId: 'visitor-2', loadLevels })
+    expect(res).toMatchObject({
+      success: false,
+      error: { code: 'FORBIDDEN_VISITOR_PRACTICE', message: 'You must clone this tree to your garden to practice it!' },
+    })
+    expect(loadLevels).not.toHaveBeenCalled()
+  })
+
+  it('refuses a signed-out visitor too, even in review mode', async () => {
+    const res = await buildDrillSession({} as never, input(true), 'sess', { viewerId: null })
+    expect(res).toMatchObject({ success: false, error: { code: 'FORBIDDEN_VISITOR_PRACTICE' } })
+  })
+
+  it('a freshly cloned tree (cloner owns it, no progress rows) practises every statement from 0/5', async () => {
+    // clone_deck copies nodes + items but never user_progress, so the cloner starts with no levels.
+    const res = await buildDrillSession({} as never, input(false), 'sess', asOwner({}))
     expect(res.success && res.data).toMatchObject({ masteredCount: 0 })
     expect(res.success && res.data.questions).toHaveLength(3)
   })

@@ -13,4 +13,6 @@ export type ErrorCode =
   | 'DRILL_ALL_MASTERED'
   // Planting a tree costs SEED_PRICE_COINS (shared/lib/economy.ts) and the purse is short.
   | 'INSUFFICIENT_COINS'
+  // Practising / grading a tree you don't own: visitors are read-only (clone it to practise).
+  | 'FORBIDDEN_VISITOR_PRACTICE'
   | 'INTERNAL_ERROR'

@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { GamePanel } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
-import { getDeckBySlug, getDeckEditor } from '@/features/decks'
-import { getProgressByDecks } from '@/features/progress'
+import { getDeckBySlug, getDeckEditor, getDeckReader } from '@/features/decks'
+import { getFarmHud, getProgressByDecks } from '@/features/progress'
 import { DeckScene } from './_components/DeckScene'
 
 // generateMetadata and the page share one query per request.
@@ -42,14 +42,25 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
   // Signed out → zeros. A progress error only dims the tree; the deck still renders.
   const deckId = res.data.deck.id
   const [progress, userRes] = await Promise.all([getProgressByDecks({ deckIds: [deckId] }), getCurrentUser()])
-  const isOwner = userRes.success && userRes.data?.id === res.data.deck.userId
-  const editor = isOwner ? await getDeckEditor({ deckId }) : null
+  const signedIn = userRes.success && userRes.data !== null
+  const isOwner = signedIn && userRes.data?.id === res.data.deck.userId
+  // Owner → editor. Visitor (strict read-only mode) → the statements to read + their purse for
+  // the clone fee.
+  const [editor, reader, hud] = await Promise.all([
+    isOwner ? getDeckEditor({ deckId }) : null,
+    isOwner ? null : getDeckReader({ deckId }),
+    !isOwner && signedIn ? getFarmHud() : null,
+  ])
+  const purse = hud?.success && hud.data ? hud.data : null
 
   return (
     <DeckScene
       detail={res.data}
       progress={progress.success ? (progress.data[0] ?? null) : null}
       editor={editor?.success ? editor.data : null}
+      visitor={
+        isOwner ? null : { reader: reader?.success ? reader.data : null, signedIn, coins: purse?.coins ?? null, coinsAsOf: purse?.coinsAsOf }
+      }
     />
   )
 }

@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Tables } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { GetDeckBySlugInput } from '../dto/GetDeckBySlugDto'
-import type { GetDecksInput } from '../dto/GetDecksDto'
+import type { GetCommunityDecksInput, GetDecksInput, GetNeighborGardenInput } from '../dto/GetDecksDto'
 import { buildDeckTree } from '../lib/deckTree'
 import type { Deck, DeckDetail } from '../types'
 
@@ -19,15 +19,18 @@ export const toDeck = (row: Tables<'decks'>): Deck => ({
   createdAt: row.created_at,
 })
 
-// RLS limits the rows to public decks plus the caller's own decks.
+// The player's own garden: ONLY decks they own (user_id = the session user), public or private.
+// RLS would also return everyone's public decks, so the owner filter is explicit here.
 export async function listDecks(
   supabase: SupabaseClient<Database>,
+  userId: string,
   { limit, page }: GetDecksInput,
 ): Promise<ActionResult<Deck[]>> {
   const from = (page - 1) * limit
   const { data, error, count } = await supabase
     .from('decks')
     .select('*', { count: 'exact' })
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(from, from + limit - 1)
 
@@ -37,6 +40,44 @@ export async function listDecks(
   }
 
   return ok(data.map(toDeck), { page, limit, total: count ?? 0 })
+}
+
+// Community Gardens: shared (public) trees of OTHER gardeners, newest first. Signed out → every
+// public tree. Private trees never appear (is_public filter + RLS).
+export async function listCommunityDecks(
+  supabase: SupabaseClient<Database>,
+  viewerId: string | null,
+  { limit }: GetCommunityDecksInput,
+): Promise<ActionResult<Deck[]>> {
+  let query = supabase.from('decks').select('*').eq('is_public', true)
+  if (viewerId) query = query.neq('user_id', viewerId)
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(limit)
+
+  if (error) {
+    console.error('[decks] listCommunityDecks failed', error)
+    return fail('INTERNAL_ERROR', 'Could not load the community gardens')
+  }
+  return ok(data.map(toDeck))
+}
+
+// One neighbour's island when visiting: their public trees only.
+export async function listNeighborDecks(
+  supabase: SupabaseClient<Database>,
+  { ownerId, limit }: GetNeighborGardenInput,
+): Promise<ActionResult<Deck[]>> {
+  const { data, error } = await supabase
+    .from('decks')
+    .select('*')
+    .eq('user_id', ownerId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('[decks] listNeighborDecks failed', error)
+    return fail('INTERNAL_ERROR', 'Could not load this garden')
+  }
+  return ok(data.map(toDeck))
 }
 
 // RLS hides private decks the caller doesn't own, so "not readable" also lands on DECK_NOT_FOUND.

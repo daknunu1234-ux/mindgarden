@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Link from 'next/link'
+import { GameButton } from '@/shared/components/game'
 import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
@@ -31,13 +32,18 @@ type FarmIslandViewProps = {
   gridHref: string
   // Optional top-centre content (page switcher, sign-in notice).
   topCenter?: ReactNode
+  // Left-edge slot (the Community Gardens drawer tab).
+  leftEdge?: ReactNode
+  // Read-only visitor mode: someone else's shared trees. No planting / quests dock, a banner with
+  // the way back to the player's own garden.
+  visitor?: { name: string; backHref: string } | null
   // Owners: the plot popup's uproot badge calls this (after closing the popup). Wired in app/.
   onUproot?: (plot: FarmPlotView) => void
 }
 
 // The Farm World: a full-screen isometric farmstead where every deck is a tree on its own plot.
 // Geometry: lib/farmLayout.ts; camera: shared/hooks/useCamera.ts + shared/lib/camera.ts (pure, tested).
-function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, onUproot }: FarmIslandViewProps) {
+function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
   // Beehives go next to flowering trees (sakura / apple from stage 3). `plots` only changes when the
   // server sends new data, so the layout is computed once per page load.
   const layout = useMemo(
@@ -156,9 +162,15 @@ function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, onUproot }:
                 className="absolute -translate-x-1/2 -translate-y-1/2 rounded-[18px] border-[3px] border-[#4a230c] bg-gradient-to-b from-[#fffcf3] to-[#f5dcb2] px-4 py-2 text-center font-game text-base font-extrabold text-[#4a2511] shadow-[inset_0_2px_0_#fff,0_4px_0_#b07a45,0_10px_16px_rgba(47,95,22,0.3)]"
                 style={{ left: world.w / 2, top: world.h / 2 + 30 }}
               >
-                A quiet farm 🏝️
+                {visitor ? `${visitor.name} hasn't shared a tree yet 🏝️` : signedIn ? 'A quiet farm 🏝️' : 'Your farm is waiting 🏝️'}
                 <br />
-                <span className="font-sans text-xs font-medium">Open the seed sack to plant your first tree.</span>
+                <span className="font-sans text-xs font-medium">
+                  {visitor
+                    ? 'Come back later, or visit another neighbour.'
+                    : signedIn
+                      ? 'Open the seed sack to plant your first tree.'
+                      : 'Sign in to see your own trees, or visit a neighbour in Community Gardens.'}
+                </span>
               </div>
             )}
           </div>
@@ -174,9 +186,22 @@ function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, onUproot }:
       {/* HUD: corners only; the overlay itself lets everything through. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2 sm:p-4">
         <LevelBadge level={hud.level} />
-        {topCenter && <div className="pointer-events-auto hidden lg:block">{topCenter}</div>}
+        {visitor ? (
+          // Visitor banner: whose island this is, and the way home.
+          <div className="pointer-events-auto flex flex-col items-center gap-2">
+            <span className="rounded-full border-[3px] border-[#4a230c] bg-gradient-to-b from-[#fffcf3] to-[#f5dcb2] px-4 py-1.5 font-game text-base font-extrabold text-[#4a2511] shadow-[inset_0_2px_0_#fff,0_4px_0_#b07a45]">
+              👣 Visiting {visitor.name}&apos;s Garden · read-only
+            </span>
+            <GameButton asChild tone="leaf" size="sm">
+              <Link href={visitor.backHref}>🏡 Back to my garden</Link>
+            </GameButton>
+          </div>
+        ) : (
+          topCenter && <div className="pointer-events-auto hidden lg:block">{topCenter}</div>
+        )}
         <Counters hud={hud} />
       </div>
+      {leftEdge && <div className="pointer-events-none absolute top-1/2 left-0 z-10 -translate-y-1/2">{leftEdge}</div>}
       <div className="pointer-events-none absolute bottom-24 left-2 sm:bottom-6 sm:left-4">
         <ZoomControls
           zoom={zoom}
@@ -187,9 +212,12 @@ function FarmIslandView({ plots, hud, signedIn, gridHref, topCenter, onUproot }:
           canZoomOut={zoom > MIN_ZOOM + 1e-3}
         />
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 sm:p-4">
-        <FarmDock gridHref={gridHref} quests={signedIn ? thirsty : 0} onQuests={() => setDeliveryOpen(true)} />
-      </div>
+      {/* Planting and quests belong to the player's own island. */}
+      {!visitor && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-3 sm:p-4">
+          <FarmDock gridHref={gridHref} quests={signedIn ? thirsty : 0} onQuests={() => setDeliveryOpen(true)} />
+        </div>
+      )}
 
       <FarmPlotDialog
         plot={selected}

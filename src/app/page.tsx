@@ -2,10 +2,13 @@ import Link from 'next/link'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
 import { getCurrentUser } from '@/features/auth'
-import { getDecks, type Deck } from '@/features/decks'
+import { getCommunityDecks, getDecks, getNeighborGarden, type Deck } from '@/features/decks'
 import { FarmWorld } from './_components/FarmWorld'
 import {
+  CommunityGardensDrawer,
   GardenGrid,
+  groupNeighborGardens,
+  neighborName,
   ViewToggle,
   type DeckCardView,
   type FarmHudView,
@@ -31,19 +34,34 @@ async function loadProgress(decks: Deck[]): Promise<Map<string, DeckProgress>> {
   return new Map(res.success ? res.data.map((p) => [p.deckId, p]) : [])
 }
 
+// ?visit=<gardener id>: read-only visit to a neighbour's island (their shared trees only).
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default async function Home({ searchParams }: PageProps<'/'>) {
-  const { page, login, view: rawView } = await searchParams
+  const { page, login, view: rawView, visit: rawVisit } = await searchParams
   const view: View = rawView === 'grid' ? 'grid' : 'farm'
 
-  const [res, userRes, hudRes] = await Promise.all([
-    getDecks({ page: typeof page === 'string' ? page : undefined }),
-    getCurrentUser(),
-    getFarmHud(),
-  ])
+  const [userRes, hudRes, communityRes] = await Promise.all([getCurrentUser(), getFarmHud(), getCommunityDecks({ limit: 40 })])
+  const userId = userRes.success ? (userRes.data?.id ?? null) : null
+  // Visiting yourself is just your own garden.
+  const visitOwnerId = view === 'farm' && typeof rawVisit === 'string' && UUID.test(rawVisit) && rawVisit !== userId ? rawVisit : null
+
+  // My garden: only my own trees (getDecks filters by the session user). Visiting: their shared trees.
+  const res = visitOwnerId ? await getNeighborGarden({ ownerId: visitOwnerId }) : await getDecks({ page: typeof page === 'string' ? page : undefined })
   const decks = res.success ? res.data : []
   const progress = await loadProgress(decks)
-  const userId = userRes.success ? (userRes.data?.id ?? null) : null
   const currentPage = res.success ? (res.meta?.page ?? 1) : 1
+  const neighbors = groupNeighborGardens(
+    (communityRes.success ? communityRes.data : []).map((d) => ({
+      id: d.id,
+      slug: d.slug,
+      title: d.title,
+      treeType: d.treeType,
+      userId: d.userId,
+      createdAt: d.createdAt,
+    })),
+    userId,
+  )
 
   const cards: DeckCardView[] = decks.map((d) => ({
     id: d.id,
@@ -56,6 +74,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
 
   const plots: FarmPlotView[] = decks.map((d) => {
     const p = progress.get(d.id)
+    const isOwner = userId !== null && d.userId === userId
     return {
       id: d.id,
       slug: d.slug,
@@ -65,10 +84,10 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       itemCount: p?.itemCount ?? 0,
       masteredCount: p?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0,
       mightyRoots: p?.mightyRoots ?? 0,
-      // Only a signed-in player has watering status.
-      needsWater: userId ? !(p?.practicedToday ?? false) : null,
-      wateredDay: userId && p?.practicedToday ? p.lastPracticedDay : null,
-      isOwner: userId !== null && d.userId === userId,
+      // Only the owner waters a tree (visitors are read-only), so only they get watering status.
+      needsWater: isOwner ? !(p?.practicedToday ?? false) : null,
+      wateredDay: isOwner && p?.practicedToday ? p.lastPracticedDay : null,
+      isOwner,
     }
   })
 
@@ -85,6 +104,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       : null,
     streak: hud ? { current: hud.streak.current, practicedToday: hud.streak.practicedToday } : null,
     coins: hud ? hud.coins : null,
+    coinsAsOf: hud?.coinsAsOf,
     gems: plots.reduce((sum, p) => sum + p.mightyRoots, 0),
   }
 
@@ -112,13 +132,18 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     )
     return (
       <main className="flex w-full flex-1 flex-col">
-        <h1 className="sr-only">Farm World</h1>
+        <h1 className="sr-only">{visitOwnerId ? `${neighborName(visitOwnerId)}'s Garden` : 'Farm World'}</h1>
         <FarmWorld
+          // A fresh island (camera, popups) when switching between gardens.
+          key={visitOwnerId ?? userId ?? 'guest'}
           plots={plots}
           hud={hudView}
           signedIn={userId !== null}
           gridHref={hrefFor('grid', currentPage)}
+          visitor={visitOwnerId ? { name: neighborName(visitOwnerId), backHref: '/' } : null}
+          leftEdge={<CommunityGardensDrawer gardens={neighbors} visitingOwnerId={visitOwnerId} />}
           topCenter={
+            !visitOwnerId &&
             (loginNotice || islands) && (
               <div className="flex flex-col items-center gap-1.5">
                 {loginNotice}

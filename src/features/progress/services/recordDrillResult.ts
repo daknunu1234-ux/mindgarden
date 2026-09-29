@@ -23,7 +23,8 @@ export async function recordDrillResult(
   userId: string,
   submission: DrillSubmission,
 ): Promise<ActionResult<DrillResult>> {
-  const graded = await gradeSubmission(supabase, submission)
+  // Owner-only: a visitor's answer on someone else's tree is refused before anything is saved.
+  const graded = await gradeSubmission(supabase, submission, userId)
   if (!graded.success) return graded
 
   const readRow = (columns: string) =>

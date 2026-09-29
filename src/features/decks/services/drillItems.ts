@@ -7,7 +7,8 @@ import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { answersByNode, readAnswersForNodes } from './answers'
 
 // Server-only shapes: these carry correctStmt, so they must never reach the client.
-export type DrillDeck = { id: string; slug: string; title: string; treeType: string }
+// ownerId: only the owner may practise a deck (visitors are read-only; see drill/services/drillSession).
+export type DrillDeck = { id: string; slug: string; title: string; treeType: string; ownerId: string }
 export type DrillSourceItem = {
   id: string
   nodeId: string
@@ -18,7 +19,10 @@ export type DrillSourceItem = {
   // True statements of the other items in the same node, for sibling concept swaps.
   siblingStatements: string[]
 }
-export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'>
+export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'> & {
+  // Owner of the item's deck: grading refuses anyone else (read-only visitors).
+  ownerId: string
+}
 export type DeckRef = { deckId: string } | { slug: string }
 export type DrillNode = { id: string; parentId: string | null; title: string }
 
@@ -28,7 +32,7 @@ export async function listDrillItems(
   supabase: SupabaseClient<Database>,
   ref: DeckRef,
 ): Promise<ActionResult<{ deck: DrillDeck; nodes: DrillNode[]; items: DrillSourceItem[] }>> {
-  const deckQuery = supabase.from('decks').select('id, slug, title, tree_type')
+  const deckQuery = supabase.from('decks').select('id, slug, title, tree_type, user_id')
   const { data: deck, error: deckError } = await ('deckId' in ref
     ? deckQuery.eq('id', ref.deckId)
     : deckQuery.eq('slug', ref.slug)
@@ -82,7 +86,7 @@ export async function listDrillItems(
   )
 
   return ok({
-    deck: { id: deck.id, slug: deck.slug, title: deck.title, treeType: deck.tree_type },
+    deck: { id: deck.id, slug: deck.slug, title: deck.title, treeType: deck.tree_type, ownerId: deck.user_id },
     nodes: nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })),
     items,
   })
@@ -97,7 +101,7 @@ export async function findDrillItem(
 ): Promise<ActionResult<DrillGradingItem>> {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, node_id')
+    .select('id, node_id, mindmap_nodes(decks(user_id))')
     .eq('id', itemId)
     .maybeSingle()
 
@@ -106,6 +110,8 @@ export async function findDrillItem(
     return fail('INTERNAL_ERROR', 'Could not load item')
   }
   if (!data) return fail('ITEM_NOT_FOUND', 'Item not found')
+  const ownerId = (data.mindmap_nodes as { decks: { user_id: string } | null } | null)?.decks?.user_id
+  if (!ownerId) return fail('ITEM_NOT_FOUND', 'Item not found')
 
   const answers = await readAnswersForNodes(supabase, [data.node_id])
   if (!answers.success) return answers
@@ -117,5 +123,6 @@ export async function findDrillItem(
     correctStmt: own.correctStmt,
     trapRules: own.trapRules,
     siblingStatements: answers.data.filter((a) => a.itemId !== own.itemId).map((a) => a.correctStmt),
+    ownerId,
   })
 }

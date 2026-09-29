@@ -17,7 +17,8 @@ type FarmPlotDialogProps = {
   onUproot?: (plot: FarmPlotView) => void
 }
 
-// Plot popup: water (practise), inspect roots (mindmap), edit and uproot (owner only).
+// Plot popup: water (practise), inspect roots (mindmap), edit and uproot, all owner only. Visitors
+// (strict read-only mode) can explore the roots; practice points them to cloning the tree.
 function FarmPlotDialog({ plot, onOpenChange, onUproot }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
@@ -61,7 +62,16 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
       </GameSlab>
 
       <div className="grid gap-3">
-        {canWater ? (
+        {!plot.isOwner ? (
+          <>
+            <GameButton tone="sky" size="lg" disabled title="Visitors can explore but not practise: clone this tree to your garden first">
+              Clone to practice this tree 🌱
+            </GameButton>
+            <GameButton asChild tone="leaf">
+              <Link href={`/deck/${plot.slug}`}>🌱 Explore &amp; clone this tree</Link>
+            </GameButton>
+          </>
+        ) : canWater ? (
           <>
             <GameButton asChild tone="sky" size="lg">
               <Link href={waterHref}>

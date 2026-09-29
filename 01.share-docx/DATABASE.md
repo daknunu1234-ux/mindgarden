@@ -44,7 +44,7 @@
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
-| coins | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | 🪙 Gold balance: +1 the first time the player masters an item (5/5). Written only by `award_mastery_coin` (service role); see *Gold coins* |
+| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck` and `dev_grant_coins`; see *Gold coins* and *Seed economy* |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
 ### Decks & Mindmap Feature
@@ -57,7 +57,7 @@
 | title | VARCHAR(150) | NOT NULL | "Cell Biology 101" |
 | slug | VARCHAR(160) | NOT NULL, UNIQUE, CHECK kebab-case | "cell-biology-101" |
 | description | TEXT | NULLABLE | |
-| is_public | BOOLEAN | NOT NULL, DEFAULT TRUE | Visible to everyone |
+| is_public | BOOLEAN | NOT NULL, DEFAULT FALSE | Shared with the community: listed in other gardeners' Community Gardens and readable (read-only) by everyone. Private until the owner shares it (the default was TRUE before migration `20260928000600`; existing trees kept their value) |
 | tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Species: oak, pine, sakura, bamboo, apple, saguaro (validated by Zod from `shared/lib/treeSkins.ts`; unknown values render as oak) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
@@ -120,6 +120,18 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | A paid item can't be reset and farmed again | Players have no INSERT/UPDATE privilege on `user_progress.coin_awarded_at` (column grants), and can't rewrite a row's identity: UPDATE is granted on `mastery_level`, `mistake_count`, `last_practiced_at` only |
 | No double payment under concurrency | The function claims with one `UPDATE … WHERE mastery_level = 3 AND coin_awarded_at IS NULL`: only one caller gets the row |
 | Balance ≤ number of (player, item) pairs ever mastered | The above; `coins >= 0` CHECK (nothing to spend yet) |
+
+**Seed economy** (migration `20260928000500_seed_economy.sql`; the same numbers live in `shared/lib/economy.ts`, and a test checks they match):
+
+| Rule | Enforced by |
+|------|-------------|
+| New gardeners start with 300 🪙 | `users.coins DEFAULT 300`, and `handle_new_user()` inserts `coins = 300` for email and OAuth signups. Google metadata is read too: `name` → `full_name`, `picture` → `avatar_url`. Gardeners from before the migration were topped up once to at least 300 (`greatest(coins, 300)`) |
+| No gardener is left without a purse | `public.ensure_user_profile()` (`SECURITY DEFINER`, caller = `auth.uid()`) creates the caller's missing `users` row with 300 🪙 and returns the balance; an existing row is never changed. It's called after every login (`/auth/callback`), by `readCoins` when no row exists, and by `plant_deck` before charging. Migration `20260928000600` also backfilled a row for every auth user without one. `users.coins` is `NOT NULL`, so a missing row, not a NULL balance, is the case this covers |
+| Planting a tree costs 100 🪙 | `public.plant_deck(title, slug, description, is_public, tree_type)`, `SECURITY DEFINER`, owner = `auth.uid()`. It charges with `UPDATE users SET coins = coins - 100 WHERE id = auth.uid() AND coins >= 100`, then inserts the deck, all in one transaction. Short purse → `INSUFFICIENT_COINS` and nothing is inserted. A duplicate slug (23505) undoes the charge |
+| The fee can't be skipped | `INSERT` on `decks` is revoked from `anon` / `authenticated`: `plant_deck` and `clone_deck` are the only ways to create a deck. Owners still update and delete their decks |
+| Cloning a shared tree costs min(100 + statements, 150) 🪙 | `public.clone_deck(source_deck_id, slug)`, `SECURITY DEFINER`, cloner = `auth.uid()` (migration `20260928000700`). Only another gardener's **public** tree (`DECK_NOT_FOUND` otherwise, `CANNOT_CLONE_OWN_DECK` for your own). Fee = `least(100 + item count, 150)`, charged like `plant_deck` (`coins >= fee`, else `INSUFFICIENT_COINS`). In the same transaction it inserts a **private** deck owned by the cloner (same title, description, species), copies every `mindmap_nodes` row parents-first (same hierarchy and `sort_order`) and every `knowledge_items` row with its `prompt`, `correct_stmt` and `trap_rules`. `user_progress` is **never** copied: the clone starts at 0/5 with every mastery coin still to earn. A duplicate slug (23505) rolls everything back |
+| Balances never go negative | `coins >= fee` in each charge, plus the `coins >= 0` CHECK |
+| No free coins in production | `public.dev_grant_coins(user, 1–100)` (Coin Shop "Simulate Top-up (Dev Mode)") is EXECUTE-able by `service_role` only, and the server action refuses it when `NODE_ENV = production`. Real payments (webhooks) replace it later |
 
 ⚠️ Players can still write their own `mastery_level` (see *Supabase Notes*), so a player could mark an item 5/5 directly and collect its one coin without drilling. The cap above still holds: one coin per item. Close this with the planned `SECURITY DEFINER` progress RPC before coins buy anything.
 
@@ -207,7 +219,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 |-------|--------|--------|--------|--------|
 | roles | Everyone | ✗ | ✗ | ✗ |
 | users | Self (admin: all) | ✗ (trigger only) | Self, `full_name` + `avatar_url` only | ✗ |
-| decks | `is_public` OR owner | Owner | Owner | Owner |
+| decks | `is_public` OR owner | ✗ direct; only via `plant_deck()` (100 🪙) or `clone_deck()` (min(100 + n, 150) 🪙) | Owner | Owner |
 | mindmap_nodes | If deck readable | Deck owner | Deck owner | Deck owner |
 | knowledge_items | If deck readable | Deck owner | Deck owner | Deck owner |
 | user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
@@ -276,13 +288,14 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **Writes**: authors still insert/update statements with their own session; Postgres needs SELECT on columns used in `WHERE` / `RETURNING`, so writes can't be used as an oracle and inserts return only `id`
 - **Deploy order**: set `SUPABASE_SERVICE_ROLE_KEY` on the server → restart → run the migration. Without the key, `answers.ts` falls back to the user client (works only before the migration; after it, reads fail with `42501` and the server logs the fix)
 - **New columns** on `knowledge_items` are not readable by anon/authenticated until granted explicitly (fail closed)
+- **Who sees statements**: the deck owner (editor, `getDeckEditor`) and, in strict read-only visitor mode, anyone viewing a **public** tree (`getDeckReader`). `loadDeckReader` checks `is_public` (or ownership) with the player's client before `answers.ts` reads. This is safe because only the owner can be graded on a tree (`FORBIDDEN_VISITOR_PRACTICE` in `getDrillSession` / `checkDrillAnswer` / `submitDrillResult`), so a visitor who knows the statements earns no mastery or coins. `trap_rules` are never returned. Private trees of others stay fully hidden
 
 ---
 
 ## Migration Rules
 
 - **Location**: `supabase/migrations/`
-- **Execution order** (a fresh database runs all three, in this order):
+- **Execution order** (a fresh database runs all of them, in this order):
 
   | # | File | What it does |
   |---|------|--------------|
@@ -291,12 +304,18 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 3 | `20260928000200_practice_days.sql` | Streak log table + RLS + backfill from `user_progress` |
   | 4 | `20260928000300_user_coins.sql` | `users.coins`, `user_progress.coin_awarded_at`, `award_mastery_coin()` (service role only), `user_progress` column grants, backfill of already-mastered (5/5) items |
   | 5 | `20260928000400_mastery_scale_5.sql` | `mastery_level` CHECK widened to 0–5 (no rescaling), `award_mastery_coin()` pays at 5/5. Order-independent with file 4 |
+  | 6 | `20260928000500_seed_economy.sql` | `users.coins` default 300 + signup trigger + one-time top-up to 300, `plant_deck()` (100 🪙 per tree, the only way to insert decks), `dev_grant_coins()` (service role, test top-ups). Needs file 4 |
+  | 7 | `20260928000600_profiles_and_sharing.sql` | Signup trigger reads Google metadata; `ensure_user_profile()` + backfill of missing profile rows (300 🪙); `decks.is_public` default `false`; `plant_deck()` ensures the profile first and plants private by default |
+  | 8 | `20260928000700_clone_deck.sql` | `clone_deck()`: charge min(100 + statements, 150) 🪙 and deep-copy another gardener's public tree (roots + statements, no progress) into a private deck of the caller. Needs file 7 |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
 - ⚠️ **Existing hosted project**: its base schema was built in the dashboard before file 1 existed, and files 2 and 3 are already applied there. Don't run file 1 on it: it is re-runnable (`if not exists`, `drop policy if exists`), but it can't reconcile differences with the dashboard schema, and dashboard policies with other names would stay next to its policies (permissive policies OR together)
 - **Deploy order for file 4 on the hosted project**: deploy the app code first, then run the migration. The new code saves answers without coins until the column exists. The old code's `user_progress` upsert would fail after the migration, because players can no longer update `user_id` / `knowledge_item_id`
 - **Deploy order for file 5 on the hosted project**: run it **before** deploying the 0–5 app. It's safe with the old app, which never writes above 3. The new app's 4/5 answers fail against the old CHECK; the server log names this migration
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000400`
+- **Deploy order for file 6 on the hosted project**: run it together with the app deploy. The new app plants through `plant_deck`, which doesn't exist before the migration. The old app inserts decks directly, which is refused after it
+- **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
+- **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000700`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing

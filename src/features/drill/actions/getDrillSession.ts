@@ -7,9 +7,9 @@ import { GetDrillSessionDto } from '../dto/GetDrillSessionDto'
 import { buildDrillSession, type LoadLevels } from '../services/drillSession'
 import type { DrillSession } from '../types'
 
-// Auth: Optional. Input: { slug } or { deckId }, plus optional nodeId, limit (1–50, default 20)
-// and includeMastered (default false). Signed-in players' 5/5 items sit out unless includeMastered;
-// signed-out players have no progress, so nothing is excluded.
+// Auth: Required in practice (owner only). Input: { slug } or { deckId }, plus optional nodeId,
+// limit (1–50, default 20) and includeMastered (default false). Only the deck's owner may start a
+// round: anyone else gets FORBIDDEN_VISITOR_PRACTICE. The owner's 5/5 items sit out unless includeMastered.
 export async function getDrillSession(input: unknown): Promise<ActionResult<DrillSession>> {
   const parsed = GetDrillSessionDto.safeParse(input)
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)
@@ -27,5 +27,6 @@ export async function getDrillSession(input: unknown): Promise<ActionResult<Dril
       }
     : undefined
 
-  return buildDrillSession(supabase, parsed.data, crypto.randomUUID(), loadLevels)
+  // Owner-only: visitors (and signed-out players) get FORBIDDEN_VISITOR_PRACTICE.
+  return buildDrillSession(supabase, parsed.data, crypto.randomUUID(), { viewerId: user?.id ?? null, loadLevels })
 }

@@ -19,24 +19,45 @@ type NodeInspectorProps = {
   onInspect: (nodeId: string) => void
   // Owners only.
   onManage?: (nodeId: string) => void
+  // false = read-only visitor: no practice links (clone to practise), statements shown as text.
+  canPractice?: boolean
+  statements?: Readonly<Record<string, string>>
 }
 
 // Side drawer for one root: its statements (prompts only, never the answers), mastery, sub-branches
 // and a Practice Branch shortcut. Opening/closing it never touches the canvas camera.
-function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onManage }: NodeInspectorProps) {
+function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onManage, canPractice = true, statements }: NodeInspectorProps) {
   return (
     <Sheet open={node !== null} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className="w-full gap-0 overflow-y-auto border-l-[5px] border-amber-800 bg-gradient-to-b from-[#fffaf0] to-[#f8e9c8] shadow-[-8px_0_30px_rgba(69,26,3,0.3)] sm:max-w-md"
       >
-        {node && <InspectorBody node={node} levels={levels} deckSlug={deckSlug} onInspect={onInspect} onManage={onManage} />}
+        {node && (
+          <InspectorBody
+            node={node}
+            levels={levels}
+            deckSlug={deckSlug}
+            onInspect={onInspect}
+            onManage={onManage}
+            canPractice={canPractice}
+            statements={statements}
+          />
+        )}
       </SheetContent>
     </Sheet>
   )
 }
 
-function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<NodeInspectorProps, 'node' | 'onOpenChange'> & { node: RootNodeView }) {
+function InspectorBody({
+  node,
+  levels,
+  deckSlug,
+  onInspect,
+  onManage,
+  canPractice = true,
+  statements,
+}: Omit<NodeInspectorProps, 'node' | 'onOpenChange'> & { node: RootNodeView }) {
   const mastery = displayMastery(node, levels)
   const mighty = isMightyRoot(mastery)
   const branchIds = branchItemIds(node)
@@ -66,7 +87,11 @@ function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<Nod
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {branchCount > 0 ? (
+          {!canPractice ? (
+            <GameButton tone="sky" disabled title="Visitors can explore but not practise: clone this tree to your garden first">
+              Clone to practice this tree 🌱
+            </GameButton>
+          ) : branchCount > 0 ? (
             <>
               {!allMastered && (
                 <GameButton asChild tone="sky">
@@ -112,7 +137,7 @@ function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<Nod
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
                   )}
                 >
-                  <p className="text-sm font-semibold text-stone-800">{statementTitle(item.prompt, node.title, i + 1)}</p>
+                  <p className="text-sm font-semibold text-stone-800">{statements?.[item.id] ?? statementTitle(item.prompt, node.title, i + 1)}</p>
                   <div className="mt-1.5 flex items-center gap-2">
                     <GameProgressBar
                       value={lvl}
@@ -133,7 +158,11 @@ function InspectorBody({ node, levels, deckSlug, onInspect, onManage }: Omit<Nod
             })}
           </ul>
         )}
-        <p className="text-xs text-amber-900/60">🔒 The statements themselves stay hidden: you meet them in the drill.</p>
+        <p className="text-xs text-amber-900/60">
+          {canPractice
+            ? '🔒 The statements themselves stay hidden: you meet them in the drill.'
+            : '👀 Read-only: clone this tree to your garden to practise these statements.'}
+        </p>
       </section>
 
       {node.children.length > 0 && (

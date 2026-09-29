@@ -13,7 +13,8 @@ Sign-in (email magic link) and the header profile button.
 | `index.ts` | `getCurrentUser()` | Server Action → `SessionUser \| null` (root layout, drill page) |
 | `index.ts` | `LoginDialog`, `ProfileButton({ user })` — signed in: link to `/profile` + icon-only sign out | Client. The dialog is rendered once in `app/layout.tsx`; open it with `useLoginDialog()` from `shared/stores` |
 | `index.ts` | `type SessionUser` | `{ id, email, createdAt }` (`createdAt` = Supabase Auth account creation, shown as "Joined") |
-| `server.ts` | `exchangeAuthCode(supabase, code)`, `safeNextPath(next)` | For `app/auth/callback/route.ts` |
+| `server.ts` | `exchangeAuthCode(supabase, code)`, `safeNextPath(next)` | For `app/auth/callback/route.ts` (magic links and OAuth such as Google). After a successful exchange it calls `ensureUserProfile` |
+| `services/session.ts` | `ensureUserProfile(supabase)` | `ensure_user_profile()` RPC: creates the player's missing `users` row with the 300 🪙 starter purse (migration `20260928000600`), never changes an existing one, never blocks sign-in. Tests: `__tests__/starterCoins.test.ts` |
 
 ## Session refresh
 `src/proxy.ts` → `shared/lib/supabase/proxy.ts` `updateSession` (`getClaims()` refreshes tokens on every non-asset request).

@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
+import { CloneTreeButton, countDeckTree, getDeckBySlug } from '@/features/decks'
+import { getFarmHud } from '@/features/progress'
 import { DrillOverlay, drillHref, getDrillSession, isReviewParam, ReviewModeToggle } from '@/features/drill'
 
 export const metadata: Metadata = { title: 'Practice · MindGarden' }
@@ -23,6 +25,8 @@ export default async function DrillPage({ params, searchParams }: PageProps<'/de
     const { code, message } = res.error
     // Unknown deck, unknown root, or a malformed slug / nodeId can never match: 404.
     if (code === 'DECK_NOT_FOUND' || code === 'NODE_NOT_FOUND' || code === 'VALIDATION_FAILED') notFound()
+    // Strict read-only visitor mode: only the owner practises; everyone else is offered a clone.
+    if (code === 'FORBIDDEN_VISITOR_PRACTICE') return <VisitorPracticeLocked slug={slug} message={message} signedIn={isSignedIn} />
 
     const noItems = code === 'DRILL_NO_ITEMS'
     const allMastered = code === 'DRILL_ALL_MASTERED'
@@ -89,6 +93,47 @@ export default async function DrillPage({ params, searchParams }: PageProps<'/de
         </div>
         {/* A new session (e.g. after "Water again" refreshes) remounts the overlay with fresh state. */}
         <DrillOverlay key={sessionId} session={res.data} isSignedIn={isSignedIn} />
+      </div>
+    </main>
+  )
+}
+
+// Someone else's tree: "You must clone this tree to your garden to practice it!" with the clone offer.
+async function VisitorPracticeLocked({ slug, message, signedIn }: { slug: string; message: string; signedIn: boolean }) {
+  const [deckRes, hud] = await Promise.all([getDeckBySlug({ slug }), signedIn ? getFarmHud() : null])
+  const purse = hud?.success && hud.data ? hud.data : null
+  const deck = deckRes.success ? deckRes.data.deck : null
+  const statementCount = deckRes.success ? countDeckTree(deckRes.data.tree).itemCount : 0
+
+  return (
+    <main className="mg-meadow-bg w-full flex-1">
+      <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+        <GamePanel tone="parchment" ribbon="leaf" title="🌿 Read-only tree">
+          <p className="text-center font-game text-lg font-extrabold text-amber-950">{message}</p>
+          <p className="mt-2 text-center text-sm text-amber-900/75">
+            {deck ? `“${deck.title}” belongs to another gardener. ` : ''}You can explore its roots and statements, but practice happens on your own copy,
+            starting from 0/5.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            {deck && (
+              <CloneTreeButton
+                deckId={deck.id}
+                deckTitle={deck.title}
+                statementCount={statementCount}
+                coins={purse?.coins ?? null}
+                coinsAsOf={purse?.coinsAsOf}
+                signedIn={signedIn}
+                size="lg"
+              />
+            )}
+            <GameButton asChild tone="wood">
+              <Link href={`/deck/${slug}`}>Explore the tree</Link>
+            </GameButton>
+            <GameButton asChild tone="cream">
+              <Link href="/">My garden</Link>
+            </GameButton>
+          </div>
+        </GamePanel>
       </div>
     </main>
   )

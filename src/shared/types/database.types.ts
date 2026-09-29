@@ -281,6 +281,11 @@ export type Database = {
         Args: Record<string, never>
         Returns: number
       }
+      // Migration 20260928000700: deep-copy another gardener's public tree for min(100 + n, 150) 🪙.
+      clone_deck: {
+        Args: { p_source_deck_id: string; p_slug: string }
+        Returns: { deck_id: string; remaining_coins: number; cost: number }[]
+      }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {
         Args: { p_user_id: string; p_amount: number }
