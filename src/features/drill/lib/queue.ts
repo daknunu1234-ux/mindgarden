@@ -14,6 +14,16 @@ export function selectPracticeItems<T extends { itemId: string }>(
   }
 }
 
+// Round order (pure): lowest mastery first, so the statements that need water most come first when
+// the round is shorter than the queue. Stable: items on the same level keep their given (shuffled)
+// order, so each round still varies. Unpractised items count as level 0.
+export function orderByMastery<T extends { itemId: string }>(queue: readonly T[], levels: ReadonlyMap<string, number>): T[] {
+  return queue
+    .map((item, index) => ({ item, index, level: levels.get(item.itemId) ?? 0 }))
+    .sort((a, b) => a.level - b.level || a.index - b.index)
+    .map(({ item }) => item)
+}
+
 // Why a round came out empty, for the page: nothing drillable at all, or everything mastered.
 export type EmptyRoundReason = 'no-items' | 'all-mastered'
 

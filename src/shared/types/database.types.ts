@@ -34,6 +34,8 @@ export type Database = {
           role_id: number
           email: string
           full_name: string | null
+          // Migration 20260928001000: the public name the player chose (2–30 chars); null = pseudonym.
+          display_name: string | null
           avatar_url: string | null
           streak_count: number
           last_active_at: string | null
@@ -45,6 +47,7 @@ export type Database = {
           role_id?: number
           email: string
           full_name?: string | null
+          display_name?: string | null
           avatar_url?: string | null
           streak_count?: number
           last_active_at?: string | null
@@ -56,6 +59,7 @@ export type Database = {
           role_id?: number
           email?: string
           full_name?: string | null
+          display_name?: string | null
           avatar_url?: string | null
           streak_count?: number
           last_active_at?: string | null
@@ -467,6 +471,11 @@ export type Database = {
           days_count: number
           graduated_at: string
         }[]
+      }
+      // Migration 20260928001000: chosen display names by id (never emails or full names).
+      get_display_names: {
+        Args: { p_user_ids: string[] }
+        Returns: { user_id: string; display_name: string }[]
       }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {

@@ -36,11 +36,11 @@ describe('collectBranch', () => {
 
 describe('GetDrillSessionDto nodeId', () => {
   it('is optional and must be a uuid when present', () => {
-    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 20, includeMastered: false })
+    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 10, includeMastered: false })
     expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101', nodeId: NODE })).toEqual({
       slug: 'cell-biology-101',
       nodeId: NODE,
-      limit: 20,
+      limit: 10,
       includeMastered: false,
     })
     expect(GetDrillSessionDto.safeParse({ slug: 'cell-biology-101', nodeId: 'not-a-uuid' }).success).toBe(false)

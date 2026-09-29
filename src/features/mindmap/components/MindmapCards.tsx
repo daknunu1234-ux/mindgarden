@@ -1,12 +1,12 @@
-import Link from 'next/link'
 import { isMastered, MASTERY_NAMES, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
 import { cn } from '@/shared/utils/cn'
 import { isMightyRoot } from '../hooks/nodeMastery'
 import type { MindmapCard } from '../hooks/mindmapLayout'
 import { MasteryRing } from './MasteryRing'
 
-// Mindmap node cards. Category / branch pills toggle collapse; statement cards show mastery and a
-// shortcut to drill their branch. Anything at 5/5 glows gold (Mighty Root).
+// Mindmap node cards. Category / branch pills toggle collapse; top-level roots also start a round
+// (💧 Drill / ⚔️ Compete). Statement cards only show the statement and its mastery: they have no
+// practice button. Anything at 5/5 glows gold (Mighty Root).
 
 // One pip per mastery step (1…5).
 const MASTERY_STEPS = Array.from({ length: MAX_MASTERY }, (_, i) => i + 1)
@@ -24,14 +24,30 @@ type PillProps = {
   onInspect: () => void
   // Owners only: open the manage dialog for this root.
   onManage?: () => void
+  // Top-level roots only: start a round on this root (the page opens the launch pop-up).
+  // 'drill' = the owner waters it; 'compete' = a Mind Tournament contestant.
+  onPractice?: () => void
+  practiceMode?: 'drill' | 'compete'
   inspected?: boolean
 }
 
 const PILL_BUTTON =
   'flex h-7 shrink-0 items-center justify-center gap-0.5 rounded-full border text-[11px] font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none'
 
-// Category (level 1) and branch (deeper) pills: toggle collapse, 🔍 inspect, ✏️ manage (owners).
-export function NodePill({ card, mastery, collapsed, onToggle, statementCount, onInspect, onManage, inspected = false }: PillProps) {
+// Category (level 1) and branch (deeper) pills: toggle collapse, 🔍 inspect, ✏️ manage (owners),
+// and on top-level roots 💧 Drill / ⚔️ Compete.
+export function NodePill({
+  card,
+  mastery,
+  collapsed,
+  onToggle,
+  statementCount,
+  onInspect,
+  onManage,
+  onPractice,
+  practiceMode = 'drill',
+  inspected = false,
+}: PillProps) {
   const mighty = isMightyRoot(mastery)
   const category = card.kind === 'category'
   return (
@@ -78,6 +94,23 @@ export function NodePill({ card, mastery, collapsed, onToggle, statementCount, o
         <span aria-hidden>🔍</span>
         <span className="tabular-nums">{statementCount}</span>
       </button>
+      {onPractice && category && statementCount > 0 && (
+        <button
+          type="button"
+          onClick={onPractice}
+          aria-label={practiceMode === 'compete' ? `Compete on the root ${card.title}` : `Drill the root ${card.title}`}
+          title={practiceMode === 'compete' ? 'Compete on this root' : 'Drill this root'}
+          className={cn(
+            PILL_BUTTON,
+            'px-2',
+            practiceMode === 'compete'
+              ? 'border-amber-400 bg-amber-100 text-amber-900 hover:bg-amber-200'
+              : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+          )}
+        >
+          {practiceMode === 'compete' ? '⚔️ Compete' : '💧 Drill'}
+        </button>
+      )}
       {onManage && (
         <button
           type="button"
@@ -93,15 +126,16 @@ export function NodePill({ card, mastery, collapsed, onToggle, statementCount, o
   )
 }
 
-// drillHref null = read-only visitor (no drill link). statement = the true text, passed only in
-// read-only visitor mode, where practice is locked (clone to drill).
-type StatementProps = { card: MindmapCard; level: number; drillHref: string | null; statement?: string }
+// statement = the true text (owner and visitors); "Statement n" only when it is missing. No practice
+// button here: rounds start from the root (pill or inspector).
+type StatementProps = { card: MindmapCard; level: number; statement?: string }
 
-// Statement (knowledge item) card. The statement text is the drill answer, so it is shown only to
-// read-only visitors, who can't drill this tree.
-export function StatementCard({ card, level, drillHref, statement }: StatementProps) {
+// Statement (knowledge item) card: the statement and its mastery.
+export function StatementCard({ card, level, statement }: StatementProps) {
   const lvl = toMasteryLevel(Math.round(level))
   const mighty = isMastered(lvl)
+  // card.title is the layout's fallback (the prompt, or "Statement n"); a blank text never wins over it.
+  const text = statement?.trim() || card.title
   return (
     <article
       aria-label={`${card.title}: ${MASTERY_NAMES[lvl]}, mastery ${lvl} of ${MAX_MASTERY}`}
@@ -110,11 +144,11 @@ export function StatementCard({ card, level, drillHref, statement }: StatementPr
         mighty ? GOLD_AURA : 'border-amber-800/15 bg-white/95',
       )}
     >
-      <p className="line-clamp-2 text-xs leading-snug font-medium text-stone-800" title={statement ?? card.title}>
+      <p className="line-clamp-2 text-xs leading-snug font-medium text-stone-800" title={text}>
         <span aria-hidden className="mr-1">
           📜
         </span>
-        {statement ?? card.title}
+        {text}
       </p>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -131,23 +165,6 @@ export function StatementCard({ card, level, drillHref, statement }: StatementPr
             {mighty && ' ✨'}
           </span>
         </span>
-        {drillHref === null ? (
-          <span
-            title="Read-only: clone this tree to practise it"
-            className="rounded-md border border-stone-300 bg-stone-50 px-1.5 py-0.5 text-[11px] font-medium text-stone-500"
-          >
-            👀 Read-only
-          </span>
-        ) : (
-          <Link
-            href={drillHref}
-            aria-label={`Drill the branch of ${card.title}`}
-            title="Drill this branch"
-            className="rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            🌿 Drill
-          </Link>
-        )}
       </div>
     </article>
   )

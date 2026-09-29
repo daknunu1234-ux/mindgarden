@@ -20,3 +20,7 @@ export function neighborName(ownerId: string): string {
   const h = hash(ownerId)
   return `${ADJECTIVES[h % ADJECTIVES.length]} ${CREATURES[Math.floor(h / ADJECTIVES.length) % CREATURES.length]}`
 }
+
+// The name every other player sees: the gardener's chosen display name (users.display_name), or,
+// only when that is null / blank, the pseudonym above. Emails and full names are never public.
+export const publicName = (displayName: string | null | undefined, userId: string): string => displayName?.trim() || neighborName(userId)

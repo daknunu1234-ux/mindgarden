@@ -1,32 +1,31 @@
 'use client'
 
-import Link from 'next/link'
 import { GameButton, GameProgressBar } from '@/shared/components/game'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { isMastered, MASTERY_NAMES, masteryFraction, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
 import { cn } from '@/shared/utils/cn'
-import { statementTitle } from '../hooks/mindmapLayout'
+import { statementLabel } from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery, isMightyRoot } from '../hooks/nodeMastery'
-import type { ItemLevels, RootNodeView } from '../types'
+import type { ItemLevels, MindmapPractice, RootNodeView } from '../types'
 import { MasteryRing } from './MasteryRing'
 
 type NodeInspectorProps = {
   node: RootNodeView | null
   levels: ItemLevels
-  deckSlug: string
   onOpenChange: (open: boolean) => void
   // Walk into a sub-branch from the drawer.
   onInspect: (nodeId: string) => void
   // Owners only.
   onManage?: (nodeId: string) => void
-  // false = read-only visitor: no practice links (clone to practise), statements shown as text.
-  canPractice?: boolean
+  // "Drill Root" / "Compete Root" open the page's launch pop-up; null = read-only visitor (clone to
+  // practise), statements shown as text.
+  practice?: MindmapPractice | null
   statements?: Readonly<Record<string, string>>
 }
 
-// Side drawer for one root: its statements (prompts only, never the answers), mastery, sub-branches
-// and a Practice Branch shortcut. Opening/closing it never touches the canvas camera.
-function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onManage, canPractice = true, statements }: NodeInspectorProps) {
+// Side drawer for one root: its statements (the text when the page passes it), mastery, sub-branches
+// and the Drill Root / Compete Root shortcut. Opening/closing it never touches the canvas camera.
+function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, practice = null, statements }: NodeInspectorProps) {
   return (
     <Sheet open={node !== null} onOpenChange={onOpenChange}>
       <SheetContent
@@ -37,10 +36,9 @@ function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onMana
           <InspectorBody
             node={node}
             levels={levels}
-            deckSlug={deckSlug}
             onInspect={onInspect}
             onManage={onManage}
-            canPractice={canPractice}
+            practice={practice}
             statements={statements}
           />
         )}
@@ -52,10 +50,9 @@ function NodeInspector({ node, levels, deckSlug, onOpenChange, onInspect, onMana
 function InspectorBody({
   node,
   levels,
-  deckSlug,
   onInspect,
   onManage,
-  canPractice = true,
+  practice = null,
   statements,
 }: Omit<NodeInspectorProps, 'node' | 'onOpenChange'> & { node: RootNodeView }) {
   const mastery = displayMastery(node, levels)
@@ -65,7 +62,6 @@ function InspectorBody({
   // Normal rounds skip 5/5 items; once the whole branch is mastered, review is the only way in.
   const masteredCount = branchIds.filter((id) => isMastered(levels[id])).length
   const allMastered = branchCount > 0 && masteredCount === branchCount
-  const drillHref = `/deck/${deckSlug}/drill?nodeId=${node.id}`
 
   return (
     <>
@@ -87,20 +83,28 @@ function InspectorBody({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {!canPractice ? (
+          {!practice ? (
             <GameButton tone="sky" disabled title="Visitors can explore but not practise: clone this tree to your garden first">
               Clone to practice this tree 🌱
+            </GameButton>
+          ) : branchCount > 0 && practice.mode === 'compete' ? (
+            <GameButton tone="sun" disabled={allMastered} onClick={() => practice.onPractice({ rootId: node.id })}>
+              {allMastered ? '⚔️ Root mastered' : '⚔️ Compete Root'}
             </GameButton>
           ) : branchCount > 0 ? (
             <>
               {!allMastered && (
-                <GameButton asChild tone="sky">
-                  <Link href={drillHref}>💧 Practice Branch</Link>
+                <GameButton tone="sky" onClick={() => practice.onPractice({ rootId: node.id })}>
+                  💧 Drill Root
                 </GameButton>
               )}
               {masteredCount > 0 && (
-                <GameButton asChild tone={allMastered ? 'sky' : 'cream'} title="Include Mastered Items (Review Mode)">
-                  <Link href={`${drillHref}&review=1`}>{allMastered ? '🌿 Review Mastered' : '🌿 Review'}</Link>
+                <GameButton
+                  tone={allMastered ? 'sky' : 'cream'}
+                  title="Include Mastered Items (Review Mode)"
+                  onClick={() => practice.onPractice({ rootId: node.id, review: true })}
+                >
+                  {allMastered ? '🌿 Review Mastered' : '🌿 Review'}
                 </GameButton>
               )}
             </>
@@ -137,7 +141,7 @@ function InspectorBody({
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
                   )}
                 >
-                  <p className="text-sm font-semibold text-stone-800">{statements?.[item.id] ?? statementTitle(item.prompt, node.title, i + 1)}</p>
+                  <p className="text-sm font-semibold text-stone-800">{statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)}</p>
                   <div className="mt-1.5 flex items-center gap-2">
                     <GameProgressBar
                       value={lvl}
@@ -159,9 +163,11 @@ function InspectorBody({
           </ul>
         )}
         <p className="text-xs text-amber-900/60">
-          {canPractice
-            ? '🔒 The statements themselves stay hidden: you meet them in the drill.'
-            : '👀 Read-only: clone this tree to your garden to practise these statements.'}
+          {practice?.mode === 'drill'
+            ? '💧 Drill this root to water these statements: a round mixes them with a trap or two.'
+            : practice?.mode === 'compete'
+              ? '⚔️ Mind Tournament: levels shown are your tournament levels on this tree.'
+              : '👀 Read-only: clone this tree to your garden to practise these statements.'}
         </p>
       </section>
 

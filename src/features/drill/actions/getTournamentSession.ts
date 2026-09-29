@@ -4,16 +4,16 @@ import { fetchTournamentLevels, findStanding } from '@/features/tournament/serve
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { GetTournamentSessionDto } from '../dto/GetDrillSessionDto'
-import { buildDrillSession, type LoadLevels } from '../services/drillSession'
+import { buildTournamentSession, type LoadLevels } from '../services/drillSession'
 import type { DrillSession } from '../types'
 
-const GRADUATED_MESSAGE = 'You already mastered this tree: your name is on the Bia Trạng Nguyên'
+const GRADUATED_MESSAGE = 'You already mastered this tree: your name is in the Hall of Fame'
 
 // Auth: Required, and never the host. A Mind Tournament round on someone else's public tree while
-// its owner hosts a tournament: the whole tree, the contestant's TOURNAMENT levels decide which
+// its owner hosts a tournament: the whole tree or one root (rootId), the contestant's TOURNAMENT levels decide which
 // statements rest (5/5), and answers go to submitTournamentAnswer (never user_progress).
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (host), TOURNAMENT_CLOSED,
-// TOURNAMENT_GRADUATED, DECK_NOT_FOUND, DRILL_NO_ITEMS, DRILL_ALL_MASTERED, INTERNAL_ERROR.
+// TOURNAMENT_GRADUATED, DECK_NOT_FOUND, NODE_NOT_FOUND (rootId not in this tree), DRILL_NO_ITEMS, DRILL_ALL_MASTERED, INTERNAL_ERROR.
 export async function getTournamentSession(input: unknown): Promise<ActionResult<DrillSession>> {
   const parsed = GetTournamentSessionDto.safeParse(input)
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)
@@ -33,11 +33,11 @@ export async function getTournamentSession(input: unknown): Promise<ActionResult
     return levels.success ? levels.data : new Map()
   }
 
-  const session = await buildDrillSession(
+  const session = await buildTournamentSession(
     supabase,
-    { slug: parsed.data.slug, limit: parsed.data.limit, includeMastered: false },
+    { slug: parsed.data.slug, nodeId: parsed.data.rootId, limit: parsed.data.limit },
     crypto.randomUUID(),
-    { viewerId: user.id, mode: 'tournament', loadLevels },
+    { viewerId: user.id, loadLevels },
   )
   if (graduated) return fail('TOURNAMENT_GRADUATED', GRADUATED_MESSAGE)
   return session

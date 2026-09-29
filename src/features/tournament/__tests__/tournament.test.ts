@@ -16,6 +16,7 @@ import {
   formatPracticeDays,
   isGraduation,
   masteryPercentage,
+  standingRank,
   maxPoints,
   nextPracticeDays,
   rankBadge,
@@ -58,8 +59,9 @@ describe('practice days', () => {
     expect(nextPracticeDays(3, '2026-10-15', '2026-10-14')).toEqual({ daysCount: 3, lastDay: '2026-10-15' })
   })
 
-  it('reads "X ngày luyện tập"', () => {
-    expect(formatPracticeDays(4)).toBe('4 ngày luyện tập')
+  it('reads "X practice days"', () => {
+    expect(formatPracticeDays(4)).toBe('4 practice days')
+    expect(formatPracticeDays(1)).toBe('1 practice day')
   })
 })
 
@@ -84,13 +86,20 @@ describe('leaderboard order', () => {
     expect(rows.sort(compareActive).map((r) => r.id)).toEqual(['fast', 'late', 'slow', 'none'])
   })
 
-  it('Bia Trạng Nguyên: fewest days first, then the earliest graduate', () => {
+  it('Hall of Fame: fewest days first, then the earliest graduate', () => {
     const rows = [
       { id: 'b', daysCount: 4, graduatedAt: at(1) },
       { id: 'c', daysCount: 3, graduatedAt: at(8) },
       { id: 'a', daysCount: 3, graduatedAt: at(2) },
     ]
     expect(rows.sort(compareHallOfFame).map((r) => r.id)).toEqual(['a', 'c', 'b'])
+  })
+
+  it("finds the viewer's rank: Hall of Fame first, then the Active board, else null", () => {
+    const boards = { hallOfFame: [{ userId: 'grad', rank: 1 }], active: [{ userId: 'a', rank: 1 }, { userId: 'me', rank: 2 }] }
+    expect(standingRank(boards, 'grad')).toBe(1)
+    expect(standingRank(boards, 'me')).toBe(2)
+    expect(standingRank(boards, 'nobody')).toBeNull()
   })
 
   it('names contestants by profile name or pseudonym, and puts medals on the podium', () => {

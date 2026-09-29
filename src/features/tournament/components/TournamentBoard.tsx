@@ -14,31 +14,33 @@ type TournamentBoardProps = {
   standing?: TournamentStanding | null
   // Rows per board (the boards hold up to 50 learners and every graduate).
   limit?: number
+  // Shown in the viewer's own row on both tabs (the page passes auth's ✏️ Garden Name editor).
+  viewerAction?: ReactNode
 }
 
 const percent = (value: number | null) => `${(value ?? 0).toFixed(value !== null && Number.isInteger(value) ? 0 : 1)}%`
 
-// Two wooden tabs: "📜 Bia Trạng Nguyên" (graduates: fewest practice days, then first to finish)
-// and "🌱 Đang Rèn Luyện" (learners: mastery %, then fewer days). Opens on the Hall of Fame when it
+// Two wooden tabs: "📜 Hall of Fame" (graduates: fewest practice days, then first to finish)
+// and "🌱 Active Learners" (learners: mastery %, then fewer days). Opens on the Hall of Fame when it
 // has names, else on the learners.
-function TournamentBoard({ active, hallOfFame, viewerId = null, standing = null, limit = 10 }: TournamentBoardProps) {
+function TournamentBoard({ active, hallOfFame, viewerId = null, standing = null, limit = 10, viewerAction = null }: TournamentBoardProps) {
   return (
     <div className="space-y-3">
       {standing && (
         <p className="rounded-[16px] border-2 border-amber-900/15 bg-amber-50 px-3 py-2 text-center font-game text-sm font-bold text-amber-950">
           {standing.isGraduated
-            ? `🎓 You mastered this tree in ${formatPracticeDays(standing.daysCount)}.`
-            : `Your run: ${percent(standing.masteryPercentage)} mastery · ${formatPracticeDays(standing.daysCount)}`}
+            ? `🎓 You mastered this tree in ${formatPracticeDays(standing.daysCount)}${standing.rank ? ` · ${rankBadge(standing.rank)} in the Hall of Fame` : ''}.`
+            : `Your run: ${standing.rank ? `${rankBadge(standing.rank)} · ` : ''}${percent(standing.masteryPercentage)} mastery · ${formatPracticeDays(standing.daysCount)}`}
         </p>
       )}
       <GameTabs defaultValue={hallOfFame.length > 0 ? 'fame' : 'active'}>
         <GameTabsList>
           <GameTabsTrigger value="fame">
-            📜 Bia Trạng Nguyên
+            📜 Hall of Fame
             <span className="rounded-full bg-black/15 px-1.5 text-xs tabular-nums">{hallOfFame.length}</span>
           </GameTabsTrigger>
           <GameTabsTrigger value="active">
-            🌱 Đang Rèn Luyện
+            🌱 Active Learners
             <span className="rounded-full bg-black/15 px-1.5 text-xs tabular-nums">{active.length}</span>
           </GameTabsTrigger>
         </GameTabsList>
@@ -49,7 +51,7 @@ function TournamentBoard({ active, hallOfFame, viewerId = null, standing = null,
           ) : (
             <ol className="space-y-2">
               {hallOfFame.slice(0, limit).map((row) => (
-                <Row key={row.userId} rank={row.rank} name={row.name} highlight={row.userId === viewerId} golden>
+                <Row key={row.userId} rank={row.rank} name={row.name} highlight={row.userId === viewerId} action={row.userId === viewerId ? viewerAction : null} golden>
                   <span className="font-bold">100%</span>
                   <span>{formatPracticeDays(row.daysCount)}</span>
                 </Row>
@@ -64,7 +66,7 @@ function TournamentBoard({ active, hallOfFame, viewerId = null, standing = null,
           ) : (
             <ol className="space-y-2">
               {active.slice(0, limit).map((row) => (
-                <Row key={row.userId} rank={row.rank} name={row.name} highlight={row.userId === viewerId}>
+                <Row key={row.userId} rank={row.rank} name={row.name} highlight={row.userId === viewerId} action={row.userId === viewerId ? viewerAction : null}>
                   <span className="font-bold">{percent(row.masteryPercentage)}</span>
                   <span>{formatPracticeDays(row.daysCount)}</span>
                 </Row>
@@ -82,18 +84,20 @@ function Row({
   name,
   highlight,
   golden = false,
+  action = null,
   children,
 }: {
   rank: number
   name: string
   highlight: boolean
   golden?: boolean
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
     <li
       className={cn(
-        'flex items-center gap-3 rounded-[16px] border-2 px-3 py-2 font-game text-amber-950',
+        'flex flex-wrap items-center gap-3 rounded-[16px] border-2 px-3 py-2 font-game text-amber-950',
         golden ? 'border-[#e0a818] bg-gradient-to-b from-[#fffdf0] to-[#ffeaa0]' : 'border-amber-900/15 bg-white/80',
         highlight && 'ring-4 ring-emerald-400/70',
       )}
@@ -108,6 +112,7 @@ function Row({
       <span className="flex shrink-0 flex-col items-end text-xs font-semibold text-amber-900/75 tabular-nums sm:flex-row sm:gap-3 sm:text-sm">
         {children}
       </span>
+      {action}
     </li>
   )
 }

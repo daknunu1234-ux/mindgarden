@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { formatPracticeDays, type TournamentAnswer } from '@/features/tournament'
+import { formatPracticeDays, getTournamentBoards, rankBadge, type TournamentAnswer } from '@/features/tournament'
 import {
   GameButton,
   GameDialog,
@@ -69,6 +69,22 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   useEffect(() => {
     if (showGraduation) celebrate()
   }, [showGraduation])
+  // Tournament round over: look up the contestant's place on the board (the answers don't carry it).
+  const [rank, setRank] = useState<number | null>(null)
+  const deckId = session.deck.id
+  useEffect(() => {
+    if (!isDone || !isTournament) return
+    let live = true
+    getTournamentBoards({ deckId }).then(
+      (res) => {
+        if (live && res.success) setRank(res.data.standing?.rank ?? null)
+      },
+      () => {},
+    )
+    return () => {
+      live = false
+    }
+  }, [isDone, isTournament, deckId])
   const deckHref = isTournament ? `/deck/${session.deck.slug}#tournament` : `/deck/${session.deck.slug}`
   const answered = index + (state.status === 'feedback' || state.status === 'done' ? 1 : 0)
 
@@ -88,7 +104,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
           size="lg"
           segments={total <= 20 ? total : 0}
           label="Round progress"
-          caption={isDone ? 'Round complete!' : `💧 ${answered} / ${total}`}
+          caption={isDone ? 'Round complete!' : `Question ${Math.min(index + 1, total)} / ${total}`}
           className="flex-1"
         />
       </div>
@@ -125,7 +141,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
             </p>
           )}
           {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} />}
-          {isTournament && standing && <TournamentScore standing={standing} />}
+          {isTournament && standing && <TournamentScore standing={standing} rank={rank} />}
           {!saving && (
             <p className="mt-4 text-center text-sm font-medium">
               <button type="button" onClick={openLogin} className="font-game font-bold text-emerald-800 underline underline-offset-4">
@@ -174,16 +190,16 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
 
       {isTournament && (
         <GameDialog open={showGraduation} onOpenChange={(open) => !open && setGraduationSeen(true)}>
-          <GameDialogContent title="🎓 Đỗ Trạng Nguyên!" ribbon="gold" tone="gold">
+          <GameDialogContent title="🎓 Tree Mastered!" ribbon="gold" tone="gold">
             <ParticleBurst variant="gold" count={28} radius={170} />
             <p className="text-center font-game text-2xl font-extrabold text-amber-950">You mastered every statement of “{session.deck.title}”!</p>
             <p className="mt-2 text-center text-amber-900/80">
-              {standing ? `It took you ${formatPracticeDays(standing.daysCount)}. ` : ''}Your name is now engraved on the 📜 Bia Trạng Nguyên,
+              {standing ? `It took you ${formatPracticeDays(standing.daysCount)}. ` : ''}Your name is now engraved in the 📜 Hall of Fame,
               forever.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <GameButton asChild tone="sun" size="lg">
-                <Link href={deckHref}>See the Bia Trạng Nguyên 📜</Link>
+                <Link href={deckHref}>See the Hall of Fame 📜</Link>
               </GameButton>
               <GameButton tone="cream" size="lg" onClick={() => setGraduationSeen(true)}>
                 Keep going
@@ -204,7 +220,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
 }
 
 // Tournament round summary: the contestant's score on this tree after the last answer.
-function TournamentScore({ standing }: { standing: TournamentAnswer }) {
+function TournamentScore({ standing, rank }: { standing: TournamentAnswer; rank: number | null }) {
   const percent = standing.masteryPercentage ?? 0
   return (
     <div className="mt-5 rounded-[20px] border-[2.5px] border-[#e0a818] bg-gradient-to-b from-[#fffdf0] to-[#ffeaa0] p-4 text-center shadow-[inset_0_2px_0_#fff,0_4px_0_#c28c0e]">
@@ -213,7 +229,12 @@ function TournamentScore({ standing }: { standing: TournamentAnswer }) {
       <p className="text-sm font-semibold text-amber-900/75 tabular-nums">
         {standing.currentPoints} / {standing.maxPoints} mastery points · {formatPracticeDays(standing.daysCount)}
       </p>
-      {standing.isGraduated && <p className="mt-2 font-game font-bold text-amber-900">🎓 Engraved on the Bia Trạng Nguyên!</p>}
+      {rank !== null && (
+        <p className="mt-1 font-game text-lg font-extrabold text-amber-950">
+          {rankBadge(rank)} {standing.isGraduated ? 'in the Hall of Fame' : 'among Active Learners'}
+        </p>
+      )}
+      {standing.isGraduated && <p className="mt-2 font-game font-bold text-amber-900">🎓 Engraved in the Hall of Fame!</p>}
     </div>
   )
 }

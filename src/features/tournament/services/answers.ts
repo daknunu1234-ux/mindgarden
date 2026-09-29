@@ -61,7 +61,7 @@ export async function recordTournamentAnswer(
   if (error) {
     const message = error.message ?? ''
     if (message.includes('TOURNAMENT_GRADUATED')) {
-      return fail('TOURNAMENT_GRADUATED', 'You already mastered this tree: your name is on the Bia Trạng Nguyên')
+      return fail('TOURNAMENT_GRADUATED', 'You already mastered this tree: your name is in the Hall of Fame')
     }
     if (message.includes('TOURNAMENT_CLOSED')) return fail('TOURNAMENT_CLOSED', 'This tree is not hosting a Mind Tournament right now')
     if (message.includes('TOURNAMENT_HOST')) return fail('AUTH_FORBIDDEN', 'You host this tournament: practise your own tree instead')

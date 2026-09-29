@@ -8,4 +8,12 @@ export type RootNodeView = {
 }
 
 // itemId → mastery level 0–3. Missing items count as 0.
+// Practice from the mindmap (the page wires it to drill's launch pop-up; the mindmap never links to
+// a round itself). 'drill' = the owner waters their tree; 'compete' = a Mind Tournament contestant.
+// No practice (null) = read-only visitor.
+export type MindmapPractice = {
+  mode: 'drill' | 'compete'
+  onPractice: (request: { rootId: string; review?: boolean }) => void
+}
+
 export type ItemLevels = Readonly<Record<string, number>>

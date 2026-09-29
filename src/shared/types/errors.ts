@@ -17,6 +17,6 @@ export type ErrorCode =
   | 'FORBIDDEN_VISITOR_PRACTICE'
   // Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (any more).
   | 'TOURNAMENT_CLOSED'
-  // Mind Tournament: this contestant already graduated (engraved on the Bia Trạng Nguyên).
+  // Mind Tournament: this contestant already graduated (engraved in the Hall of Fame).
   | 'TOURNAMENT_GRADUATED'
   | 'INTERNAL_ERROR'

@@ -51,8 +51,8 @@ describe('splitMutation', () => {
 })
 
 describe('drill DTOs', () => {
-  it('accepts a slug or a deck id, with a default limit', () => {
-    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 20, includeMastered: false })
+  it('accepts a slug or a deck id, with a default round size of 10', () => {
+    expect(GetDrillSessionDto.parse({ slug: 'cell-biology-101' })).toEqual({ slug: 'cell-biology-101', limit: 10, includeMastered: false })
     expect(GetDrillSessionDto.parse({ deckId: ITEM, limit: '5' })).toEqual({ deckId: ITEM, limit: 5, includeMastered: false })
   })
 
@@ -64,7 +64,8 @@ describe('drill DTOs', () => {
   it('rejects bad input', () => {
     expect(GetDrillSessionDto.safeParse({}).success).toBe(false)
     expect(GetDrillSessionDto.safeParse({ slug: 'Bad Slug' }).success).toBe(false)
-    expect(GetDrillSessionDto.safeParse({ slug: 'ok', limit: 99 }).success).toBe(false)
+    // An unknown round size falls back to 10 instead of failing the round.
+    expect(GetDrillSessionDto.parse({ slug: 'ok', limit: 99 }).limit).toBe(10)
     expect(CheckDrillAnswerDto.safeParse({ itemId: ITEM, seed: 'abc', tag: 'D' }).success).toBe(false)
     expect(CheckDrillAnswerDto.safeParse({ itemId: 'nope', seed: 'abc', tag: 'A' }).success).toBe(false)
   })

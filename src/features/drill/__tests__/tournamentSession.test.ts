@@ -23,7 +23,7 @@ function tree(deck: Partial<{ isPublic: boolean; isTournamentOpen: boolean }> = 
   })
 }
 
-const input = { slug: 'bao-quan', limit: 20, includeMastered: false }
+const input = { slug: 'bao-quan', limit: 20 as const, includeMastered: false }
 
 beforeEach(() => vi.clearAllMocks())
 

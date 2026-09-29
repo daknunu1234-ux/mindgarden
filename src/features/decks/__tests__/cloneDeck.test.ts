@@ -180,4 +180,11 @@ describe('clone_deck migration contract', () => {
     expect(body).not.toMatch(/insert into public\.user_progress/)
     expect(body).toMatch(/revoke all on function public\.clone_deck\(uuid, text\) from public, anon/)
   })
+
+  it('copies every statement in full: its text (correct_stmt), prompt and trap rules, under the copied root', () => {
+    expect(body).toMatch(/insert into public\.knowledge_items \(node_id, prompt, correct_stmt, trap_rules\)/)
+    expect(body).toMatch(/select \(v_map ->> ki\.node_id::text\)::uuid, ki\.prompt, ki\.correct_stmt, ki\.trap_rules/)
+    // Every statement of the source tree, whatever its root.
+    expect(body).toMatch(/where n\.deck_id = v_source\.id\s+order by ki\.created_at, ki\.id/)
+  })
 })

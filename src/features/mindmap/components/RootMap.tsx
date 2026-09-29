@@ -11,7 +11,7 @@ import { collapsibleNodeIds, indexNodes } from '../hooks/collapse'
 import { ancestorKeys, branchNodeIds, CROWN_Y, descendantKeys, layoutMindmap, nodeKey, type MindmapCard } from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery } from '../hooks/nodeMastery'
 import { conduitPath, groundPath, rootStroke, sceneGeometry, type SurfaceBox } from '../hooks/scene'
-import type { ItemLevels, RootNodeView } from '../types'
+import type { ItemLevels, MindmapPractice, RootNodeView } from '../types'
 import { NodePill, StatementCard } from './MindmapCards'
 import { NodeInspector } from './NodeInspector'
 
@@ -20,8 +20,6 @@ const GRASS = '#65a30d'
 type RootMapProps = {
   nodes: RootNodeView[]
   levels: ItemLevels
-  // Used only to build "/deck/<slug>/drill?nodeId=<id>" links (mindmap → drill via URL).
-  deckSlug: string
   // Tree skin (decks.tree_type): the roots use the same wood as the trunk.
   treeType: string
   // Drawn above the ground with its trunk base on the root conduit (the page passes the tree).
@@ -31,10 +29,11 @@ type RootMapProps = {
   // these to the decks feature; the mindmap itself never calls actions.
   onManage?: (nodeId: string) => void
   onAddRoot?: () => void
-  // Strict read-only visitor mode: false hides every drill / practice link (visitors must clone
-  // the tree to practise it). Defaults to true (the owner).
-  canPractice?: boolean
-  // Visitors only: item id → true statement text, so they can read the whole tree.
+  // Practice shortcuts ("Drill Root" / "Compete Root") open the page's launch pop-up. null = strict
+  // read-only visitor mode: no practice at all (visitors clone, or join a hosted Mind Tournament).
+  practice?: MindmapPractice | null
+  // item id → true statement text (the owner's from the editor, visitors' from the reader). Missing
+  // or blank texts fall back to the prompt / "Statement n".
   statements?: Readonly<Record<string, string>>
 }
 
@@ -42,7 +41,7 @@ type RootMapProps = {
 // trunk → category pills in a row → statements and sub-branches stacked in columns, joined by
 // Bezier roots. Pills collapse their branch; everything at 5/5 glows gold. Layout is pure
 // (hooks/mindmapLayout.ts); the camera (drag, pinch, Ctrl/⌘ + wheel, fit) is shared with the farm.
-function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onManage, onAddRoot, canPractice = true, statements }: RootMapProps) {
+function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAddRoot, practice = null, statements }: RootMapProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [activeKey, setActiveKey] = useState<string | null>(null)
   // Root shown in the inspector drawer (its branch is expanded and lit on the canvas).
@@ -270,7 +269,6 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
               )}
 
               {layout.cards.map((card) => {
-                const nodeHref = `/deck/${deckSlug}/drill?nodeId=${card.nodeId}`
                 const full = byId.get(card.nodeId)
                 return (
                   <div
@@ -286,7 +284,6 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
                       <StatementCard
                         card={card}
                         level={masteryOf(card) ?? 0}
-                        drillHref={canPractice ? nodeHref : null}
                         statement={card.itemId ? statements?.[card.itemId] : undefined}
                       />
                     ) : (
@@ -298,6 +295,9 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
                         statementCount={full ? branchItemIds(full).length : 0}
                         onInspect={() => inspect(card.nodeId)}
                         onManage={onManage ? () => onManage(card.nodeId) : undefined}
+                        // Rounds start from top-level roots only (never from a statement card).
+                        onPractice={practice && card.kind === 'category' ? () => practice.onPractice({ rootId: card.nodeId }) : undefined}
+                        practiceMode={practice?.mode}
                         inspected={inspectedId === card.nodeId}
                       />
                     )}
@@ -312,11 +312,10 @@ function RootMap({ nodes, levels, deckSlug, treeType, surface, emptyLabel, onMan
       <NodeInspector
         node={inspected}
         levels={levels}
-        deckSlug={deckSlug}
         onOpenChange={(open) => !open && setInspectedId(null)}
         onInspect={inspect}
         onManage={onManage}
-        canPractice={canPractice}
+        practice={practice}
         statements={statements}
       />
     </div>

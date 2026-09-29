@@ -8,9 +8,10 @@ import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
 import type { GetDrillSessionInput } from '../dto/GetDrillSessionDto'
+import type { DrillSize } from '../lib/drillSize'
 import { collectBranch } from '../lib/branch'
 import { drillSeed } from '../lib/drillSeed'
-import { emptyRoundReason, selectPracticeItems } from '../lib/queue'
+import { emptyRoundReason, orderByMastery, selectPracticeItems } from '../lib/queue'
 import type { DrillQuestion, DrillSession } from '../types'
 
 // Builds a shuffled practice round for a deck, or for one branch when input.nodeId is set
@@ -26,6 +27,17 @@ export type LoadLevels = (itemIds: string[], deckId: string) => Promise<Readonly
 // on someone else's public, hosting tree (levels = the contestant's isolated tournament progress;
 // the host can't compete). Tournament rounds never mix mastered items back in.
 export type DrillMode = 'practice' | 'tournament'
+
+// A Mind Tournament round: the same builder, questions and runner as a watering round, with the
+// tournament guard and the contestant's tournament levels. `nodeId` scopes it to one root.
+export function buildTournamentSession(
+  supabase: SupabaseClient<Database>,
+  input: { slug: string; nodeId?: string; limit: DrillSize },
+  sessionId: string,
+  { viewerId, loadLevels }: { viewerId: string | null; loadLevels?: LoadLevels },
+): Promise<ActionResult<DrillSession>> {
+  return buildDrillSession(supabase, { ...input, includeMastered: false }, sessionId, { viewerId, loadLevels, mode: 'tournament' })
+}
 
 export async function buildDrillSession(
   supabase: SupabaseClient<Database>,
@@ -82,7 +94,9 @@ export async function buildDrillSession(
     return fail('DRILL_ALL_MASTERED', focus ? 'Every statement in this branch is mastered' : 'Every statement in this tree is mastered')
   }
 
-  const round = seededShuffle(queue, seededRandom(sessionId)).slice(0, input.limit)
+  // Shuffle, then lowest mastery first (ties keep the shuffle), then cut to the chosen size (5 / 10 /
+  // 20). A smaller queue simply gives a shorter round.
+  const round = orderByMastery(seededShuffle(queue, seededRandom(sessionId)), levels).slice(0, input.limit)
   const { id, slug, title, treeType } = res.data.deck
   return ok({
     deck: { id, slug, title, treeType },

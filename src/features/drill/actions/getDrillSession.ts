@@ -8,7 +8,7 @@ import { buildDrillSession, type LoadLevels } from '../services/drillSession'
 import type { DrillSession } from '../types'
 
 // Auth: Required in practice (owner only). Input: { slug } or { deckId }, plus optional nodeId,
-// limit (1–50, default 20) and includeMastered (default false). Only the deck's owner may start a
+// limit (5, 10 or 20 questions; anything else → 10) and includeMastered (default false). Only the deck's owner may start a
 // round: anyone else gets FORBIDDEN_VISITOR_PRACTICE. The owner's 5/5 items sit out unless includeMastered.
 export async function getDrillSession(input: unknown): Promise<ActionResult<DrillSession>> {
   const parsed = GetDrillSessionDto.safeParse(input)

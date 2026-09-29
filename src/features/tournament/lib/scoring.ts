@@ -2,7 +2,7 @@
 // record_tournament_answer() and the two board functions (migration 20260928000900); a test
 // checks the SQL still says so.
 import { MAX_MASTERY } from '@/shared/lib/mastery'
-import { neighborName } from '@/shared/lib/neighborName'
+import { publicName } from '@/shared/lib/neighborName'
 
 // Max points for a tree with `drillableCount` statements the engine can ask: N × 5.
 export const maxPoints = (drillableCount: number): number => Math.max(0, Math.floor(drillableCount)) * MAX_MASTERY
@@ -25,21 +25,29 @@ export function nextPracticeDays(daysCount: number, lastDay: string, today: stri
 export type ActiveEntry = { masteryPercentage: number | null; daysCount: number; updatedAt: string }
 export type GraduateEntry = { daysCount: number; graduatedAt: string }
 
-// 🌱 Đang Rèn Luyện: higher mastery first, then fewer practice days, then who got there first.
+// 🌱 Active Learners: higher mastery first, then fewer practice days, then who got there first.
 export function compareActive(a: ActiveEntry, b: ActiveEntry): number {
   return (b.masteryPercentage ?? -1) - (a.masteryPercentage ?? -1) || a.daysCount - b.daysCount || a.updatedAt.localeCompare(b.updatedAt)
 }
 
-// 📜 Bia Trạng Nguyên: fewest practice days to master the whole tree, then the earliest graduate.
+// 📜 Hall of Fame: fewest practice days to master the whole tree, then the earliest graduate.
 export function compareHallOfFame(a: GraduateEntry, b: GraduateEntry): number {
   return a.daysCount - b.daysCount || a.graduatedAt.localeCompare(b.graduatedAt)
 }
 
-// A contestant's public name: their profile name, else the app-wide friendly pseudonym. Never an email.
-export const contestantName = (displayName: string | null | undefined, userId: string): string => displayName?.trim() || neighborName(userId)
+// The viewer's place: their row on the Hall of Fame, else on the Active board (top 50), else null.
+export function standingRank(
+  boards: { active: readonly { userId: string; rank: number }[]; hallOfFame: readonly { userId: string; rank: number }[] },
+  userId: string,
+): number | null {
+  return boards.hallOfFame.find((r) => r.userId === userId)?.rank ?? boards.active.find((r) => r.userId === userId)?.rank ?? null
+}
 
-// "3 ngày luyện tập".
-export const formatPracticeDays = (days: number): string => `${days} ngày luyện tập`
+// A contestant's public name: their chosen display name, else the app-wide pseudonym. Never an email.
+export const contestantName = (displayName: string | null | undefined, userId: string): string => publicName(displayName, userId)
+
+// "3 practice days" ("1 practice day").
+export const formatPracticeDays = (days: number): string => `${days} practice ${days === 1 ? 'day' : 'days'}`
 
 // 🥇 🥈 🥉 for the podium, "#4" after that.
 export const rankBadge = (rank: number): string => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`)

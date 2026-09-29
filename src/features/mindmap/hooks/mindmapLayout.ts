@@ -7,8 +7,9 @@ import type { RootNodeView } from '../types'
 
 export const CROWN_Y = 40
 export const CARD = {
-  // Pills hold: mastery ring, title, 🔍 inspect (with count), ✏️ manage (owners), collapse chip.
-  category: { w: 264, h: 52 },
+  // Pills hold: mastery ring, title, 🔍 inspect (with count), ✏️ manage (owners), collapse chip;
+  // top-level roots also hold the 💧 Drill / ⚔️ Compete button.
+  category: { w: 304, h: 52 },
   branch: { w: 244, h: 46 },
   statement: { w: 216, h: 84 },
 } as const
@@ -63,6 +64,13 @@ export function countDescendantCards(node: RootNodeView): number {
 
 // The prompt is shown when it says something new; app-authored items reuse the root title as
 // their prompt, so they become "Statement 1, 2, …". (Statement text itself is the answer: never shown.)
+// What a statement card / the inspector shows: the statement itself whenever the page passes it
+// (owner and visitors alike); "Statement n" only when the text is genuinely missing or blank.
+export function statementLabel(text: string | null | undefined, prompt: string | undefined, nodeTitle: string, ordinal: number): string {
+  const t = text?.trim()
+  return t ? t : statementTitle(prompt, nodeTitle, ordinal)
+}
+
 export function statementTitle(prompt: string | undefined, nodeTitle: string, ordinal: number): string {
   const p = prompt?.trim()
   return p && p.toLocaleLowerCase() !== nodeTitle.trim().toLocaleLowerCase() ? p : `Statement ${ordinal}`

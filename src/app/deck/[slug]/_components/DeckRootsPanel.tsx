@@ -2,20 +2,21 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import { AddRootDialog, NodeManageDialog, type DeckEditorData, type DeckTreeNode, type ManagedNode } from '@/features/decks'
-import { RootMap, type ItemLevels } from '@/features/mindmap'
+import { useSessionLaunch } from '@/features/drill'
+import { RootMap, type ItemLevels, type MindmapPractice } from '@/features/mindmap'
 
 type DeckRootsPanelProps = {
   deckId: string
-  deckSlug: string
   treeType: string
   tree: DeckTreeNode[]
   levels: ItemLevels
   // Owner-only editor data (statement texts); null for everyone else, who only inspect.
   editor: DeckEditorData | null
-  // Strict visitor mode: false hides every practice link (visitors must clone to practise), and
-  // visitorStatements (item id → text) lets them read the whole tree.
-  canPractice: boolean
-  visitorStatements?: Readonly<Record<string, string>>
+  // Root practice opens the page's launch pop-up (drill's SessionLaunchProvider): 'drill' for the
+  // owner, 'compete' for a Mind Tournament contestant, null for a read-only visitor (clone to
+  // practise). statements (item id → text): the owner's own texts or, for visitors, the shared tree's.
+  practiceMode: MindmapPractice['mode'] | null
+  statements?: Readonly<Record<string, string>>
   surface: { width: number; height: number; baseX: number; baseY: number; content: ReactNode }
   emptyLabel: string
 }
@@ -24,18 +25,22 @@ type DeckRootsPanelProps = {
 // Manage dialogs refresh page data in place, so the canvas keeps its camera and re-lays out.
 export function DeckRootsPanel({
   deckId,
-  deckSlug,
   treeType,
   tree,
   levels,
   editor,
-  canPractice,
-  visitorStatements,
+  practiceMode,
+  statements,
   surface,
   emptyLabel,
 }: DeckRootsPanelProps) {
   const [manageId, setManageId] = useState<string | null>(null)
   const [addRootOpen, setAddRootOpen] = useState(false)
+  const launch = useSessionLaunch()
+  const practice: MindmapPractice | null = useMemo(
+    () => (practiceMode && launch ? { mode: practiceMode, onPractice: (request) => launch.open(request) } : null),
+    [practiceMode, launch],
+  )
 
   const childCount = useMemo(() => {
     const counts = new Map<string, number>()
@@ -59,14 +64,13 @@ export function DeckRootsPanel({
       <RootMap
         nodes={tree}
         levels={levels}
-        deckSlug={deckSlug}
         treeType={treeType}
         surface={surface}
         emptyLabel={emptyLabel}
         onManage={editor ? setManageId : undefined}
         onAddRoot={editor ? () => setAddRootOpen(true) : undefined}
-        canPractice={canPractice}
-        statements={visitorStatements}
+        practice={practice}
+        statements={statements}
       />
       {editor && (
         <>

@@ -1,8 +1,8 @@
 # tournament
 
 Mind Tournament: a tree's owner hosts a mastery race on a shared tree; signed-in visitors compete with an
-**isolated** score. Ranking: 📜 Bia Trạng Nguyên (graduates, fewest practice days first) and 🌱 Đang Rèn
-Luyện (learners, mastery % then fewer days). Rules and schema: DATABASE.md "Mind Tournament Feature".
+**isolated** score. Ranking: 📜 Hall of Fame (graduates, fewest practice days first) and 🌱 Active
+Learners (learners, mastery % then fewer days). Rules and schema: DATABASE.md "Mind Tournament Feature".
 
 ## Owned tables
 `deck_tournament_participants`, `deck_tournament_item_progress` (migration `20260928000900_mind_tournament.sql`).
@@ -12,8 +12,8 @@ The hosting switch `decks.is_tournament_open` belongs to decks (`setTournamentOp
 | From | Export | Notes |
 |------|--------|-------|
 | `index.ts` | `submitTournamentAnswer({ deckId, itemId, seed, tag, timeZone? })` | Server Action, Auth Required, never the host → `ActionResult<TournamentAnswer>`. `services/answers.ts` `recordTournamentAnswer`: loads the tree with the player's client (`decks/server` `listDrillItems`), checks `shared/lib/visitor.ts` `tournamentAccess`, grades with the trap engine (same seed + node siblings as the round), then calls `record_tournament_answer()` with the **service role** (allow-listed in `decks/__tests__/answerSecrecy.test.ts`): ±1 on the statement, a new local day counted once, points over the current drillable statements, graduation at 100%. Never touches `user_progress`, `practice_days` or coins |
-| `index.ts` | `getTournamentBoards({ deckId })` | Server Action, Auth Optional → `{ hallOfFame, active, standing }` via the two board RPCs (`services/boards.ts`). Names = profile name or `shared/lib/neighborName` pseudonym, never emails. Missing migration → empty boards (logged) |
-| `index.ts` | `TournamentBoard({ active, hallOfFame, viewerId?, standing?, limit? })` | Client. Two wooden tabs "📜 Bia Trạng Nguyên" / "🌱 Đang Rèn Luyện": rank (🥇🥈🥉, then #n), name, mastery % and "X ngày luyện tập"; highlights the viewer; opens on the Hall of Fame when it has names |
+| `index.ts` | `getTournamentBoards({ deckId })` | Server Action, Auth Optional → `TournamentBoardsView`: `hallOfFame`, `active`, `standing` (with its `rank`, from `lib/scoring.ts` `standingRank`) and `levels` (the viewer's tournament level per statement: the deck page's compete launcher counts what's left, and the mindmap shows them) via the two board RPCs (`services/boards.ts`) and `fetchTournamentLevels`. The drill runner calls it at the end of a round to show the contestant's rank. Names = the chosen Garden Name (`users.display_name`) or the `shared/lib/neighborName` pseudonym, never emails or full names. `TournamentBoard` takes `viewerAction` (the page passes auth's ✏️ `DisplayNameEditor`), shown in your own row on both tabs. Missing migration → empty boards (logged) |
+| `index.ts` | `TournamentBoard({ active, hallOfFame, viewerId?, standing?, limit? })` | Client. Two wooden tabs "📜 Hall of Fame" / "🌱 Active Learners": rank (🥇🥈🥉, then #n), name, mastery % and "X practice days"; highlights the viewer; opens on the Hall of Fame when it has names |
 | `index.ts` | `TournamentLiveBadge()` | Server-safe golden plaque "🏆 Mind Tournament is Live!" |
 | `index.ts` | `maxPoints`, `masteryPercentage`, `isGraduation`, `nextPracticeDays`, `compareActive`, `compareHallOfFame`, `contestantName`, `formatPracticeDays`, `rankBadge` | Pure rules (`lib/scoring.ts`), mirrored by the SQL |
 | `index.ts` | types `TournamentAnswer`, `TournamentBoards`, `ActiveBoardRow`, `HallOfFameRow`, `TournamentStanding` | |

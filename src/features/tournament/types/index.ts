@@ -13,11 +13,11 @@ export type TournamentAnswer = {
   masteryPercentage: number | null
   daysCount: number
   isGraduated: boolean
-  // This answer completed the tree: engraved on the Bia Trạng Nguyên.
+  // This answer completed the tree: engraved in the Hall of Fame.
   justGraduated: boolean
 }
 
-// 🌱 Đang Rèn Luyện row (name already resolved: profile name or pseudonym, never an email).
+// 🌱 Active Learners row (name already resolved: profile name or pseudonym, never an email).
 export type ActiveBoardRow = {
   rank: number
   userId: string
@@ -29,7 +29,7 @@ export type ActiveBoardRow = {
   updatedAt: string
 }
 
-// 📜 Bia Trạng Nguyên row.
+// 📜 Hall of Fame row.
 export type HallOfFameRow = {
   rank: number
   userId: string
@@ -49,4 +49,7 @@ export type TournamentStanding = {
   daysCount: number
   isGraduated: boolean
   graduatedAt: string | null
+  // Place on its board (Hall of Fame for graduates, else Active Learners); null past the top 50
+  // or when unknown (findStanding alone doesn't rank).
+  rank?: number | null
 }

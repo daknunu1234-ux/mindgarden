@@ -43,7 +43,7 @@ describe('drillHref / isReviewParam', () => {
   it('builds round URLs with optional branch and review mode', () => {
     expect(drillHref('bio')).toBe('/deck/bio/drill')
     expect(drillHref('bio', { review: true })).toBe('/deck/bio/drill?review=1')
-    expect(drillHref('bio', { nodeId: 'n1', review: true })).toBe('/deck/bio/drill?nodeId=n1&review=1')
+    expect(drillHref('bio', { rootId: 'n1', review: true })).toBe('/deck/bio/drill?rootId=n1&review=1')
   })
 
   it('reads ?review= strictly', () => {
@@ -87,7 +87,7 @@ vi.mock('@/features/decks/server', () => ({
 
 import { buildDrillSession } from '../services/drillSession'
 
-const input = (includeMastered: boolean) => ({ slug: 'bio', limit: 20, includeMastered })
+const input = (includeMastered: boolean) => ({ slug: 'bio', limit: 20 as const, includeMastered })
 const levels = (map: Record<string, number>) => async () => new Map(Object.entries(map))
 const asOwner = (map: Record<string, number>) => ({ viewerId: OWNER, loadLevels: levels(map) })
 

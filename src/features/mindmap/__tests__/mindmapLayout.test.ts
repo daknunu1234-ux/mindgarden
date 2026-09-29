@@ -7,6 +7,7 @@ import {
   itemKey,
   layoutMindmap,
   nodeKey,
+  statementLabel,
   statementTitle,
   type MindmapCard,
 } from '../hooks/mindmapLayout'
@@ -143,6 +144,15 @@ describe('labels and highlight path', () => {
     expect(statementTitle('Ty thể', 'Ty thể', 2)).toBe('Statement 2')
     expect(statementTitle(' ty THỂ ', 'Ty thể', 1)).toBe('Statement 1')
     expect(statementTitle(undefined, 'x', 3)).toBe('Statement 3')
+  })
+
+  it('statementLabel shows the statement itself (owner, clone or visitor) and falls back only when it is blank', () => {
+    expect(statementLabel('Ty thể sản sinh ATP.', 'Ty thể', 'Ty thể', 1)).toBe('Ty thể sản sinh ATP.')
+    expect(statementLabel('  Ribosome tổng hợp protein.  ', 'Ty thể', 'Ty thể', 2)).toBe('Ribosome tổng hợp protein.')
+    expect(statementLabel('', 'Ty thể', 'Ty thể', 2)).toBe('Statement 2')
+    expect(statementLabel('   ', 'What powers the cell?', 'Ty thể', 1)).toBe('What powers the cell?')
+    expect(statementLabel(null, undefined, 'x', 3)).toBe('Statement 3')
+    expect(statementLabel(undefined, 'Ty thể', 'Ty thể', 4)).toBe('Statement 4')
     const l = layoutMindmap(TREE)
     expect(l.cards.find((c) => c.key === itemKey('i5'))!.title).toBe('What powers the cell?')
     expect(l.cards.find((c) => c.key === itemKey('i2'))!.title).toBe('Statement 2')
