@@ -1,6 +1,6 @@
 # Backend Project Rules
 > **Read when**: writing or reviewing server code (actions, services, dto, tests).
-> **Related**: [ARCHITECTURE.md](./ARCHITECTURE.md) · [../API_SPEC.md](../API_SPEC.md) · [../DATABASE.md](../DATABASE.md)
+> **Related**: [ARCHITECTURE.md](./BE-ARCHITECTURE.md) · [API_SPEC.md](../01.share-docx/API%20SPEC.md) · [DATABASE.md](../01.share-docx/DATABASE.md)
 
 ## Overview
 - **Language**: TypeScript (`strict: true`) · **Framework**: Next.js App Router (Server Actions & Route Handlers)
@@ -100,7 +100,7 @@ export async function submitDrillResult(input: unknown): Promise<ActionResult<Dr
 | Item | DO | DON'T |
 |------|----|-------|
 | Branch | `feat/drill`, `fix/streak-reset` | `update`, `linh-branch` |
-| Commit | `feat(drill): add trap swap rule` · `fix(progress): clamp mastery at 3` · `docs: update DATABASE.md` | `fixed stuff`, `WIP` |
+| Commit | `feat(drill): add trap swap rule` · `fix(progress): clamp mastery at 5` · `docs: update DATABASE.md` | `fixed stuff`, `WIP` |
 
 ## 7. Testing
 - **Runner**: Vitest; pure functions only, no DB
@@ -117,8 +117,8 @@ it('returns 3 unique choices with the original as correctTag', () => {
   expect(new Set(r.choices.map((c) => c.text)).size).toBe(3)
   expect(r.choices.find((c) => c.tag === r.correctTag)?.text).toBe(STMT)
 })
-it('caps mastery at 3 and floors at 0', () => {
-  expect(nextMastery(3, true)).toBe(3)
+it('caps mastery at 5 (MAX_MASTERY) and floors at 0', () => {
+  expect(nextMastery(5, true)).toBe(5)
   expect(nextMastery(0, false)).toBe(0)
 })
 ```

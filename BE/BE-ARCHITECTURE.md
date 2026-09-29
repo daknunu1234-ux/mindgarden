@@ -1,7 +1,7 @@
 # Backend Architecture
 
 > **Read when**: adding a feature, moving code between folders, or touching the drill / trap engine flow.
-> **Related**: [PROJECT-RULES.md](./PROJECT-RULES.md) · [../API_SPEC.md](../API_SPEC.md) · [../DATABASE.md](../DATABASE.md) · [../frontend/ARCHITECTURE.md](../frontend/ARCHITECTURE.md)
+> **Related**: [PROJECT-RULES.md](./BE-PROJECT-RULE.md) · [API_SPEC.md](../01.share-docx/API%20SPEC.md) · [DATABASE.md](../01.share-docx/DATABASE.md) · [frontend/ARCHITECTURE.md](../FE/FE-ARCHITECTURE.md)
 
 ## 1. Tech Stack
 
@@ -96,9 +96,9 @@ features/[feature]/
 | Feature | Owns tables | Actions | May import |
 |---------|-------------|---------|------------|
 | `auth` | `roles`, `users` (except streak columns) | none (OAuth via `/auth/callback`) | `shared` |
-| `decks` | `decks`, `mindmap_nodes`, `knowledge_items` | `getDecks`, `getDeckBySlug`, `createDeck` | `shared` |
-| `progress` | `user_progress`, `users.streak_count`, `users.last_active_at` | `submitDrillResult`, `getProgressByDecks` | `shared`, `decks/server` |
-| `drill` | none (orchestrator) | `getDrillQuestion` | `shared`, `decks/server`, `progress/server` |
+| `decks` | `decks`, `mindmap_nodes`, `knowledge_items` | `getDecks` (own trees only), `getDeckBySlug`, `getDeckReader`, `createDeck`, `cloneDeck`, editing actions (full list: API_SPEC.md §6) | `shared` |
+| `progress` | `user_progress`, `practice_days`, `users.streak_count`, `users.last_active_at`, `users.coins` (mastery payouts, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
+| `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `garden`, `mindmap` | none (UI only) | none | `shared` |
 
 - **Direction**: `drill` → `progress/server` → `decks/server`; `drill` → `decks/server`; every feature → `shared`. Never the reverse, no cycles

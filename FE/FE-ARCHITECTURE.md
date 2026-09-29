@@ -1,7 +1,7 @@
 # Frontend Architecture
 
 > **Read when**: building the garden, tree, root mindmap, or drill overlay; adding a route or UI feature.
-> **Related**: [PROJECT-RULES.md](./PROJECT-RULES.md) · [../API_SPEC.md](../API_SPEC.md) · [../backend/ARCHITECTURE.md](../backend/ARCHITECTURE.md)
+> **Related**: [PROJECT-RULES.md](./FE-PROJECT-RULE.md) · [API_SPEC.md](../01.share-docx/API%20SPEC.md) · [backend/ARCHITECTURE.md](../BE/BE-ARCHITECTURE.md)
 
 ## 1. Tech Stack
 
@@ -139,7 +139,7 @@ export const getTreeStage = (pct: number): TreeStage =>
 - **Farm World** (`garden/components/FarmIslandView.tsx`, geometry `garden/lib/farmLayout.ts`, camera `shared/lib/camera.ts` + `shared/hooks/useCamera.ts`, shared with the mindmap): the full-bleed home page (`/`) under the site header. An isometric farmstead on an island: plots 1.45 tiles apart on raised soil beds with border stones and contact shadows, cobblestone lanes (spanning tree from the dock + a lane to the farmhouse), a white picket fence along the front edge (open at the dock), lampposts, benches, straw bales, beehives beside flowering trees (sakura / apple from stage 3), flower patches and grass tufts (seeded). Scenery is pure SVG (`FarmScenery.tsx`); trees and landmarks are HTML buttons over it, stacked back-to-front
   - **Landmarks**: 🏡 farmhouse → `/profile` (sign-in dialog when signed out); 🚜 tractor → Daily Delivery dialog listing today's thirsty trees with a "Start delivery" into the first one's drill (no quest system yet)
   - **Per plot**: 💧 when signed in and not practised today (player's local day), ✨ at 100%, wooden nameplate; stage 4–5 trees drop leaves/petals, apple & sakura get two orbiting bees (max 12 animated trees); a one-time water splash + ripple the first time a watered tree is seen that day (per browser, `localStorage`)
-  - **HUD** (corners): level + XP bar (top-left); 🔥 streak, 🪙 coins, 💎 gems (top-right); zoom − / % / + / fit (bottom-left); Farm/Grid toggle (bottom-centre); seed sack → `/deck/new` (bottom-right); island switcher + notices (top-centre, when needed). Coins = stored 🪙 gold (1 per statement mastered for the first time, `users.coins`; the drill updates it live through `CoinsProvider`), gems = Mighty Roots on the island. Nothing to spend yet
+  - **HUD** (corners): level + XP bar (top-left); 🔥 streak, 🪙 coins, 💎 gems (top-right); zoom − / % / + / fit (bottom-left); Farm/Grid toggle (bottom-centre); seed sack → `/deck/new` (bottom-right); island switcher + notices (top-centre, when needed). Coins = stored 🪙 gold (1 per statement mastered for the first time, `users.coins`; the drill updates it live through `CoinsProvider`), gems = Mighty Roots on the island. Coins buy tree seeds (100 🪙) and clones (min(100 + statements, 150) 🪙); the ➕ on the coin pill opens the Coin Shop
   - **Camera**: fits and centres on arrival; drag to pan with mouse or one finger (`touch-action: none`), two-finger pinch and Ctrl/⌘ + wheel (trackpad pinch) zoom around the fingers/cursor (35–180%); a drag > 6 px swallows the click that ends it so dragging over a plot never opens it
   - **Motion**: CSS-only `.mg-*` keyframes in `globals.css` (transform/opacity); all particles, bees and splashes are off under `prefers-reduced-motion`
 - A plot opens a dialog: Water Tree (practice), Inspect Roots (mindmap), Edit (owner)
@@ -164,7 +164,7 @@ submitDrillResult({ itemId, seed, tag })
   ├── AUTH_UNAUTHORIZED ──► open LoginDialog, keep the question on screen
   ▼
 isCorrect?
-  ├── yes ──► gold highlight (+ confetti if masteryLevel = 3)
+  ├── yes ──► gold highlight (confetti once at the round summary if saved mastery rose)
   └── no  ──► amber highlight + MutationHighlight marks the changed words
   ▼
 router.refresh() ──► page re-runs getProgressByDecks ──► tree stage + root opacity re-render

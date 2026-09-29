@@ -1,7 +1,7 @@
 # Database Documentation
 
 > **Read when**: writing migrations, services, RLS policies, or any Supabase query.
-> **Related**: [API_SPEC.md](./API_SPEC.md) · [backend/ARCHITECTURE.md](./backend/ARCHITECTURE.md) · [backend/PROJECT-RULES.md](./backend/PROJECT-RULES.md)
+> **Related**: [API_SPEC.md](./API%20SPEC.md) · [backend/ARCHITECTURE.md](../BE/BE-ARCHITECTURE.md) · [backend/PROJECT-RULES.md](../BE/BE-PROJECT-RULE.md)
 
 ## Overview
 
@@ -116,10 +116,10 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 
 | Invariant | Enforced by |
 |-----------|-------------|
-| `users.coins` changes only through `public.award_mastery_coin(user, item)` | `users` UPDATE is granted to players on `full_name`, `avatar_url` only; the function is `SECURITY DEFINER` with EXECUTE for `service_role` only (`progress/services/coins.ts`, admin client) |
+| Mastery pays only through `public.award_mastery_coin(user, item)` | `users` UPDATE is granted to players on `full_name`, `avatar_url` only; the function is `SECURITY DEFINER` with EXECUTE for `service_role` only (`progress/services/coins.ts`, admin client). The other writers of `users.coins` are the spending RPCs `plant_deck` / `clone_deck` and the dev-only `dev_grant_coins` (see *Seed economy*) |
 | A paid item can't be reset and farmed again | Players have no INSERT/UPDATE privilege on `user_progress.coin_awarded_at` (column grants), and can't rewrite a row's identity: UPDATE is granted on `mastery_level`, `mistake_count`, `last_practiced_at` only |
-| No double payment under concurrency | The function claims with one `UPDATE … WHERE mastery_level = 3 AND coin_awarded_at IS NULL`: only one caller gets the row |
-| Balance ≤ number of (player, item) pairs ever mastered | The above; `coins >= 0` CHECK (nothing to spend yet) |
+| No double payment under concurrency | The function claims with one `UPDATE … WHERE mastery_level = 5 AND coin_awarded_at IS NULL` (it was `= 3` before migration `20260928000400`): only one caller gets the row |
+| Coins earned from mastery ≤ number of (player, item) pairs ever mastered | The above. The balance itself also holds the 300 🪙 starter purse, minus what was spent on seeds and clones; `coins >= 0` CHECK |
 
 **Seed economy** (migration `20260928000500_seed_economy.sql`; the same numbers live in `shared/lib/economy.ts`, and a test checks they match):
 

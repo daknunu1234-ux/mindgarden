@@ -1,7 +1,7 @@
 # API Specification
 
 > **Read when**: adding or changing a Server Action, Route Handler, DTO, error code, or response shape.
-> **Related**: [DATABASE.md](./DATABASE.md) · [backend/ARCHITECTURE.md](./backend/ARCHITECTURE.md) · [frontend/ARCHITECTURE.md](./frontend/ARCHITECTURE.md)
+> **Related**: [DATABASE.md](./DATABASE.md) · [backend/ARCHITECTURE.md](../BE/BE-ARCHITECTURE.md) · [frontend/ARCHITECTURE.md](../FE/FE-ARCHITECTURE.md)
 
 ## 1. Overview
 
@@ -20,7 +20,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 
 - **Session**: Supabase session cookie via `createServerClient` (`@supabase/ssr`) in `src/shared/lib/supabase/server.ts`
 - **Identity**: `supabase.auth.getUser()` on the server; `userId` is never accepted from the client
-- **Anonymous**: may explore public decks and request drill questions; progress mutations require a session
+- **Anonymous**: may explore and read public decks (strict read-only). Drills are **owner-only**: `getDrillSession`, `checkDrillAnswer` and `submitDrillResult` need a session AND the deck's owner, else `FORBIDDEN_VISITOR_PRACTICE` (`shared/lib/visitor.ts` `canPractice`). Visitors clone a tree (`cloneDeck`) to practise it
 
 | Auth | Meaning |
 |------|---------|
@@ -334,7 +334,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //         coins: number } | null                                          // null when signed out
 ```
 - XP = 10 × Σ `mastery_level` over all of the player's `user_progress` rows; level L → L + 1 costs 50 + 25 × (L − 1)
-- Coins = the stored 🪙 gold balance `users.coins` (1 per item mastered for the first time; 0 if the coins migration hasn't run). Nothing to spend yet. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
+- Coins = the stored 🪙 gold balance `users.coins` (starts at 300; +1 per item mastered for the first time; −100 per seed, −min(100 + statements, 150) per clone; 0 if the coins migration hasn't run). `coinsAsOf` = when it was read (epoch ms), so the HUD keeps the newer of this and a live value from an action. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
 
 ### `getGardenStats` (progress)
 ```typescript
@@ -363,7 +363,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Input: { deckIds: string[] /* 1–50 */ }
 // data
 Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × itemCount) × 100, 0 if no items
-        itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 }[];
+        itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 | 4 | 5 }[];
         mightyRoots: number;                                // roots whose items are all 5/5
         lastPracticedDay: string | null;                    // newest practice, player's local day
         practicedToday: boolean }>                          // false also when never practised (farm 💧)

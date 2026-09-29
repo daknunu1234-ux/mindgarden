@@ -1,6 +1,6 @@
 # Frontend Project Rules
 > **Read when**: building pages, components, hooks, or garden / mindmap / drill UI.
-> **Related**: [ARCHITECTURE.md](./ARCHITECTURE.md) · [../API_SPEC.md](../API_SPEC.md) · [../backend/PROJECT-RULES.md](../backend/PROJECT-RULES.md)
+> **Related**: [ARCHITECTURE.md](./FE-ARCHITECTURE.md) · [API_SPEC.md](../01.share-docx/API%20SPEC.md) · [backend/PROJECT-RULES.md](../BE/BE-PROJECT-RULE.md)
 
 ## Overview
 - **Stack**: Next.js App Router (React 19, TypeScript) · shadcn/ui (Radix) in `src/shared/components/ui/` · Tailwind CSS
@@ -100,9 +100,10 @@ export function useDrillSession(nodeId: string) {
 - DON'T copy server data into a global store or `useState` just to "cache" it
 
 ## 8. Gamification & Plain Text
-- **Tree stage** from `masteryPercent`: 0–25 🌱 · 26–50 🌿 · 51–80 🪴 · 81–100 🌳✨ (frontend/ARCHITECTURE.md §5)
+- **Tree stage** from `masteryPercent` (`getTreeStage`): 0–20 🌱 · 21–40 🌿 · 41–65 🪴 · 66–89 🌳 · 90–100 🌟 (frontend/ARCHITECTURE.md §5)
+- **Mastery** is 0–5 per item (`shared/lib/mastery.ts`, `MAX_MASTERY`); show it with 5 notches (`GameProgressBar segments`), never a 0–3 scale
 - **Feedback**: gold `border-yellow-500 bg-yellow-50` (mastery) · amber `border-amber-500 bg-amber-50` (needs practice); no red
-- **Confetti** on mastery 3, stage-up, or a drill round that raised saved mastery on at least one item (once, at the summary): `confetti({ particleCount: 80, disableForReducedMotion: true })`
+- **Confetti** once, at the drill round summary, when the round raised saved mastery on at least one item (stage-up confetti is planned, not built): `confetti({ particleCount: 80, disableForReducedMotion: true })`
 - **Text**: `whitespace-pre-wrap` plain text; DON'T use KaTeX, MathJax, or `dangerouslySetInnerHTML`
 - DON'T show hearts, "lives left", life-deduction modals, or lockout timers
 

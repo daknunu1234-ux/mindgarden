@@ -8,7 +8,7 @@ Server feature for decks, their mindmap tree and knowledge items.
 ## Exports
 | From | Export | Notes |
 |------|--------|-------|
-| `index.ts` | `getDecks(input?)` | Server Action. `{ limit?, page? }` → `ActionResult<Deck[]>` with `meta { page, limit, total }`. Auth: Optional (RLS returns public + own decks) |
+| `index.ts` | `getDecks(input?)` | Server Action. `{ limit?, page? }` → `ActionResult<Deck[]>` with `meta { page, limit, total }`. Auth: Optional. **Owner-only**: returns the session user's own decks (public and private), never another gardener's; signed out → `[]` |
 | `index.ts` | `getDeckBySlug({ slug })` | Server Action → `ActionResult<DeckDetail>`. Errors: `VALIDATION_FAILED`, `DECK_NOT_FOUND`, `INTERNAL_ERROR`. Auth: Optional |
 | `index.ts` | `createDeck({ title, description?, treeType?, isPublic? })` | Server Action, Auth Required. Costs 100 🪙 (`shared/lib/economy.ts`): `services/authoring.ts` `plantDeck` calls the `plant_deck()` RPC (charge + insert in one transaction) per slug candidate. Returns `{ deck, remainingCoins }`; `INSUFFICIENT_COINS` when short. Slug from `slugify(title)` with collision suffixes (a clash never double-charges) |
 | `index.ts` | `getDecks`, `getCommunityDecks`, `getNeighborGarden` | Server Actions (`services/decks.ts`). `getDecks` = the session user's own decks only (signed out → []); `getCommunityDecks` = other gardeners' public decks; `getNeighborGarden({ ownerId })` = one gardener's public decks. Tests: `__tests__/gardenIsolation.test.ts` |
@@ -47,7 +47,7 @@ Server feature for decks, their mindmap tree and knowledge items.
 - `lib/deckTree.ts`: `buildDeckTree` (adjacency list → nested roots, siblings by `sort_order`, cycle nodes dropped), `countDeckTree`
 
 ## Not built yet
-Editing/deleting roots and statements, reordering roots
+Reordering roots
 
 ## May import
 `@/shared/*` only
