@@ -24,6 +24,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    | 8 | `20260928000700_clone_deck.sql` | Clone a shared tree into your garden for min(100 + statements, 150) 🪙 |
    | 9 | `20260928000800_tree_visits.sql` | Visited Gardens: the shared trees each player has opened |
    | 10 | `20260928000900_mind_tournament.sql` | Mind Tournament: hosting switch, isolated contestant scores, both leaderboards |
+   | 11 | `20260928001000_display_names.sql` | Custom Garden Names shown on boards and gardens (emails and full names stay private) |
 
    With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
    Supabase Dashboard → SQL Editor, and paste and run each file in the order above.

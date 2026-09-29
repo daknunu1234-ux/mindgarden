@@ -47,6 +47,12 @@ describe('groupVisitedGardens', () => {
     expect(gardens[0].trees[0].visitedAt).toBe('2026-09-10T00:00:00Z')
   })
 
+  it('names gardeners by their chosen Garden Name, else their pseudonym', () => {
+    const gardens = groupVisitedGardens(visits, ME, { chi: 'Chi Hoa' })
+    expect(gardens.find((g) => g.ownerId === 'chi')?.name).toBe('Chi Hoa')
+    expect(gardens.find((g) => g.ownerId === 'binh')?.name).toBe(neighborName('binh'))
+  })
+
   it('is empty without visits', () => {
     expect(groupVisitedGardens([], ME)).toEqual([])
     expect(groupVisitedGardens([visit('mine', ME, '2026-09-29T08:00:00Z')], ME)).toEqual([])

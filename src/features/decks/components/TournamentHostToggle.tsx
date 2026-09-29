@@ -64,7 +64,7 @@ function TournamentHostToggle({ deckId, isPublic, isOpen: initial }: TournamentH
               ? 'Share the tree with the community first: only shared trees can host a tournament.'
               : isOpen
                 ? 'Live: visitors race to master every statement in the fewest practice days. Their scores never touch your tree.'
-                : 'Closed: nobody can join. The boards and the Bia Trạng Nguyên stay visible.'}
+                : 'Closed: nobody can join. The boards and the Hall of Fame stay visible.'}
           </p>
         </div>
       </div>

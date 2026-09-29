@@ -15,7 +15,7 @@ type VisitedGardensDrawerProps = {
   visitingOwnerId?: string | null
 }
 
-// "🧭 Visited Gardens · Vườn đã thăm": a wooden tab on the farm's left edge opening a drawer of the
+// "🧭 Visited Gardens": a wooden tab on the farm's left edge opening a drawer of the
 // shared trees this player has opened (from a shared link), grouped by gardener, newest visit
 // first. Visit a whole garden (read-only island) or re-open one tree (read-only).
 function VisitedGardensDrawer({ gardens, signedIn, visitingOwnerId = null }: VisitedGardensDrawerProps) {
@@ -42,7 +42,6 @@ function VisitedGardensDrawer({ gardens, signedIn, visitingOwnerId = null }: Vis
           🧭
         </span>
         <span className="[writing-mode:vertical-rl]">Visited Gardens</span>
-        <span className="[writing-mode:vertical-rl] text-[10px] opacity-80">Vườn đã thăm</span>
         {gardens.length > 0 && (
           <span className="mt-1 flex size-6 items-center justify-center rounded-full border-2 border-white bg-gradient-to-b from-[#fb7185] to-[#e11d48] text-[11px] shadow-[0_2px_0_#8a1033]">
             {gardens.length}
@@ -57,7 +56,7 @@ function VisitedGardensDrawer({ gardens, signedIn, visitingOwnerId = null }: Vis
         >
           <SheetHeader className="border-b-[3px] border-amber-950/50 bg-gradient-to-b from-amber-700 to-amber-800 pr-12 text-amber-50">
             <SheetTitle className="font-game text-xl font-extrabold text-amber-50 [text-shadow:0_2px_0_rgba(69,26,3,0.6)]">
-              🧭 Visited Gardens · Vườn đã thăm
+              🧭 Visited Gardens
             </SheetTitle>
             <SheetDescription className="text-amber-100/85">
               Shared trees you have opened from a link. They are read-only: clone one into your garden to practise it.

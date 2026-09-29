@@ -5,6 +5,7 @@ import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { SignInWithEmailInput } from '../dto/SignInWithEmailDto'
 import type { SessionUser } from '../types'
+import { readOwnDisplayName } from './profile'
 
 // Sends a magic link. New emails get an account (signup is on); the link lands on
 // /auth/callback, which exchanges the PKCE code for a session.
@@ -35,7 +36,8 @@ export async function readSessionUser(supabase: SupabaseClient<Database>): Promi
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  return user ? { id: user.id, email: user.email ?? '', createdAt: user.created_at } : null
+  if (!user) return null
+  return { id: user.id, email: user.email ?? '', createdAt: user.created_at, displayName: await readOwnDisplayName(supabase, user.id) }
 }
 
 // For /auth/callback (magic links and OAuth such as Google both land there). Returns false when

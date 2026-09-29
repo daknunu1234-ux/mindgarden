@@ -1,5 +1,9 @@
 // Client-safe public API. Never re-export services/ from here.
 export { getCurrentUser } from './actions/getCurrentUser'
+export { getDisplayNames } from './actions/getDisplayNames'
+export { updateDisplayName } from './actions/updateDisplayName'
+export { DisplayNameEditor } from './components/DisplayNameEditor'
+export { DISPLAY_NAME_MAX, DISPLAY_NAME_MIN, displayNameLength, sanitizeDisplayName } from './lib/displayName'
 export { signInWithEmail } from './actions/signInWithEmail'
 export { signOut } from './actions/signOut'
 export { LoginDialog } from './components/LoginDialog'

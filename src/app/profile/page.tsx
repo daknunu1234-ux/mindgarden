@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { GamePanel } from '@/shared/components/game'
 import { SignInPrompt } from '@/shared/components/SignInPrompt'
 import { getTreeSizeTier } from '@/shared/lib/treeSkins'
-import { getCurrentUser } from '@/features/auth'
+import { DisplayNameEditor, getCurrentUser } from '@/features/auth'
+import { neighborName } from '@/shared/lib/neighborName'
 import { getTreeStage, TreeStageSvg, TREE_STAGES } from '@/features/garden'
 import { getFarmHud, getGardenStats, type GardenTree } from '@/features/progress'
 import { GardenerCard, GardenStatsGrid, MightyShowcase, PlantedTreeList, type PlantedTreeView } from '@/features/user-profile'
@@ -38,13 +39,15 @@ export default async function ProfilePage() {
     <main className="mg-meadow-bg w-full flex-1">
       <div className="mx-auto w-full max-w-5xl space-y-10 px-4 py-10 sm:px-6">
         <GardenerCard
-          gardener={{ email: user.email, joinedAt: user.createdAt }}
+          gardener={{ email: user.email, joinedAt: user.createdAt, name: user.displayName }}
           masteryPercent={stats.success ? stats.data.masteryPercent : 0}
           coins={coins}
           level={
             level && { level: level.level, title: level.title, xpIntoLevel: level.xpIntoLevel, xpForNextLevel: level.xpForNextLevel }
           }
         />
+        {/* The public name on boards and in other gardeners' lists (the pseudonym until chosen). */}
+        <DisplayNameEditor current={user.displayName} fallback={neighborName(user.id)} />
 
         {stats.success ? (
           <>

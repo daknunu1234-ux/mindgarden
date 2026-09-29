@@ -11,6 +11,7 @@ export {
   formatVisitedAgo,
   groupVisitedGardens,
   neighborName,
+  publicName,
   visitHref,
   type VisitedGarden,
   type VisitedTreeView,

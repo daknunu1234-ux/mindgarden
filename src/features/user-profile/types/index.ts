@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 // View models only: the page maps auth / progress data into these. This feature owns no tables.
-export type GardenerView = { email: string; joinedAt: string }
+// name: the chosen Garden Name (null = fall back to the email's name part on this private page).
+export type GardenerView = { email: string; joinedAt: string; name?: string | null }
 
 // Gardener level (from progress.getFarmHud); optional on the card.
 export type GardenerLevelView = { level: number; title: string; xpIntoLevel: number; xpForNextLevel: number }

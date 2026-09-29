@@ -37,7 +37,7 @@ deck/[slug]/page.tsx (Server Component: getDeckBySlug + getProgressByDecks)
               └── RootNode × n     opacity = node mastery
                     │ click
                     ▼
-              /deck/[slug]/drill?nodeId=<id> ──► DrillOverlay (drill)
+     launch pop-up (5 / 10 / 20) ──► /deck/[slug]/drill?rootId=<id>&limit=10 ──► DrillOverlay (drill)
 ```
 
 ---
@@ -53,7 +53,7 @@ src/
 │   └── deck/[slug]/
 │       ├── page.tsx                # Single tree + root explorer
 │       ├── _components/DeckScene.tsx   # Composes garden + mindmap (route-private)
-│       ├── drill/page.tsx          # Focused drill overlay, reads ?nodeId=<id>
+│       ├── drill/page.tsx          # Focused drill overlay, reads ?rootId=<id> (or ?nodeId=) and ?limit=
 │       └── tournament/page.tsx     # Mind Tournament round (DrillOverlay in tournament mode) for visitors
 ├── shared/
 │   ├── components/game/            # Game design system (see §4a): GameButton, GamePanel, GameDialog, GameTabs, GameProgressBar, HUD pieces
@@ -89,7 +89,7 @@ src/
 | `mindmap` | Mindmap layout (crown → categories → statements), collapse, 🔍 inspector drawer, owner ✏️ hooks (wired to decks in `app/`) | `RootMap`, `NodePill`, `StatementCard`, `layoutMindmap` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
-| `tournament` | Mind Tournament boards on `/deck/[slug]` (📜 Bia Trạng Nguyên, 🌱 Đang Rèn Luyện) and the live badge | `TournamentBoard`, `TournamentLiveBadge` | Draw rounds (drill does, in `mode: 'tournament'`) | Boards + the viewer's standing from `getTournamentBoards` | Owner switch lives in decks (`TournamentHostToggle`); "⚔️ Tham gia Mind Tournament" links to `/deck/[slug]/tournament` |
+| `tournament` | Mind Tournament boards on `/deck/[slug]` (📜 Hall of Fame, 🌱 Active Learners) and the live badge | `TournamentBoard`, `TournamentLiveBadge` | Draw rounds (drill does, in `mode: 'tournament'`) | Boards + the viewer's standing from `getTournamentBoards` | Owner switch lives in decks (`TournamentHostToggle`); "⚔️ Join Mind Tournament" links to `/deck/[slug]/tournament` |
 | `user-profile` | Gardener's Trophy & Record Hall on `/profile` | `GardenerCard`, `GardenStatsGrid`, `MightyShowcase`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features
@@ -147,6 +147,7 @@ export const getTreeStage = (pct: number): TreeStage =>
 - A plot opens a dialog: Water Tree (practice), Inspect Roots (mindmap), Edit (owner)
 - **Gardener level** (`progress/lib/gardenerLevel.ts`): XP = 10 × Σ mastery levels over every practised item; level L → L + 1 costs 50 + 25 × (L − 1) XP
 - **Root opacity**: `0.35 + 0.65 × (node mastery / 5)`, node mastery = average `masteryLevel` of its items; soft glow from two thirds (`STRONG_MASTERY`), gold at 5/5
+- **Round size & launch pop-up**: every start on the deck page (Water Tree, Review, ⚔️ Join Mind Tournament, and Drill Root / Compete Root on any root) opens drill's `SessionLaunchModal`: mode + scope title, available questions, 5 / 10 (default) / 20 (remembered in localStorage + cookie `mindgarden_drill_size`), "Start Session". Watering and competing share one header and runner; the round header shows "Question 3 / 10"
 - **Review mode**: normal rounds rest 5/5 items. "Review Mastered 🌿" / "Include Mastered Items (Review Mode)" links to the same round with `?review=1`: on the drill page (`ReviewModeToggle`), the deck header, the farm plot popup switch, the mindmap inspector, and the profile ("🌿 Review" for fully mastered trees). A round with nothing left shows "🌳 Fully Cultivated!" (`DRILL_ALL_MASTERED`)
 
 ---
@@ -156,7 +157,7 @@ export const getTreeStage = (pct: number): TreeStage =>
 ```
 RootNode clicked
   ▼
-router.push('/deck/[slug]/drill?nodeId=<id>')        sessionId = crypto.randomUUID() on overlay mount
+launch pop-up → router.push('/deck/[slug]/drill?rootId=<id>&limit=10')   sessionId = crypto.randomUUID() on overlay mount
   ▼
 getDrillQuestion({ nodeId, sessionId })  ──► { itemId, prompt, seed, choices A · B · C }
   ▼

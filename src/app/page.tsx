@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
-import { getCurrentUser } from '@/features/auth'
+import { getCurrentUser, getDisplayNames } from '@/features/auth'
 import { getDecks, getNeighborGarden, getVisitedGardens, type Deck } from '@/features/decks'
 import { FarmWorld } from './_components/FarmWorld'
 import {
   GardenGrid,
   groupVisitedGardens,
-  neighborName,
+  publicName,
   ViewToggle,
   VisitedGardensDrawer,
   type DeckCardView,
@@ -52,7 +52,12 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const progress = await loadProgress(decks)
   const currentPage = res.success ? (res.meta?.page ?? 1) : 1
   // Visited Gardens drawer: shared trees this player opened. A failed load shows an empty drawer.
-  const visitedGardens = groupVisitedGardens(visitedRes.success ? visitedRes.data : [], userId)
+  // Gardeners show by their chosen Garden Name, else their pseudonym.
+  const visited = visitedRes.success ? visitedRes.data : []
+  const namesRes = await getDisplayNames({ userIds: [...new Set([...visited.map((t) => t.ownerId), ...(visitOwnerId ? [visitOwnerId] : [])])] })
+  const names = namesRes.success ? namesRes.data : {}
+  const visitedGardens = groupVisitedGardens(visited, userId, names)
+  const visitName = visitOwnerId ? publicName(names[visitOwnerId], visitOwnerId) : null
 
   const cards: DeckCardView[] = decks.map((d) => ({
     id: d.id,
@@ -123,7 +128,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     )
     return (
       <main className="flex w-full flex-1 flex-col">
-        <h1 className="sr-only">{visitOwnerId ? `${neighborName(visitOwnerId)}'s Garden` : 'Farm World'}</h1>
+        <h1 className="sr-only">{visitName ? `${visitName}'s Garden` : 'Farm World'}</h1>
         <FarmWorld
           // A fresh island (camera, popups) when switching between gardens.
           key={visitOwnerId ?? userId ?? 'guest'}
@@ -131,7 +136,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           hud={hudView}
           signedIn={userId !== null}
           gridHref={hrefFor('grid', currentPage)}
-          visitor={visitOwnerId ? { name: neighborName(visitOwnerId), backHref: '/' } : null}
+          visitor={visitName ? { name: visitName, backHref: '/' } : null}
           leftEdge={<VisitedGardensDrawer gardens={visitedGardens} signedIn={userId !== null} visitingOwnerId={visitOwnerId} />}
           topCenter={
             !visitOwnerId &&

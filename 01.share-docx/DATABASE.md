@@ -40,7 +40,8 @@
 | id | UUID | PK, FK → auth.users, ON DELETE CASCADE | Same ID as Supabase Auth account |
 | role_id | INT | FK → roles, NOT NULL, DEFAULT 2 | New players are `user` |
 | email | VARCHAR(255) | NOT NULL | Snapshot from signup |
-| full_name | VARCHAR(100) | NULLABLE | Display name |
+| full_name | VARCHAR(100) | NULLABLE | Private name (Google sign-in fills it). Never shown to other players |
+| display_name | VARCHAR(30) | NULLABLE, CHECK 2–30 chars after trim and no `<` `>` | The public **Garden Name** the player chose (migration `20260928001000`). Shown on tournament boards, in other gardeners' Visited Gardens, on the visitor banner and in the header. NULL = the id-derived pseudonym ("Mossy Owl") everywhere. Players update only their own (column grant + RLS "users: update self"); the app sanitizes first (`auth/lib/displayName.ts`). Others read it only through `get_display_names(ids)` (`SECURITY DEFINER`, display names only, 200 ids max) and the board functions |
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
@@ -126,7 +127,7 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | mastery_percentage | NUMERIC(5,2) | GENERATED ALWAYS AS `round(current_points / nullif(max_points, 0) × 100, 2)` STORED | NULL when the tree has no drillable statement |
 | days_count | INT | NOT NULL, DEFAULT 1, CHECK ≥ 1 | Distinct local calendar days with at least one answer on this tree |
 | is_graduated | BOOLEAN | NOT NULL, DEFAULT FALSE | Every drillable statement reached 5/5. Set once, never cleared |
-| graduated_at | TIMESTAMPTZ | NULLABLE; set exactly when is_graduated (CHECK) | When they graduated (Bia Trạng Nguyên tie-break) |
+| graduated_at | TIMESTAMPTZ | NULLABLE; set exactly when is_graduated (CHECK) | When they graduated (Hall of Fame tie-break) |
 | last_practiced_date | DATE | NOT NULL, DEFAULT CURRENT_DATE | Latest practice day (the contestant's local date) |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Latest answer (Active board tie-break) |
 | *(deck_id, user_id)* | — | UNIQUE `unique_deck_participant` | One run per contestant per tree |
@@ -150,11 +151,11 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | Only a signed-in visitor on a public, hosting tree competes; never the host | `shared/lib/visitor.ts` `tournamentAccess` in the app, re-checked in `record_tournament_answer` (`TOURNAMENT_CLOSED`, `TOURNAMENT_HOST`) |
 | Points can't be posted: the server grades every answer (trap engine) | Players have **no** INSERT/UPDATE/DELETE on either table; `record_tournament_answer` is EXECUTE-able by `service_role` only (`features/tournament/services/answers.ts`, admin client) |
 | Isolation: `user_progress`, `practice_days`, `users.coins` never change | The function writes only the two tournament tables (tests check the SQL, and that the service never touches those tables) |
-| Boards never show emails | `get_tournament_active_board` / `get_tournament_hall_of_fame` return `users.full_name` only; the app falls back to the id-derived pseudonym |
+| Boards never show emails or private names | `get_tournament_active_board` / `get_tournament_hall_of_fame` return `users.display_name` only (they returned `full_name` before migration `20260928001000`); the app falls back to the id-derived pseudonym |
 
 **Boards** (`SECURITY DEFINER`, EXECUTE for anon + authenticated; rows only for a tree the caller can read, i.e. public or their own; still readable after the host closes the tournament):
-- `get_tournament_active_board(deck_id)` (🌱 Đang Rèn Luyện): not graduated, `ORDER BY mastery_percentage DESC NULLS LAST, days_count ASC, updated_at ASC LIMIT 50` → `rank, user_id, display_name, current_points, max_points, mastery_percentage, days_count, updated_at`
-- `get_tournament_hall_of_fame(deck_id)` (📜 Bia Trạng Nguyên): graduated, `ORDER BY days_count ASC, graduated_at ASC` (every graduate) → `rank, user_id, display_name, max_points, days_count, graduated_at`
+- `get_tournament_active_board(deck_id)` (🌱 Active Learners): not graduated, `ORDER BY mastery_percentage DESC NULLS LAST, days_count ASC, updated_at ASC LIMIT 50` → `rank, user_id, display_name, current_points, max_points, mastery_percentage, days_count, updated_at`
+- `get_tournament_hall_of_fame(deck_id)` (📜 Hall of Fame): graduated, `ORDER BY days_count ASC, graduated_at ASC` (every graduate) → `rank, user_id, display_name, max_points, days_count, graduated_at`
 
 ⚠️ Known limits: visitors can read a shared tree's true statements (strict read-only mode, `getDeckReader`), so a contestant can look answers up; and a contestant who answers every statement five times in one sitting graduates in 1 day. The board measures days, not honesty or spacing.
 
@@ -292,7 +293,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |-------|--------|--------|--------|--------|
 | roles | Everyone | ✗ | ✗ | ✗ |
-| users | Self (admin: all) | ✗ (trigger only) | Self, `full_name` + `avatar_url` only | ✗ |
+| users | Self (admin: all); others' `display_name` only via `get_display_names()` | ✗ (trigger only) | Self, `full_name` + `avatar_url` + `display_name` only | ✗ |
 | decks | `is_public` OR owner | ✗ direct; only via `plant_deck()` (100 🪙) or `clone_deck()` (min(100 + n, 150) 🪙) | Owner | Owner |
 | mindmap_nodes | If deck readable | Deck owner | Deck owner | Deck owner |
 | knowledge_items | If deck readable | Deck owner | Deck owner | Deck owner |
@@ -385,6 +386,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 7 | `20260928000600_profiles_and_sharing.sql` | Signup trigger reads Google metadata; `ensure_user_profile()` + backfill of missing profile rows (300 🪙); `decks.is_public` default `false`; `plant_deck()` ensures the profile first and plants private by default |
   | 8 | `20260928000700_clone_deck.sql` | `clone_deck()`: charge min(100 + statements, 150) 🪙 and deep-copy another gardener's public tree (roots + statements, no progress) into a private deck of the caller. Needs file 7 |
   | 9 | `20260928000800_tree_visits.sql` | `tree_visits` + RLS (read own) + `record_tree_visit()`, the only writer (another gardener's public tree only). Needs file 7 |
+  | 11 | `20260928001000_display_names.sql` | `users.display_name` (public Garden Name, 2–30, CHECK), its column grant, `get_display_names()`, and both tournament board functions re-created to return `display_name` instead of `full_name` |
   | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
@@ -394,9 +396,10 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **Deploy order for file 6 on the hosted project**: run it together with the app deploy. The new app plants through `plant_deck`, which doesn't exist before the migration. The old app inserts decks directly, which is refused after it
 - **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
+- **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000900`
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928001000`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing

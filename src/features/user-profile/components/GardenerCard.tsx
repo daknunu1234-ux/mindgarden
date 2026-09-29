@@ -15,7 +15,7 @@ type GardenerCardProps = {
 // The hall's nameplate: a carved wooden board with a gold-framed portrait, the level gauge and the
 // gardener's gold.
 function GardenerCard({ gardener, masteryPercent, level, coins }: GardenerCardProps) {
-  const name = gardenerName(gardener.email)
+  const name = gardener.name?.trim() || gardenerName(gardener.email)
   return (
     <GamePanel tone="wood" className="text-amber-50">
       <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">

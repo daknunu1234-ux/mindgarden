@@ -30,21 +30,24 @@ function ProfileButton({ user }: ProfileButtonProps) {
       if (res.success) router.refresh()
     })
 
+  // The chosen Garden Name when there is one; otherwise the email's name part (only you see this bar).
+  const label = user.displayName ?? (user.email.split('@')[0] || 'Gardener')
+
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Link
         href="/profile"
         className="group flex min-w-0 items-center gap-2 rounded-full py-0.5 pr-3 pl-0.5 font-game text-sm font-bold text-amber-50 transition-colors hover:bg-white/10 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
         title={user.email}
-        aria-label={`Your Trophy Hall (${user.email})`}
+        aria-label={`Your Trophy Hall (${label})`}
       >
         <span
           aria-hidden
           className="flex size-8 shrink-0 items-center justify-center rounded-full border-[3px] border-yellow-400 bg-gradient-to-b from-emerald-300 to-emerald-600 text-sm font-extrabold text-white uppercase shadow-[0_2px_0_#78350f] transition-transform group-hover:scale-110"
         >
-          {user.email.charAt(0)}
+          {label.charAt(0)}
         </span>
-        <span className="hidden max-w-36 truncate sm:inline">{user.email.split('@')[0]}</span>
+        <span className="hidden max-w-36 truncate sm:inline">{label}</span>
       </Link>
       <GameButton tone="wood" size="icon-sm" onClick={onSignOut} disabled={isPending} aria-label="Sign out" title="Sign out">
         <LogOut className="size-4" aria-hidden />

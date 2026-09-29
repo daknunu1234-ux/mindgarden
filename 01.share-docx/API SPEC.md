@@ -69,7 +69,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs 100 🪙 (`createDeck`), cloning one costs min(100 + statements, 150) 🪙 (`cloneDeck`) |
 | `FORBIDDEN_VISITOR_PRACTICE` | 403 | Practising or grading a tree you don't own (strict read-only visitor mode, signed out included). Message: "You must clone this tree to your garden to practice it!" (`getDrillSession`, `checkDrillAnswer`, `submitDrillResult`) |
 | `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
-| `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved on the Bia Trạng Nguyên); your run is frozen |
+| `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved in the Hall of Fame); your run is frozen |
 | `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
@@ -83,6 +83,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Auth | `signInWithEmail` | Action/POST | Email a magic link | Public |
 | Auth | `signOut` | Action/POST | Clear the session | Optional |
 | Auth | `getCurrentUser` | Action | Verified user or null (layout, pages) | Optional |
+| Auth | `updateDisplayName` | Action/POST | Set your own public Garden Name (2–30 characters) | Required |
+| Auth | `getDisplayNames` | Action | Chosen Garden Names by gardener id (never emails) | Optional |
 | Decks | `getDecks` | Action/GET | The signed-in player's own decks (their garden) | Optional |
 | Decks | `getNeighborGarden` | Action/GET | One gardener's shared decks (visitor mode) | Optional |
 | Decks | `getVisitedGardens` | Action | Shared trees the player has opened, newest visit first (Visited Gardens drawer) | Optional |
@@ -102,7 +104,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `setTournamentOpen` | Action/POST | Owner opens or closes the tree's Mind Tournament (public trees only) | Required (owner) |
 | Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
 | Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
-| Tournament | `getTournamentBoards` | Action | Bia Trạng Nguyên + Active Learners boards, and your own standing | Optional |
+| Tournament | `getTournamentBoards` | Action | Hall of Fame + Active Learners boards, and your own standing | Optional |
 | Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
@@ -133,8 +135,29 @@ Failure: 302 to /?login=error
 ### `signOut` / `getCurrentUser` (auth)
 ```typescript
 // signOut(): data null · Errors: INTERNAL_ERROR
-// getCurrentUser(): data { id: string; email: string; createdAt: string } | null   (from supabase.auth.getUser())
+// getCurrentUser(): data { id: string; email: string; createdAt: string; displayName: string | null } | null
+//   (supabase.auth.getUser(), plus the player's own users.display_name)
 ```
+
+### `updateDisplayName` (auth)
+```typescript
+// Input (UpdateDisplayNameDto): { displayName: string }
+//   sanitized first: NFC, invisible/control characters and < > & " ' ` \ removed, spaces collapsed, trimmed;
+//   then 2–30 characters (code points: "Nguyễn" is 6)
+// data: { displayName: string /* as saved */ }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+- Updates only the caller's own `users` row (the id comes from the session; RLS + column grant). `revalidatePath('/', 'layout')`, so the header, both tournament boards, Visited Gardens and the profile show the new name on the next render (`DisplayNameEditor` calls `router.refresh()`)
+- Edited on `/profile` ("🏡 Garden Name") or with the ✏️ on your own row of a tournament board
+
+### `getDisplayNames` (auth)
+```typescript
+// Input (GetDisplayNamesDto): { userIds: string[] /* uuid, max 200 */ }
+// data: Record<userId, displayName>   // only gardeners who chose one; the page shows everyone else by pseudonym
+// Errors: VALIDATION_FAILED, INTERNAL_ERROR
+```
+- Through `get_display_names()` (DATABASE.md): players can't read each other's profiles. Missing migration → `{}`
+- The public-name rule everywhere: `shared/lib/neighborName.ts` `publicName(displayName, userId)` = the chosen name, else the pseudonym (only when the name is null or blank)
 
 ### `getDecks` (decks)
 ```typescript
@@ -163,7 +186,7 @@ Array<{ deckId: string; ownerId: string; title: string; slug: string; treeType: 
         visitedAt: string }>
 // Errors: VALIDATION_FAILED, INTERNAL_ERROR
 ```
-- Fills the farm's "🧭 Visited Gardens · Vườn đã thăm" left drawer, which replaced Community Gardens. The page groups the rows by gardener (`garden/lib/neighbors.ts` `groupVisitedGardens`: newest-visited garden first, own trees left out); neighbours get a friendly name derived from their id, because profiles aren't readable across players
+- Fills the farm's "🧭 Visited Gardens" left drawer, which replaced Community Gardens. The page groups the rows by gardener (`garden/lib/neighbors.ts` `groupVisitedGardens`: newest-visited garden first, own trees left out); neighbours get a friendly name derived from their id, because profiles aren't readable across players
 - Only **public** trees of **other** gardeners (explicit filters + decks RLS on the join): a tree that went private again, or was deleted, drops out
 - Reads `tree_visits` (DATABASE.md), statement counts via `listDeckItemIds`
 
@@ -209,7 +232,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need <cost> coins to clone this tree!"),
 //         DECK_NOT_FOUND (private, deleted, or unknown), AUTH_FORBIDDEN (it's already your tree), INTERNAL_ERROR
 ```
-- **Price**: `min(100 + statements, 150)` 🪙 (`cloneCost`, `shared/lib/economy.ts`; the database computes the same with `least(100 + n, 150)`). The button shows it: `🌱 Clone Tree (N 🪙)`
+- **Price**: `min(100 + statements, 150)` 🪙 (`cloneCost`, `shared/lib/economy.ts`; the database computes the same with `least(100 + n, 150)`). The button shows it: `🌱 Clone to Garden (N 🪙)`
 - **Atomic**: `clone_deck()` (DATABASE.md "Cloning") charges and deep-copies the deck, every root (same hierarchy and order) and every statement with its trap rules in one transaction. Slug from the title like `createDeck`; a clash rolls everything back before the next candidate, so the fee is paid once
 - **Fresh start**: progress is never copied. The cloner owns the copy, so editing and practice are unlocked, and every statement starts at 0/5 (with its 🪙 mastery coin still to earn)
 - On success: `revalidatePath('/')` and `'/profile'`. The button pushes `remainingCoins` into `CoinsProvider` and navigates to `/deck/<new slug>`
@@ -266,13 +289,13 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `getTournamentSession` (drill)
 ```typescript
-// Input (GetTournamentSessionDto): { slug: string; limit?: number /* 1–50, default 20 */ }
-// data: a DrillSession with mode: 'tournament' (same shape as getDrillSession; focus null, includeMastered false)
+// Input (GetTournamentSessionDto): { slug: string; rootId?: string /* uuid: one root and its sub-roots */; limit?: 5 | 10 | 20 /* round size; anything else → 10 */ }
+// data: a DrillSession with mode: 'tournament' (same shape as getDrillSession; focus = the root when rootId is set; includeMastered false)
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (you host it), TOURNAMENT_CLOSED (private tree, or not hosting),
-//         TOURNAMENT_GRADUATED, DECK_NOT_FOUND, DRILL_NO_ITEMS, DRILL_ALL_MASTERED, INTERNAL_ERROR
+//         TOURNAMENT_GRADUATED, DECK_NOT_FOUND, NODE_NOT_FOUND (rootId not in this tree), DRILL_NO_ITEMS, DRILL_ALL_MASTERED, INTERNAL_ERROR
 ```
 - The one exception to strict read-only visitor mode: a signed-in visitor drills someone else's **public** tree while its owner hosts a tournament (`shared/lib/visitor.ts` `tournamentAccess`). Page: `/deck/[slug]/tournament`
-- The whole tree; the contestant's **tournament** levels (`tournament/server` `fetchTournamentLevels`, never `user_progress`) rest 5/5 statements; review mode doesn't apply
+- Built by `buildTournamentSession` (= `buildDrillSession` in tournament mode): the whole tree, or one root and its sub-roots (`?rootId=`); the contestant's **tournament** levels (`tournament/server` `fetchTournamentLevels`, never `user_progress`) rest 5/5 statements; review mode doesn't apply
 
 ### `submitTournamentAnswer` (tournament)
 ```typescript
@@ -289,19 +312,20 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - **Grading** on the server, exactly like `submitDrillResult` (re-run the trap engine with the seed and the node's siblings); then `record_tournament_answer` (service role) applies ±1, counts a new local day once, recomputes points over the tree's current drillable statements and graduates at 100% (DATABASE.md "Mind Tournament")
 - **Isolated**: never writes `user_progress`, `practice_days` (streak) or coins. A graduate's run is frozen (`TOURNAMENT_GRADUATED`)
-- The drill overlay shows the score after each round and a "🎓 Đỗ Trạng Nguyên!" dialog with confetti on `justGraduated`
+- The drill overlay shows the score after each round and a "🎓 Tree Mastered!" dialog with confetti on `justGraduated`
 
 ### `getTournamentBoards` (tournament)
 ```typescript
 // Input: { deckId: string }
 // data
-{ hallOfFame: { rank; userId; name; maxPoints; daysCount; graduatedAt }[];            // 📜 Bia Trạng Nguyên: days ASC, graduatedAt ASC
-  active: { rank; userId; name; currentPoints; maxPoints; masteryPercentage; daysCount; updatedAt }[];  // 🌱 Đang Rèn Luyện: % DESC, days ASC, updatedAt ASC (top 50)
-  standing: { currentPoints; maxPoints; masteryPercentage; daysCount; isGraduated; graduatedAt } | null }  // the signed-in viewer's own run
+{ levels: Record<string, number>;   // the viewer's tournament level per statement ({} if signed out / not joined)
+  hallOfFame: { rank; userId; name; maxPoints; daysCount; graduatedAt }[];            // 📜 Hall of Fame: days ASC, graduatedAt ASC
+  active: { rank; userId; name; currentPoints; maxPoints; masteryPercentage; daysCount; updatedAt }[];  // 🌱 Active Learners: % DESC, days ASC, updatedAt ASC (top 50)
+  standing: { currentPoints; maxPoints; masteryPercentage; daysCount; isGraduated; graduatedAt; rank: number | null } | null }  // the signed-in viewer's own run and place (null past the top 50)
 // Errors: VALIDATION_FAILED, INTERNAL_ERROR
 ```
 - Auth optional; rows only for a readable tree (public, or your own), also after the host closed the tournament
-- `name` = the contestant's profile name, else the app-wide pseudonym (`shared/lib/neighborName`). Emails are never returned
+- `name` = the contestant's chosen Garden Name (`users.display_name`), else the app-wide pseudonym (`shared/lib/neighborName` `publicName`). Emails and private full names are never returned
 - Before migration `20260928000900` the board functions don't exist: empty boards (logged)
 
 ### `getDrillQuestion` (drill)
@@ -318,9 +342,9 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `getDrillSession` (drill)
 ```typescript
-// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus nodeId?: string, limit?: number /* 1–50, default 20 */,
+// Input (GetDrillSessionDto): { slug: string } | { deckId: string }, plus nodeId?: string, limit?: 5 | 10 | 20 /* round size; missing or anything else → 10, never an error */,
 //        includeMastered?: boolean /* default false; the page passes ?review=1 */
-// nodeId: only items of that root and all its sub-roots (the page passes ?nodeId=)
+// nodeId: only items of that root and all its sub-roots (the page passes ?rootId=; the older ?nodeId= still works)
 // includeMastered: review mode: mix the player's 5/5 items back in (normally they rest)
 // data
 { deck: { id: string; slug: string; title: string; treeType: string };
@@ -339,7 +363,9 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - **Owner only** (strict read-only visitor mode): the deck's `user_id` must be the session user, checked before any question is built. The drill page answers `FORBIDDEN_VISITOR_PRACTICE` with "You must clone this tree to your garden to practice it!" and a clone button
 - **Queue** (`lib/queue.ts` `selectPracticeItems`, pure): the owner's levels come from `progress/server` `fetchMasteryLevels`; 5/5 items are left out unless `includeMastered`. If levels can't be read, nothing is left out, so practice is never blocked. A fresh clone has no levels, so every item is in the round at 0/5
-- **Order**: items shuffled with `seededRandom(sessionId)`, then cut to `limit`
+- **Order**: items shuffled with `seededRandom(sessionId)`, then lowest mastery first (`lib/queue.ts` `orderByMastery`, stable, so ties keep the shuffle), then cut to `limit`. A queue shorter than `limit` gives a shorter round (no error)
+- **Round size** (`lib/drillSize.ts`): 5, 10 (default) or 20. Pages read `?limit=` (`/deck/[slug]/drill?limit=5`, `/deck/[slug]/tournament?limit=20`), else the `mindgarden_drill_size` cookie the selector saves, else 10. `SessionLaunchModal` / `DrillSizeSelector` pick it before a round; sizes the scope can't fill are disabled or badged "only N"
+- **Launch pop-up** (drill's `SessionLaunchModal` via `SessionLaunchProvider` / `SessionLaunchButton` / `useSessionLaunch`, pure plan `lib/sessionLaunch.ts` `planLaunch`): every start on the deck page opens it first, in both modes and both scopes. "💧 Water Tree" / "🌿 Review Mastered" / "⚔️ Join Mind Tournament" (whole tree) and "Drill Root" / "⚔️ Compete Root" (mindmap statement cards, the root inspector, the visitor's tree list). It shows "[Water Tree 🌱 / Review 🌿 / Compete ⚔️] - [Whole Tree / Root: name]", the questions available in that scope (drillable statements minus the mode's 5/5 ones, the owner's mastery for watering, the contestant's tournament levels for competing), the 5 / 10 / 20 selector, and "Start Session" → `/deck/[slug]/drill?limit=…(&rootId=…)` or `/deck/[slug]/tournament?limit=…(&rootId=…)`. Both pages render the same header (`DrillRoundHeader`) and runner (`DrillOverlay`); only where answers are saved differs
 - **Traps**: each item gets the other statements of its node as siblings (sibling concept swaps, backend/ARCHITECTURE.md §7)
 - With `nodeId` it covers what `getDrillQuestion` was planned for (per-node practice from the mindmap); `getDrillQuestion` is not built
 

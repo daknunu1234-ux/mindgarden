@@ -2,9 +2,9 @@
 // neighbour gardens.
 // Neighbours are named with shared/lib/neighborName (profiles aren't readable across players).
 
-import { neighborName } from '@/shared/lib/neighborName'
+import { neighborName, publicName } from '@/shared/lib/neighborName'
 
-export { neighborName }
+export { neighborName, publicName }
 
 // One visited tree, as the page passes it in (from decks' getVisitedGardens).
 export type VisitedTreeView = {
@@ -29,7 +29,13 @@ export type VisitedGarden = {
 // Groups visited trees by gardener, never including the viewer's own trees: the most recently
 // visited garden first, and inside each garden the most recently visited tree first. A tree listed
 // twice keeps its newest visit.
-export function groupVisitedGardens(trees: readonly VisitedTreeView[], viewerId: string | null): VisitedGarden[] {
+// `names` = gardeners' chosen display names by id (auth's getDisplayNames); anyone without one
+// shows as their pseudonym.
+export function groupVisitedGardens(
+  trees: readonly VisitedTreeView[],
+  viewerId: string | null,
+  names: Readonly<Record<string, string>> = {},
+): VisitedGarden[] {
   const newest = new Map<string, VisitedTreeView>()
   for (const t of trees) {
     if (t.ownerId === viewerId) continue
@@ -45,7 +51,7 @@ export function groupVisitedGardens(trees: readonly VisitedTreeView[], viewerId:
       const sorted = [...list].sort((a, b) => b.visitedAt.localeCompare(a.visitedAt))
       return {
         ownerId,
-        name: neighborName(ownerId),
+        name: publicName(names[ownerId], ownerId),
         lastVisitedAt: sorted[0].visitedAt,
         trees: sorted.map((t) => ({
           deckId: t.deckId,

@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { GamePanel } from '@/shared/components/game'
-import { getCurrentUser } from '@/features/auth'
+import { getCurrentUser, getDisplayNames } from '@/features/auth'
+import { publicName } from '@/shared/lib/neighborName'
 import { countsAsVisit, getDeckBySlug, getDeckEditor, getDeckReader, TreeVisitTracker } from '@/features/decks'
 import { getFarmHud, getProgressByDecks } from '@/features/progress'
 import { getTournamentBoards } from '@/features/tournament'
@@ -54,6 +55,9 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
     !isOwner && signedIn ? getFarmHud() : null,
     res.data.deck.isPublic ? getTournamentBoards({ deckId }) : null,
   ])
+  // The owner as visitors see them: their chosen Garden Name, else their pseudonym.
+  const ownerNames = isOwner ? null : await getDisplayNames({ userIds: [res.data.deck.userId] })
+  const ownerName = publicName(ownerNames?.success ? ownerNames.data[res.data.deck.userId] : null, res.data.deck.userId)
   const purse = hud?.success && hud.data ? hud.data : null
   // Visited Gardens: a signed-in player opening someone else's shared tree. Recorded from the
   // browser after mount, so link prefetching never counts as a visit.
@@ -68,12 +72,14 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
       {tracksVisit && <TreeVisitTracker deckId={deckId} />}
       <DeckScene
         detail={res.data}
+        ownerName={ownerName}
         progress={progress.success ? (progress.data[0] ?? null) : null}
         editor={editor?.success ? editor.data : null}
         tournament={{
           isOpen: res.data.deck.isPublic && res.data.deck.isTournamentOpen,
           boards: boards?.success ? boards.data : null,
           viewerId: userRes.success ? (userRes.data?.id ?? null) : null,
+          viewerDisplayName: userRes.success ? (userRes.data?.displayName ?? null) : null,
         }}
         visitor={
           isOwner ? null : { reader: reader?.success ? reader.data : null, signedIn, coins: purse?.coins ?? null, coinsAsOf: purse?.coinsAsOf }

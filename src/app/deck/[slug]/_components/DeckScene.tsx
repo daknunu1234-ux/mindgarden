@@ -3,7 +3,8 @@ import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
 import { getTreeSizeTier } from '@/shared/lib/treeSkins'
-import { drillHref } from '@/features/drill'
+import { DisplayNameEditor } from '@/features/auth'
+import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchContext } from '@/features/drill'
 import {
   CloneTreeButton,
   countDeckTree,
@@ -18,7 +19,7 @@ import {
 import { GrowthBar, neighborName, TREE_BASE_RATIO, TreeStageSvg, useTreeStage, visitHref } from '@/features/garden'
 import type { ItemLevels } from '@/features/mindmap'
 import type { DeckProgress } from '@/features/progress'
-import { TournamentBoard, TournamentLiveBadge, type TournamentBoards, type TournamentStanding } from '@/features/tournament'
+import { TournamentBoard, TournamentLiveBadge, type TournamentBoardsView } from '@/features/tournament'
 import { DeckRootsPanel } from './DeckRootsPanel'
 
 // Someone else's tree (strict read-only visitor mode): the statements to read (null if they could
@@ -29,13 +30,17 @@ export type DeckVisitor = { reader: DeckEditorData | null; signedIn: boolean; co
 // private tree or when they couldn't be loaded).
 export type DeckTournament = {
   isOpen: boolean
-  boards: (TournamentBoards & { standing: TournamentStanding | null }) | null
+  boards: TournamentBoardsView | null
   viewerId: string | null
+  // The viewer's chosen Garden Name (null = pseudonym), for the ✏️ on their own board row.
+  viewerDisplayName: string | null
 }
 
 // editor is set only for the deck owner; visitor only for everyone else.
 type DeckSceneProps = {
   detail: DeckDetail
+  // The owner's public name (chosen Garden Name, else pseudonym), for the visitor banner.
+  ownerName: string
   progress: DeckProgress | null
   editor: DeckEditorData | null
   visitor: DeckVisitor | null
@@ -47,7 +52,7 @@ const TREE_SIZE = 176
 
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
 // ground line and the mindmap roots grow out of its trunk into the soil.
-function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneProps) {
+function DeckScene({ detail, ownerName, progress, editor, visitor, tournament }: DeckSceneProps) {
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
   const masteryPercent = progress?.masteryPercent ?? 0
@@ -60,9 +65,11 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
   const treeBox = Math.round(TREE_SIZE * size.scale)
   const levels: ItemLevels = Object.fromEntries(progress?.items.map((i) => [i.itemId, i.masteryLevel]) ?? [])
   const masteredCount = progress?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0
-  // Visitors read the true statements; they can't drill them (practice is owner-only).
-  const visitorStatements = visitor?.reader
-    ? Object.fromEntries(visitor.reader.nodes.flatMap((n) => n.items.map((i) => [i.id, i.statement] as const)))
+  // Statement texts for the mindmap: the owner's from the editor (their own tree, a clone included),
+  // visitors' from the reader. Without them the cards fall back to "Statement n".
+  const statementSource = editor ?? visitor?.reader ?? null
+  const statementTexts = statementSource
+    ? Object.fromEntries(statementSource.nodes.flatMap((n) => n.items.map((i) => [i.id, i.statement] as const)))
     : undefined
   const cloneButton = (size: 'sm' | 'md' | 'lg') =>
     visitor && (
@@ -76,19 +83,29 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
         size={size}
       />
     )
-  const tournamentHref = `/deck/${deck.slug}/tournament`
   // Visitors join while it's live; the boards stay up after the host closes it (graduates are engraved).
   const canJoin = visitor !== null && tournament.isOpen && itemCount > 0
+  // One launch pop-up for the page (5 / 10 / 20, whole tree or one root). The owner waters
+  // (user_progress); a visitor competes while a tournament is live (tournament levels); any other
+  // visitor has nothing to launch. Scope counts use the drillable flags from the editor / reader.
+  const launchMode: LaunchContext['mode'] | null = visitor ? (canJoin ? 'compete' : null) : 'drill'
+  const tournamentLevels = tournament.boards?.levels ?? {}
+  const drillable = new Map((editor ?? visitor?.reader)?.nodes.flatMap((n) => n.items.map((i) => [i.id, i.drillable] as const)) ?? [])
+  const launch: LaunchContext | null = launchMode && {
+    mode: launchMode,
+    slug: deck.slug,
+    ...launchPool(tree, drillable),
+    levels: launchMode === 'compete' ? tournamentLevels : levels,
+  }
+  // The mindmap shows the levels of the practice at hand: a contestant sees their tournament levels.
+  const mapLevels = launchMode === 'compete' ? tournamentLevels : levels
   const hasEntries = (tournament.boards?.active.length ?? 0) + (tournament.boards?.hallOfFame.length ?? 0) > 0
-  const showBoards = tournament.boards !== null && (tournament.isOpen || hasEntries)
+  // Open → always (the join launcher lives here); closed → only while it has results to show.
+  const showBoards = tournament.isOpen || (tournament.boards !== null && hasEntries)
   const joinButton = (size: 'sm' | 'md' | 'lg') =>
-    canJoin && (
-      <GameButton asChild tone="sun" size={size}>
-        <Link href={tournamentHref}>⚔️ Tham gia Mind Tournament</Link>
-      </GameButton>
-    )
+    canJoin && <SessionLaunchButton label="⚔️ Join Mind Tournament" tone="sun" size={size} />
 
-  return (
+  const scene = (
     <main className="mg-meadow-bg w-full flex-1">
       {/* Strict read-only visitor mode: a floating bar says whose tree this is, with the clone offer. */}
       {visitor && (
@@ -98,7 +115,7 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
             className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border-[3px] border-[#1f5d2b] bg-gradient-to-b from-[#e9fbd9] to-[#bfe8a2] px-4 py-2.5 shadow-[inset_0_2px_0_rgba(255,255,255,0.8),0_5px_0_#2f7a3a,0_10px_22px_rgba(20,60,20,0.25)]"
           >
             <p className="font-game text-sm font-extrabold text-[#1f4d25] sm:text-base">
-              🌿 You are exploring {neighborName(deck.userId)}&apos;s Tree (Read-Only)
+              🌿 You are exploring {ownerName}&apos;s Tree (Read-Only)
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {joinButton('sm')}
@@ -157,23 +174,19 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
                   {cloneButton('md')}
                 </div>
               )}
+              {/* Each opens the launch pop-up: 5 / 10 / 20 questions, then the round. */}
               {!visitor && itemCount > 0 && (
                 <div className="flex flex-1 flex-col gap-2">
-                  {masteredCount < itemCount && (
-                    <GameButton asChild tone="sky" size="lg">
-                      <Link href={drillHref(deck.slug)}>💧 Water Tree</Link>
-                    </GameButton>
-                  )}
+                  {masteredCount < itemCount && <SessionLaunchButton label="💧 Water Tree" tone="sky" size="lg" />}
                   {/* Review Mode: 5/5 items rest in normal rounds; this mixes them back in. */}
                   {masteredCount > 0 && (
-                    <GameButton
-                      asChild
+                    <SessionLaunchButton
+                      review
+                      label={`🌿 Review Mastered (${masteredCount})`}
                       tone={masteredCount >= itemCount ? 'sky' : 'cream'}
                       size={masteredCount >= itemCount ? 'lg' : 'sm'}
                       title={`Include Mastered Items (Review Mode): ${masteredCount} at 5/5`}
-                    >
-                      <Link href={drillHref(deck.slug, { review: true })}>🌿 Review Mastered ({masteredCount})</Link>
-                    </GameButton>
+                    />
                   )}
                 </div>
               )}
@@ -196,13 +209,12 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
           </p>
           <DeckRootsPanel
             deckId={deck.id}
-            deckSlug={deck.slug}
             treeType={deck.treeType}
             tree={tree}
-            levels={levels}
+            levels={mapLevels}
             editor={editor}
-            canPractice={visitor === null}
-            visitorStatements={visitorStatements}
+            practiceMode={launchMode}
+            statements={statementTexts}
             surface={{
               width: treeBox,
               height: treeBox,
@@ -222,20 +234,34 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
           />
         </section>
 
-        {showBoards && tournament.boards && (
+        {showBoards && (
           <section id="tournament" aria-labelledby="tournament-heading" className="mt-12 scroll-mt-24">
             <GamePanel tone="parchment" ribbon="gold" title={<span id="tournament-heading">Tournament Leaderboard 📜</span>}>
               <p className="mb-4 text-center text-sm text-amber-900/75">
                 {tournament.isOpen
-                  ? 'Master every statement (5/5) in the fewest practice days. Graduates are engraved on the Bia Trạng Nguyên forever.'
-                  : 'The host closed this tournament. Its graduates stay engraved on the Bia Trạng Nguyên.'}
+                  ? 'Master every statement (5/5) in the fewest practice days. Graduates are engraved in the Hall of Fame forever.'
+                  : 'The host closed this tournament. Its graduates stay engraved in the Hall of Fame.'}
               </p>
-              <TournamentBoard
-                active={tournament.boards.active}
-                hallOfFame={tournament.boards.hallOfFame}
-                viewerId={tournament.viewerId}
-                standing={tournament.boards.standing}
-              />
+              {tournament.boards ? (
+                <TournamentBoard
+                  active={tournament.boards.active}
+                  hallOfFame={tournament.boards.hallOfFame}
+                  viewerId={tournament.viewerId}
+                  standing={tournament.boards.standing}
+                  // Your own row: ✏️ edit your Garden Name right there; saving refreshes both tabs.
+                  viewerAction={
+                    tournament.viewerId && (
+                      <DisplayNameEditor
+                        variant="inline"
+                        current={tournament.viewerDisplayName}
+                        fallback={neighborName(tournament.viewerId)}
+                      />
+                    )
+                  }
+                />
+              ) : (
+                <p className="text-center text-sm font-semibold text-amber-900/70">The leaderboard could not be loaded right now. Try again in a moment.</p>
+              )}
               {canJoin && <div className="mt-6 flex justify-center">{joinButton('lg')}</div>}
             </GamePanel>
           </section>
@@ -248,7 +274,11 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
                 Every root and statement, read-only. Like it? Clone it to your garden to edit it and practise it from 0/5.
               </p>
               {visitor.reader ? (
-                <DeckReader reader={visitor.reader} />
+                <DeckReader
+                  reader={visitor.reader}
+                  // Mind Tournament: compete on one root straight from the list.
+                  rootAction={canJoin ? (rootId) => <SessionLaunchButton rootId={rootId} label="⚔️ Compete Root" tone="sun" size="sm" /> : undefined}
+                />
               ) : (
                 <p className="text-center text-sm text-amber-100/85">The statements could not be loaded right now. Try again in a moment.</p>
               )}
@@ -279,6 +309,8 @@ function DeckScene({ detail, progress, editor, visitor, tournament }: DeckSceneP
       </div>
     </main>
   )
+
+  return launch ? <SessionLaunchProvider context={launch}>{scene}</SessionLaunchProvider> : scene
 }
 
 function Stat({ icon, label, value }: { icon: string; label: string; value: number }) {

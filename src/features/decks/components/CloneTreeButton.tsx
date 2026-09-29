@@ -23,7 +23,7 @@ type CloneTreeButtonProps = {
   className?: string
 }
 
-// "🌱 Clone Tree (N 🪙)": the only way for a visitor to practise someone else's shared tree.
+// "🌱 Clone to Garden (N 🪙)": the only way for a visitor to practise someone else's shared tree.
 // Opens a confirm dialog with the fee (min(100 + statements, 150), cloneCost) and the purse; a short
 // purse offers the Coin Shop, a signed-out visitor gets the sign-in dialog. On success the HUD purse
 // updates and the player lands on their own copy, where editing and practice are unlocked.
@@ -41,7 +41,7 @@ function CloneTreeButton({ deckId, deckTitle, statementCount, coins: serverCoins
         className={className}
         onClick={() => (signedIn ? setOpen(true) : openLogin())}
       >
-        🌱 Clone Tree ({cost} 🪙)
+        🌱 Clone to Garden ({cost} 🪙)
       </GameButton>
       <GameDialog open={open} onOpenChange={setOpen}>
         <GameDialogContent title="Clone this tree? 🌱" ribbon="leaf" tone="parchment">
