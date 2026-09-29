@@ -8,6 +8,7 @@ import { slugify } from '@/shared/utils/slugify'
 import type { CloneDeckInput } from '../dto/CloneDeckDto'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
 import type { CreateKnowledgeItemInput } from '../dto/CreateKnowledgeItemDto'
+import type { CreateKnowledgeItemsInput } from '../dto/CreateKnowledgeItemsDto'
 import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
 import type { SetTournamentOpenInput } from '../dto/SetTournamentOpenDto'
 import type { DeleteDeckInput } from '../dto/DeleteDeckDto'
@@ -217,6 +218,68 @@ export async function insertKnowledgeItem(
   }
   const siblingStatements = siblings.data.map((s) => s.correctStmt)
   return ok({ id: data.id, drillable: isDrillable(statement, DEFAULT_TRAP_RULES, siblingStatements) })
+}
+
+export type BulkInsertResult = {
+  slug: string
+  created: { id: string; statement: string; drillable: boolean }[]
+  // Statements already in this root (skipped, not duplicated).
+  skipped: number
+}
+
+// Bulk import ("📋 Bulk Add via Notes / Bullets"): many statements for one root in ONE insert.
+// Owner only, and the root must belong to the given deck. Each gets the same defaults as a typed
+// statement (prompt = root title, trap_rules = { negate: true }); statements already in the root
+// are skipped. Drillability counts the root's existing statements AND the new ones as siblings.
+export async function insertKnowledgeItems(
+  supabase: Client,
+  userId: string,
+  { deckId, rootId, statements }: CreateKnowledgeItemsInput,
+): Promise<ActionResult<BulkInsertResult>> {
+  const { data: node, error: nodeError } = await supabase.from('mindmap_nodes').select('id, title, deck_id').eq('id', rootId).maybeSingle()
+  if (nodeError) {
+    console.error('[decks] insertKnowledgeItems node lookup failed', nodeError)
+    return fail('INTERNAL_ERROR', 'Could not import the statements')
+  }
+  if (!node || node.deck_id !== deckId) return fail('NODE_NOT_FOUND', 'Root not found in this tree')
+
+  const owner = await checkDeckOwner(supabase, deckId, userId)
+  if (!owner.success) return owner
+
+  // The owner check above authorizes reading this root's statements (answers.ts).
+  const existing = await readAnswersForNodes(supabase, [rootId])
+  if (!existing.success) return existing
+  const already = new Set(existing.data.map((s) => s.correctStmt.trim()))
+  const fresh = [...new Set(statements)].filter((s) => !already.has(s))
+  const skipped = statements.length - fresh.length
+  if (fresh.length === 0) return ok({ slug: owner.data.slug, created: [], skipped })
+
+  const { data, error } = await supabase
+    .from('knowledge_items')
+    .insert(fresh.map((statement) => ({ node_id: rootId, prompt: node.title, correct_stmt: statement, trap_rules: DEFAULT_TRAP_RULES })))
+    // RETURNING only id: writing correct_stmt is allowed, reading it back is not.
+    .select('id')
+
+  if (error || !data || data.length !== fresh.length) {
+    console.error('[decks] insertKnowledgeItems failed', error?.code, error?.message)
+    return fail('INTERNAL_ERROR', 'Could not import the statements')
+  }
+
+  const all = [...existing.data.map((s) => s.correctStmt), ...fresh]
+  return ok({
+    slug: owner.data.slug,
+    // Rows come back in insert order.
+    created: fresh.map((statement, i) => ({
+      id: data[i].id,
+      statement,
+      drillable: isDrillable(
+        statement,
+        DEFAULT_TRAP_RULES,
+        all.filter((s) => s !== statement),
+      ),
+    })),
+    skipped,
+  })
 }
 
 // Owner-only view with the true statements, flattened in tree order for the editor.

@@ -94,6 +94,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `cloneDeck` | Action/POST | Copy another gardener's shared tree into your garden for min(100 + statements, 150) 🪙 | Required |
 | Progress | `simulateCoinTopUp` | Action/POST | Development only: credit a Coin Shop package without payment | Required |
 | Decks | `createMindmapNode` | Action/POST | Add a root to an owned deck | Required |
+| Decks | `createKnowledgeItems` | Action/POST | Bulk import pasted statements (bullets / lines) into one root in a single insert | Required |
 | Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
 | Decks | `getDeckReader` | Action | Read-only roots + true statements of a public tree (or your own), for visitors | Optional |
@@ -260,6 +261,17 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND
 ```
 - Authors never see or send trap rules; non-drillable items are saved but skipped by drill sessions
+
+### `createKnowledgeItems` (decks)
+```typescript
+// Input (CreateKnowledgeItemsDto): { deckId: string; rootId: string; statements: string[] /* 1–100 */ }
+//   each statement: cleaned (NFC, invisible characters removed, spaces collapsed, trimmed), then 5–500 chars, plain text (no \commands)
+// data: { created: { id: string; statement: string; drillable: boolean }[]; skipped: number /* already in the root */ }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), NODE_NOT_FOUND (root not in this deck), INTERNAL_ERROR
+```
+- "📋 Bulk Add via Notes / Bullets" (`BulkStatementImporter`, in the Tree Workshop list and the root's ✏️ manage dialog): the client splits the paste with `lib/bulkStatements.ts` `parseBulletedText` (one statement per line; strips `- * +`, `• ‣ ⁃ – —`, `1.` `1)` `[1]` `(1)`; drops empty and < 5-character lines; de-duplicates) and shows a live preview, flagging lines that are too long, LaTeX, or already in the root
+- One `INSERT` for all new rows, same defaults as `createKnowledgeItem` (`prompt` = root title, `trap_rules = { negate: true }`); statements already in the root are skipped, not duplicated. `drillable` counts the root's existing and newly imported statements as siblings
+- `revalidatePath('/deck/<slug>')`, and the importer calls `router.refresh()`, so the mindmap and the lists show the new statements at once
 
 ### `getDeckEditor` (decks)
 ```typescript

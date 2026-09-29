@@ -21,6 +21,7 @@ import { createMindmapNode } from '../actions/createMindmapNode'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { deleteMindmapNode } from '../actions/deleteMindmapNode'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
+import { BulkStatementImporter } from './BulkStatementImporter'
 import type { EditorItem } from '../types'
 
 export type ManagedNode = {
@@ -141,6 +142,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
               </GameButton>
             </div>
           </form>
+          <BulkStatementImporter deckId={deckId} rootId={node.id} rootTitle={node.title} existing={node.statements.map((s) => s.statement)} />
 
           {node.statements.length === 0 ? (
             <p className="text-center text-sm text-amber-900/65">No statements yet. Add the first one above.</p>

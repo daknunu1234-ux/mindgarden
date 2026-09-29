@@ -7,6 +7,7 @@ import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
 import { updateDeck } from '../actions/updateDeck'
+import { BulkStatementImporter } from './BulkStatementImporter'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
 
@@ -26,7 +27,7 @@ function DeckEditor({ editor }: DeckEditorProps) {
         <ul className="space-y-4">
           {editor.nodes.map((node) => (
             <li key={node.id} style={{ marginLeft: `${Math.min(node.depth, 4) * 1.25}rem` }}>
-              <NodeEditor node={node} />
+              <NodeEditor deckId={editor.deckId} node={node} />
             </li>
           ))}
         </ul>
@@ -118,7 +119,7 @@ function AddRootForm({ deckId, nodes }: { deckId: string; nodes: EditorNode[] })
   )
 }
 
-function NodeEditor({ node }: { node: EditorNode }) {
+function NodeEditor({ deckId, node }: { deckId: string; node: EditorNode }) {
   const router = useRouter()
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<{ tone: 'amber' | 'gold'; text: string } | null>(null)
@@ -179,6 +180,14 @@ function NodeEditor({ node }: { node: EditorNode }) {
           {notice.text}
         </p>
       )}
+      {/* Many at once: paste notes, one statement per bullet / line. */}
+      <BulkStatementImporter
+        deckId={deckId}
+        rootId={node.id}
+        rootTitle={node.title}
+        existing={node.items.map((i) => i.statement)}
+        className="mt-3"
+      />
     </GameSlab>
   )
 }
