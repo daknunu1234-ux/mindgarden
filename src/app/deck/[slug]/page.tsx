@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
+import { GamePanel } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
 import { getDeckBySlug, getDeckEditor } from '@/features/decks'
 import { getProgressByDecks } from '@/features/progress'
@@ -29,11 +29,12 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
     if (res.error.code === 'DECK_NOT_FOUND' || res.error.code === 'VALIDATION_FAILED') notFound()
 
     return (
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-12 sm:px-6">
-        <Alert className="border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTitle>This tree is resting</AlertTitle>
-          <AlertDescription>{res.error.message}. Try again in a moment.</AlertDescription>
-        </Alert>
+      <main className="mg-meadow-bg w-full flex-1">
+        <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+          <GamePanel tone="stone" title="This tree is resting">
+            <p className="text-center">{res.error.message}. Try again in a moment.</p>
+          </GamePanel>
+        </div>
       </main>
     )
   }

@@ -1,50 +1,52 @@
 import { describe, expect, it } from 'vitest'
-import { conduitPath, groundPath, rootStroke, sceneGeometry, type SurfaceBox } from '../hooks/scene'
-import { layoutRoots } from '../hooks/useRootLayout'
+import { layoutMindmap } from '../hooks/mindmapLayout'
+import { conduitPath, groundPath, rootStroke, SCENE_SIDE_MARGIN, sceneGeometry, type SurfaceBox } from '../hooks/scene'
 import type { RootNodeView } from '../types'
 
-const node = (id: string, children: RootNodeView[] = []): RootNodeView => ({ id, title: id, items: [], children })
-const TREE = [node('a', [node('a1'), node('a2')]), node('b')]
-const TREE_BOX: SurfaceBox = { width: 150, height: 150, baseX: 75, baseY: 135 }
+const node = (id: string, children: RootNodeView[] = []): RootNodeView => ({ id, title: id, items: [{ id: `${id}-i` }], children })
+const TREE = [node('a', [node('a1'), node('a2')]), node('b'), node('c')]
+const TREE_BOX: SurfaceBox = { width: 176, height: 176, baseX: 88, baseY: 158 }
 const COLORS = { bark: '#8b5a2b', glow: '#a3e635', gold: '#eab308' }
 
 describe('sceneGeometry', () => {
-  const layout = layoutRoots(TREE)
+  const layout = layoutMindmap(TREE)
 
   it('puts the tree base exactly on the trunk point at the ground line', () => {
-    const g = sceneGeometry(layout, TREE_BOX, 900, 1)
+    const g = sceneGeometry(layout, TREE_BOX)
     expect(g.surface!.left + TREE_BOX.baseX).toBe(g.trunkX)
     expect(g.surface!.top + TREE_BOX.baseY).toBe(g.groundY)
     expect(g.trunkX).toBe(g.offsetX + layout.trunk.x)
   })
 
-  it('keeps the tree anchored to the trunk at every zoom and viewport width', () => {
-    for (const zoom of [0.5, 0.75, 1, 1.25, 1.5]) {
-      for (const viewport of [0, 320, 900, 2000]) {
-        const g = sceneGeometry(layout, TREE_BOX, viewport, zoom)
+  it('has a fixed size, independent of viewport and zoom, with soil past the roots on both sides', () => {
+    const g = sceneGeometry(layout, TREE_BOX)
+    expect(g.width).toBe(layout.width + SCENE_SIDE_MARGIN * 2)
+    expect(g.offsetX).toBe(SCENE_SIDE_MARGIN)
+    expect(sceneGeometry(layout, TREE_BOX)).toEqual(g)
+  })
+
+  it('keeps the tree anchored for any tree size and margin', () => {
+    for (const t of [[], [node('x')], TREE, [...TREE, node('d'), node('e'), node('f')]]) {
+      for (const margin of [0, 100, SCENE_SIDE_MARGIN]) {
+        const g = sceneGeometry(layoutMindmap(t), TREE_BOX, margin)
         expect(g.surface!.left + TREE_BOX.baseX).toBeCloseTo(g.trunkX)
         expect(g.surface!.top + TREE_BOX.baseY).toBe(g.groundY)
-        // The root layout is never cut off.
         expect(g.offsetX).toBeGreaterThanOrEqual(0)
-        expect(g.width).toBeGreaterThanOrEqual(layout.width)
       }
     }
   })
 
-  it('fills the viewport at the current zoom so the soil runs edge to edge', () => {
-    expect(sceneGeometry(layout, TREE_BOX, 2000, 1).width).toBe(2000)
-    expect(sceneGeometry(layout, TREE_BOX, 2000, 0.5).width).toBe(4000)
-  })
-
-  it('centers the roots when the canvas is wider than they are', () => {
-    const g = sceneGeometry(layout, TREE_BOX, 2000, 1)
-    expect(g.offsetX).toBe((2000 - layout.width) / 2)
+  it('gives the camera a focus box around the tree and the roots', () => {
+    const g = sceneGeometry(layout, TREE_BOX)
+    expect(g.focus.x).toBeLessThanOrEqual(g.offsetX)
+    expect(g.focus.x + g.focus.w).toBeGreaterThanOrEqual(g.offsetX + layout.width)
+    expect(g.focus.y).toBe(g.surface!.top)
+    expect(g.focus.y + g.focus.h).toBe(g.height)
   })
 
   it('still draws ground and soil for a tree without roots', () => {
-    const g = sceneGeometry(layoutRoots([]), TREE_BOX, 600, 1)
+    const g = sceneGeometry(layoutMindmap([]), TREE_BOX)
     expect(g.height).toBeGreaterThan(g.groundY)
-    expect(g.surface!.left + TREE_BOX.baseX).toBe(g.trunkX)
   })
 })
 

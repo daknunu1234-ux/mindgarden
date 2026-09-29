@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { centreOffset, centreOn, clampZoom, contentSize, fitZoom, MAX_ZOOM, MIN_ZOOM, worldAt, zoomAt } from '../lib/camera'
+import { centreOffset, centreOn, clampZoom, contentSize, fitZoom, MAX_ZOOM, MIN_ZOOM, worldAt, zoomAt } from '../camera'
 
 const WORLD = { w: 1600, h: 1100 }
 const VIEW = { w: 800, h: 600 }

@@ -1,17 +1,23 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from 'react'
-import { centreOn, clampZoom, fitZoom, ZOOM_STEP, zoomAt, type Scroll, type Size } from '../lib/camera'
+import { centreOn, clampZoom, fitZoom, ZOOM_STEP, zoomAt, type Scroll, type Size } from '@/shared/lib/camera'
 
 const DRAG_THRESHOLD = 6
 
 type Pointer = { x: number; y: number }
 
-// Camera for the farm world: pan by dragging (mouse or one finger), pinch with two fingers,
-// Ctrl/⌘ + wheel (trackpad pinch) to zoom at the cursor, and buttons. The container needs
-// `touch-action: none`; a drag longer than 6px swallows the click that ends it, so dragging
-// across a plot never opens it. Math lives in lib/camera.ts.
-export function useFarmCamera(scrollRef: RefObject<HTMLDivElement | null>, world: Size, focus: { x: number; y: number }) {
+// Camera for zoomable canvases (Farm World, mindmap): pan by dragging (mouse or one finger),
+// pinch with two fingers, Ctrl/⌘ + wheel (trackpad pinch) to zoom at the cursor, and buttons.
+// The container needs `touch-action: none`; a drag longer than 6px swallows the click that ends
+// it, so dragging across a card never opens it. Math lives in shared/lib/camera.ts.
+// `fit` is the size to fit on arrival and on reset (default: the whole world), centred on `focus`.
+export function useCamera(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  world: Size,
+  focus: { x: number; y: number },
+  fit: Size = world,
+) {
   const [view, setView] = useState<Size>({ w: 0, h: 0 })
   const [zoom, setZoom] = useState(1)
   const pendingScroll = useRef<Scroll | null>(null)
@@ -63,7 +69,7 @@ export function useFarmCamera(scrollRef: RefObject<HTMLDivElement | null>, world
   const resetView = useCallback(() => {
     const { view: v, world: w } = live.current
     if (v.w === 0) return
-    const z = fitZoom(v, w)
+    const z = fitZoom(v, fit)
     pendingScroll.current = centreOn(focus, v, w, z)
     live.current = { ...live.current, zoom: z }
     setZoom(z)
@@ -72,7 +78,7 @@ export function useFarmCamera(scrollRef: RefObject<HTMLDivElement | null>, world
       scrollRef.current?.scrollTo(pendingScroll.current.left, pendingScroll.current.top)
       pendingScroll.current = null
     }
-  }, [focus, scrollRef, zoom])
+  }, [fit, focus, scrollRef, zoom])
 
   // First measurement: fit the whole farm and centre it.
   useEffect(() => {

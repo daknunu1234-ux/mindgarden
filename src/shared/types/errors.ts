@@ -6,6 +6,7 @@ export type ErrorCode =
   | 'AUTH_FORBIDDEN'
   | 'DECK_NOT_FOUND'
   | 'NODE_NOT_FOUND'
+  | 'NODE_NOT_EMPTY'
   | 'ITEM_NOT_FOUND'
   | 'DRILL_NO_ITEMS'
   | 'INTERNAL_ERROR'

@@ -62,6 +62,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `AUTH_FORBIDDEN` | 403 | Signed in, but not the owner of the deck being edited |
 | `AUTH_RATE_LIMITED` | 429 | Supabase refused to send another sign-in email (built-in mailer limit) |
 | `DECK_NOT_FOUND` | 404 | Deck doesn't exist, or is private and not owned (RLS returns no row) |
+| `NODE_NOT_EMPTY` | 409 | Deleting a root that still has statements or sub-roots |
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
 | `DRILL_NO_ITEMS` | 422 | Node has no drillable item (none left, or all `INSUFFICIENT_MUTATIONS`) |
@@ -84,6 +85,10 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
 | Decks | `updateDeck` | Action/POST | Owner edits title, description, species, visibility | Required |
+| Decks | `updateMindmapNode` | Action/POST | Owner renames a root | Required |
+| Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root | Required |
+| Decks | `deleteKnowledgeItem` | Action/POST | Owner removes a statement | Required |
+| Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item) | Optional |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress | Public |
@@ -230,6 +235,25 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // data: the updated deck (getDecks row shape) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
 ```
 - The slug never changes, so links stay stable
+
+### `updateMindmapNode` / `deleteMindmapNode` / `deleteKnowledgeItem` (decks)
+```typescript
+// updateMindmapNode({ nodeId, title /* 1–150 */ }) → { id, title }
+// deleteMindmapNode({ nodeId })                   → { id }   only when the root has no statements and no sub-roots
+// deleteKnowledgeItem({ itemId })                 → { id }   players' user_progress rows for it cascade away
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND, ITEM_NOT_FOUND, NODE_NOT_EMPTY (delete root), INTERNAL_ERROR
+```
+- Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard; used by the mindmap's ✏️ manage dialog
+
+### `deleteDeck` (decks)
+```typescript
+// deleteDeck({ deckId }) → on success: revalidatePath('/', '/deck/<slug>', '/profile') then redirect('/') (no return value)
+//                        → on failure: { success: false, error }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner, or RLS deleted 0 rows), DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- One `DELETE FROM decks … RETURNING id`; `mindmap_nodes`, `knowledge_items` and `user_progress` go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP and coins are derived from progress, so they drop accordingly
+- Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
+- UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone and the owner's 🗑 badge in the farm plot popup
 
 ### `getFarmHud` (progress)
 ```typescript

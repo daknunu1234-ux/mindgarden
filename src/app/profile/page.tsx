@@ -1,63 +1,71 @@
 import type { Metadata } from 'next'
-import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
+import { GamePanel } from '@/shared/components/game'
 import { SignInPrompt } from '@/shared/components/SignInPrompt'
+import { getTreeSizeTier } from '@/shared/lib/treeSkins'
 import { getCurrentUser } from '@/features/auth'
 import { getTreeStage, TreeStageSvg, TREE_STAGES } from '@/features/garden'
-import { getGardenStats, type GardenTree } from '@/features/progress'
-import { GardenerCard, GardenStatsGrid, PlantedTreeList, type PlantedTreeView } from '@/features/user-profile'
+import { getFarmHud, getGardenStats, type GardenTree } from '@/features/progress'
+import { GardenerCard, GardenStatsGrid, MightyShowcase, PlantedTreeList, type PlantedTreeView } from '@/features/user-profile'
 
-export const metadata: Metadata = { title: 'Your garden · MindGarden' }
+export const metadata: Metadata = { title: 'Trophy Hall · MindGarden' }
 
-// Composes auth (who), progress (stats over owned trees) and garden (tree pictures)
-// into the UI-only user-profile feature.
+// The Gardener's Trophy & Record Hall. Composes auth (who), progress (stats, level) and garden
+// (tree pictures) into the UI-only user-profile feature.
 export default async function ProfilePage() {
   const userRes = await getCurrentUser()
   const user = userRes.success ? userRes.data : null
 
   if (!user) {
     return (
-      <main className="mx-auto w-full max-w-xl flex-1 px-4 py-12 sm:px-6">
-        <SignInPrompt
-          emoji="🧑‍🌾"
-          title="Sign in to see your garden"
-          description="Your planted trees, Mighty Roots and overall mastery live on your profile."
-        />
+      <main className="mg-meadow-bg w-full flex-1">
+        <div className="mx-auto w-full max-w-xl px-4 py-14 sm:px-6">
+          <SignInPrompt
+            emoji="🧑‍🌾"
+            title="Sign in to see your garden"
+            description="Your planted trees, Mighty Roots and overall mastery live in your Trophy Hall."
+          />
+        </div>
       </main>
     )
   }
 
-  const stats = await getGardenStats()
+  const [stats, hud] = await Promise.all([getGardenStats(), getFarmHud()])
+  const level = hud.success && hud.data ? hud.data.level : null
+  const trees = stats.success ? stats.data.trees.map(toTreeView) : []
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 space-y-8 px-4 py-12 sm:px-6">
-      <GardenerCard
-        gardener={{ email: user.email, joinedAt: user.createdAt }}
-        masteryPercent={stats.success ? stats.data.masteryPercent : 0}
-      />
+    <main className="mg-meadow-bg w-full flex-1">
+      <div className="mx-auto w-full max-w-5xl space-y-10 px-4 py-10 sm:px-6">
+        <GardenerCard
+          gardener={{ email: user.email, joinedAt: user.createdAt }}
+          masteryPercent={stats.success ? stats.data.masteryPercent : 0}
+          level={
+            level && { level: level.level, title: level.title, xpIntoLevel: level.xpIntoLevel, xpForNextLevel: level.xpForNextLevel }
+          }
+        />
 
-      {stats.success ? (
-        <>
-          <GardenStatsGrid stats={stats.data} />
-          <section aria-labelledby="trees-heading" className="space-y-3">
-            <h2 id="trees-heading" className="text-lg font-medium">
-              Your trees
-            </h2>
-            <PlantedTreeList trees={stats.data.trees.map(toTreeView)} />
-          </section>
-        </>
-      ) : (
-        <Alert className="border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTitle>Your garden stats are resting</AlertTitle>
-          <AlertDescription>{stats.error.message}. Try again in a moment.</AlertDescription>
-        </Alert>
-      )}
+        {stats.success ? (
+          <>
+            <GardenStatsGrid stats={stats.data} />
+            <MightyShowcase trees={trees} />
+            <PlantedTreeList trees={trees} />
+          </>
+        ) : (
+          <GamePanel tone="stone" title="Your records are resting">
+            <p className="text-center text-sm">{stats.error.message}. Try again in a moment.</p>
+          </GamePanel>
+        )}
+      </div>
     </main>
   )
 }
 
 function toTreeView(tree: GardenTree): PlantedTreeView {
   const stage = getTreeStage(tree.masteryPercent)
+  const size = getTreeSizeTier(tree.itemCount)
   return {
+    stage: { emoji: TREE_STAGES[stage].emoji, name: TREE_STAGES[stage].name },
+    size: { badge: size.badge, name: size.name, tier: size.tier },
     slug: tree.slug,
     title: tree.title,
     treeType: tree.treeType,

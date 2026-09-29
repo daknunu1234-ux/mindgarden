@@ -1,4 +1,3 @@
-import type { RootLayout } from './useRootLayout'
 import { isMightyRoot, rootOpacity } from './nodeMastery'
 
 // Something drawn above the ground (the deck's tree), with the point inside it where the
@@ -14,23 +13,27 @@ export type SceneGeometry = {
   offsetX: number
   trunkX: number
   surface: { left: number; top: number } | null
+  // Region worth showing on arrival / reset (tree + roots), for the camera to fit and centre.
+  focus: { x: number; y: number; w: number; h: number }
 }
+
+// Anything with a width, height and a trunk point at y = 0 (the mindmap layout).
+export type SceneLayout = { width: number; height: number; trunk: { x: number; y: number } }
+
+// Soil keeps going this far past the roots on both sides, so it fills the screen at normal zoom.
+export const SCENE_SIDE_MARGIN = 480
 
 const SKY_MARGIN = 12
 const EMPTY_SOIL_H = 120
 const SOIL_PAD = 24
 
-// Canvas coordinates are unscaled; zoom is a CSS scale on the whole canvas, so the tree,
-// the ground and the roots always move together and the trunk stays anchored.
-export function sceneGeometry(
-  layout: RootLayout,
-  surface: SurfaceBox | null,
-  viewportWidth: number,
-  zoom: number,
-): SceneGeometry {
+// Canvas coordinates are unscaled; zoom is a CSS scale on the whole canvas (shared camera), so the
+// tree, the ground and the roots always move together and the trunk stays anchored. The world has a
+// fixed size (independent of viewport and zoom) so the camera math stays exact.
+export function sceneGeometry(layout: SceneLayout, surface: SurfaceBox | null, sideMargin = SCENE_SIDE_MARGIN): SceneGeometry {
   const groundY = surface ? surface.baseY + SKY_MARGIN : SKY_MARGIN * 2
-  // Fill the visible area at this zoom so the soil runs edge to edge.
-  const width = Math.max(layout.width, surface ? surface.width + 32 : 0, viewportWidth > 0 ? viewportWidth / zoom : 0)
+  const inner = Math.max(layout.width, surface ? surface.width + 32 : 0)
+  const width = inner + sideMargin * 2
   const offsetX = (width - layout.width) / 2
   const trunkX = offsetX + layout.trunk.x
   const height = groundY + Math.max(layout.height, EMPTY_SOIL_H) + SOIL_PAD
@@ -42,6 +45,13 @@ export function sceneGeometry(
     offsetX,
     trunkX,
     surface: surface ? { left: trunkX - surface.baseX, top: groundY - surface.baseY } : null,
+    // Tree top (or ground line) down to the last roots, across the roots and the tree.
+    focus: {
+      x: (width - inner) / 2 - 16,
+      y: surface ? groundY - surface.baseY : 0,
+      w: inner + 32,
+      h: height - (surface ? groundY - surface.baseY : 0),
+    },
   }
 }
 

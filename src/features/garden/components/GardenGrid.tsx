@@ -1,26 +1,25 @@
 import Link from 'next/link'
-import { Button } from '@/shared/components/ui/button'
+import { GameButton, GamePanel } from '@/shared/components/game'
 import { Skeleton } from '@/shared/components/ui/skeleton'
 import type { DeckCardView } from '../types'
 import { TreeCard } from './TreeCard'
 
-const GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
+const GRID = 'grid gap-5 sm:grid-cols-2 lg:grid-cols-3'
 
 type GardenGridProps = { decks: DeckCardView[] }
 
 function GardenGrid({ decks }: GardenGridProps) {
   if (decks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed px-6 py-16 text-center">
-        <p aria-hidden className="text-4xl">🌱</p>
-        <p className="mt-3 font-medium">No trees planted yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Public decks will grow here as soon as someone plants one.
+      <GamePanel tone="parchment" ribbon="leaf" title="No trees planted yet" className="text-center">
+        <p aria-hidden className="text-5xl">
+          🌱
         </p>
-        <Button asChild className="mt-6">
+        <p className="mt-3 text-amber-900/75">Public decks will grow here as soon as someone plants one.</p>
+        <GameButton asChild tone="leaf" size="lg" className="mt-6">
           <Link href="/deck/new">Plant a Tree 🌱</Link>
-        </Button>
-      </div>
+        </GameButton>
+      </GamePanel>
     )
   }
 
@@ -39,7 +38,7 @@ function GardenGridSkeleton({ count = 6 }: { count?: number }) {
   return (
     <div className={GRID} aria-busy aria-label="Loading decks">
       {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={i} className="h-40 rounded-xl" />
+        <Skeleton key={i} className="h-60 rounded-[24px] bg-amber-100/80" />
       ))}
     </div>
   )

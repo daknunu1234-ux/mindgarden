@@ -7,9 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
+  --font-game: var(--font-baloo), ui-rounded, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -168,4 +169,106 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .mg-fall, .mg-bee, .mg-splash, .mg-ripple { display: none; }
+}
+
+/* Farm miniatures: chimney / exhaust smoke, idling tractor, water glints, shore foam. */
+@keyframes mg-smoke {
+  0% { transform: translate(0, 0) scale(0.45); opacity: 0; }
+  15% { opacity: 0.95; }
+  100% { transform: translate(8px, -34px) scale(1.5); opacity: 0; }
+}
+@keyframes mg-idle {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(-1.4px) scaleY(1.012); }
+}
+@keyframes mg-twinkle {
+  0%, 100% { opacity: 0.35; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(6px); }
+}
+@keyframes mg-foam {
+  0%, 100% { opacity: 0.75; stroke-width: 10px; }
+  50% { opacity: 0.35; stroke-width: 22px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-smoke { animation: mg-smoke 3.3s ease-out infinite both; }
+  .mg-idle { animation: mg-idle 0.42s ease-in-out infinite; }
+  .mg-twinkle { animation: mg-twinkle 4.5s ease-in-out infinite; }
+  .mg-foam { animation: mg-foam 3.8s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-smoke { display: none; }
+}
+
+/* Mindmap: cards appearing on expand. */
+@keyframes mg-pop {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-pop { animation: mg-pop 260ms ease-out both; }
+}
+
+/* ── Game UI (shared/components/game) ─────────────────────────────────────── */
+/* Bouncy overshoot for a picked choice / popped reward. */
+@keyframes mg-spring {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.06) translateY(-3px); }
+  55% { transform: scale(0.97); }
+  75% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+/* Gloss sweep across gauges. */
+@keyframes mg-shimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(450%); }
+}
+/* Watering can tilting to pour (spout on the right dips), then resting. */
+@keyframes mg-pour {
+  0%, 100% { transform: rotate(0deg); }
+  20%, 75% { transform: rotate(24deg); }
+}
+/* Falling water drops. */
+@keyframes mg-stream {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(var(--mg-fall, 90px)) scale(0.7); opacity: 0; }
+}
+/* Particle burst from a center point. */
+@keyframes mg-burst {
+  0% { transform: translate(0, 0) scale(0.3) rotate(0deg); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--mg-dx, 0), var(--mg-dy, -80px)) scale(1) rotate(var(--mg-spin, 180deg)); opacity: 0; }
+}
+/* Dialogs and panels landing with a slight bounce. */
+@keyframes mg-land {
+  0% { transform: translateY(14px) scale(0.94); opacity: 0; }
+  60% { transform: translateY(-3px) scale(1.01); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+/* Soft wiggle for an amber "needs practice" answer (no harsh shake). */
+@keyframes mg-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1.2deg); }
+  75% { transform: rotate(1.2deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mg-spring { animation: mg-spring 520ms cubic-bezier(.34, 1.56, .64, 1) both; }
+  .mg-shimmer { animation: mg-shimmer 2.8s ease-in-out 1s infinite; }
+  .mg-pour { animation: mg-pour 1.8s ease-in-out both; transform-origin: 30% 85%; transform-box: fill-box; }
+  .mg-stream { animation: mg-stream 0.7s ease-in var(--mg-delay, 0s) 2 both; }
+  .mg-burst { animation: mg-burst var(--mg-dur, 1.1s) cubic-bezier(.2, .7, .3, 1) var(--mg-delay, 0s) both; }
+  .mg-land { animation: mg-land 380ms cubic-bezier(.34, 1.56, .64, 1) both; }
+  .mg-wobble { animation: mg-wobble 360ms ease-in-out 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-shimmer, .mg-stream, .mg-burst { display: none; }
+}
+
+/* Game backdrop: warm sky → meadow wash used behind game pages. */
+.mg-meadow-bg {
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(900px 400px at 100% 100%, rgba(187, 247, 208, 0.7), transparent 60%),
+    linear-gradient(180deg, #e0f2fe 0%, #f0fdf4 45%, #fef9c3 100%);
 }

@@ -1,20 +1,23 @@
 import type { RootNodeView } from '../types'
 
-// Number of roots below a node (children, grandchildren, …).
-export function countDescendants(node: RootNodeView): number {
-  return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0)
-}
-
-// Copy of the tree with the children of collapsed roots removed, for layout only.
-// Mastery and "Drill branch" keep using the full nodes, so collapsing never changes them.
-export function pruneCollapsed(nodes: RootNodeView[], collapsed: ReadonlySet<string>): RootNodeView[] {
-  return nodes.map((node) => ({
-    ...node,
-    children: collapsed.has(node.id) ? [] : pruneCollapsed(node.children, collapsed),
-  }))
-}
-
-// Every root id in the tree, depth-first (used for "collapse all").
+// Every root id in the tree, depth-first.
 export function allNodeIds(nodes: RootNodeView[]): string[] {
   return nodes.flatMap((node) => [node.id, ...allNodeIds(node.children)])
+}
+
+// Roots that have something to hide (statements or sub-branches): the "Collapse all" set.
+export function collapsibleNodeIds(nodes: RootNodeView[]): string[] {
+  return nodes.flatMap((node) => [
+    ...(node.items.length + node.children.length > 0 ? [node.id] : []),
+    ...collapsibleNodeIds(node.children),
+  ])
+}
+
+// Full node by id (mastery and drills always use the full, uncollapsed tree).
+export function indexNodes(nodes: RootNodeView[], into = new Map<string, RootNodeView>()): Map<string, RootNodeView> {
+  for (const node of nodes) {
+    into.set(node.id, node)
+    indexNodes(node.children, into)
+  }
+  return into
 }

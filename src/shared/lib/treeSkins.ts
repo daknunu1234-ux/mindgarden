@@ -103,3 +103,39 @@ export const MIGHTY_GOLD = '#eab308'
 
 // Stage 5 (Golden Ancient Bloom) starts here; used for every gold "fully grown" accent.
 export const GOLDEN_BLOOM_PERCENT = 90
+
+// ── Size tier: how much a subject holds ──────────────────────────────────────
+// Two independent axes describe a tree:
+//   • Growth stage (1–5)          = mastery progress (% memorized), from getTreeStage.
+//   • Size tier (sm / md / lg / xl) = subject scope, from the deck's knowledge_items count.
+// Only statements count: mindmap nodes (including empty sub-branches) never make a tree bigger.
+
+export type TreeSizeTier = 'sm' | 'md' | 'lg' | 'xl'
+
+export type TreeSizeInfo = {
+  tier: TreeSizeTier
+  // Multiplier for the drawn tree, anchored at the trunk base.
+  scale: number
+  name: string
+  // Short chip text, e.g. "🌿 Standard".
+  badge: string
+  // Inclusive item range; `max` is null for the open-ended top tier.
+  min: number
+  max: number | null
+}
+
+export const TREE_SIZE_TIERS: readonly TreeSizeInfo[] = [
+  { tier: 'sm', scale: 0.85, name: 'Compact Sprout', badge: '🌱 Compact', min: 0, max: 50 },
+  { tier: 'md', scale: 1, name: 'Standard Tree', badge: '🌿 Standard', min: 51, max: 120 },
+  { tier: 'lg', scale: 1.18, name: 'Sturdy Ancient', badge: '🌳 Sturdy', min: 121, max: 200 },
+  { tier: 'xl', scale: 1.35, name: 'Colossal Grand', badge: '👑 Colossal', min: 201, max: null },
+]
+
+// Pure. Negative counts clamp to 0, fractions floor, NaN counts as 0 (sm).
+export function getTreeSizeTier(itemCount: number): TreeSizeInfo {
+  const n = Number.isNaN(itemCount) ? 0 : Math.max(0, Math.floor(itemCount))
+  return TREE_SIZE_TIERS.find((t) => t.max === null || n <= t.max) ?? TREE_SIZE_TIERS[0]
+}
+
+// Largest multiplier any tree can reach (layout headroom).
+export const MAX_TREE_SCALE = Math.max(...TREE_SIZE_TIERS.map((t) => t.scale))

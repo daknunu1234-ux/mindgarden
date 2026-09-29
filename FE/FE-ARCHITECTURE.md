@@ -33,7 +33,7 @@ deck/[slug]/page.tsx (Server Component: getDeckBySlug + getProgressByDecks)
         ├── DeckHeader             title · stage badge 🌱🌿🪴🌳✨
         ├── TreeCanvas  (garden)   SVG stage 1–4                    ◄── SURFACE
         ├── ─────────────── ground line ───────────────
-        └── RootMap     (mindmap)  SVG root paths                   ◄── SUBSURFACE
+        └── RootMap     (mindmap)  crown → category pills → statement cards                   ◄── SUBSURFACE
               └── RootNode × n     opacity = node mastery
                     │ click
                     ▼
@@ -47,27 +47,29 @@ deck/[slug]/page.tsx (Server Component: getDeckBySlug + getProgressByDecks)
 ```
 src/
 ├── app/
-│   ├── layout.tsx                  # StreakProvider, LoginDialogProvider, Toaster, ProfileButton
+│   ├── layout.tsx                  # StreakProvider, LoginDialogProvider, ToastProvider, ProfileButton
+│   ├── _components/FarmWorld.tsx   # Composes garden's FarmIslandView + decks' DeleteDeckDialog (owner 🗑)
 │   ├── page.tsx                    # Garden Overview: grid of trees (getDecks + getProgressByDecks)
 │   └── deck/[slug]/
 │       ├── page.tsx                # Single tree + root explorer
 │       ├── _components/DeckScene.tsx   # Composes garden + mindmap (route-private)
 │       └── drill/page.tsx          # Focused drill overlay, reads ?nodeId=<id>
 ├── shared/
-│   ├── components/ui/              # shadcn/ui: Button, Dialog, Card, Skeleton, Alert, Toast
+│   ├── components/game/            # Game design system (see §4a): GameButton, GamePanel, GameDialog, GameTabs, GameProgressBar, HUD pieces
+│   ├── components/ui/              # shadcn/ui primitives (Sheet, Skeleton…); game screens use components/game instead
 │   ├── hooks/                      # useReducedMotion, useMediaQuery
-│   └── stores/                     # StreakProvider, LoginDialogProvider (React Context)
+│   └── stores/                     # StreakProvider, LoginDialogProvider, ToastProvider (React Context; game-styled toasts that survive navigation)
 └── features/
     ├── garden/                     # Surface: tree canvas & stage calculations
-    │   ├── components/             # FarmIslandView (+ FarmHud, FarmPlotDialog), GardenGrid, TreeCard, TreeStageSvg
+    │   ├── components/             # FarmIslandView (+ FarmHud with FarmDock, FarmPlotDialog), GardenGrid, TreeCard, TreeStageSvg
     │   ├── hooks/                  # useTreeStage (getTreeStage)
     │   └── types/                  # TreeStage, DeckCardView
     ├── mindmap/                    # Subsurface: SVG root rendering
-    │   ├── components/             # RootMap, RootPath, RootNode
-    │   ├── hooks/                  # useRootLayout (tree → x/y), nodeMastery()
+    │   ├── components/             # RootMap, MindmapCards (NodePill, StatementCard), MasteryRing
+    │   ├── hooks/                  # mindmapLayout (pure, tested), nodeMastery(), scene geometry
     │   └── types/                  # RootNodeView, RootLayout
     ├── drill/                      # 2–3 choice cards & feedback (+ getDrillQuestion on the server)
-    │   ├── components/             # DrillOverlay, DrillCard, ChoiceButton, MutationHighlight
+    │   ├── components/             # DrillOverlay, DrillCard, ChoiceButton, WateringScene, MutationHighlight
     │   ├── hooks/                  # useDrillSession
     │   └── types/                  # DrillState, DrillChoiceView
     ├── auth/                       # Login dialog & profile button
@@ -83,13 +85,33 @@ src/
 | Feature | Responsible for | Owns (components / hooks) | Does NOT | Input | Output / talks to |
 |---------|-----------------|---------------------------|----------|-------|-------------------|
 | `garden` | Farm Island world map (default `/`), classic grid (`/?view=grid`), single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
-| `mindmap` | Root layout, node interaction | `RootMap`, `RootPath`, `RootNode`, `useRootLayout` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
+| `mindmap` | Mindmap layout (crown → categories → statements), collapse, 🔍 inspector drawer, owner ✏️ hooks (wired to decks in `app/`) | `RootMap`, `NodePill`, `StatementCard`, `layoutMindmap` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
-| `user-profile` | Gardener overview on `/profile` | `GardenerCard`, `GardenStatsGrid`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |
+| `user-profile` | Gardener's Trophy & Record Hall on `/profile` | `GardenerCard`, `GardenStatsGrid`, `MightyShowcase`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |
 
 - **Composition**: only `app/**` (pages, `_components/`) combines features
 - **No feature-to-feature UI imports**: `mindmap` → `drill` via URL; `drill` opens login through `LoginDialogProvider`
+
+### 4a. Art direction & game design system (`shared/components/game`)
+
+A casual game running as a web app, not a web app with gamification bolted on. Premium, colourful but controlled, with physical depth. No flat SaaS cards, no 1px grey borders, no neon or casino clutter.
+
+| Piece | Use it for |
+|-------|-----------|
+| `GameButton` (`tone`: leaf, sun, sky, wood, clay, cream; `asChild`) | Every action. 3D bevel lip (`shadow-[0_4px_0_…]`) that sinks on press, gloss, bouncy hover |
+| `GamePanel` (`tone`: parchment, wood, stone, leaf, sky, gold; `title` → `Ribbon` plaque), `GameSlab`, `Ribbon` | Containers, rows, tiles, badges |
+| `GameDialog` + `GameDialogContent` (`title`, `description`, `tone`, `ribbon`, `size`) | Every popup (replaces shadcn `Dialog` in features) |
+| `GameTabs*` | Wooden drawer tabs inside dialogs |
+| `GameInput`, `GameTextarea`, `GameLabel`, `GAME_FIELD` | Form fields (recessed wells) |
+| `GameProgressBar` (`segments`, `caption`) | Capsule gauges: XP, growth, round progress, mastery 0–3 |
+| `LevelCrest`, `ResourcePill`, `ActionDock` + `DockOrb` + `DOCK_BUTTON` | Floating HUD (top-left crest, top-right 🔥 🪙 💎, bottom-centre dock) |
+| `KeyChip`, `ParticleBurst` | Hotkey caps, level-up bursts |
+
+- Display font: Baloo 2 (`font-game`, Vietnamese subset); body stays Geist.
+- Motion: `mg-*` keyframes in `app/globals.css` (`mg-spring`, `mg-land`, `mg-wobble`, `mg-shimmer`, `mg-pour`, `mg-stream`, `mg-burst`), all off under `prefers-reduced-motion`.
+- Feedback keeps hard rule 10: correct = gold, wrong = amber (soft wobble, never a shake, heart or timer).
+- Pure helpers `gaugePercent`, `notchOffsets`, `burstParticles` are unit-tested (`shared/components/game/__tests__`).
 
 ---
 
@@ -114,7 +136,7 @@ export const getTreeStage = (pct: number): TreeStage =>
 ```
 
 - Stage change → cross-fade SVGs (`transition-opacity duration-700`); reaching stage 5 → one confetti burst
-- **Farm World** (`garden/components/FarmIslandView.tsx`, geometry `garden/lib/farmLayout.ts`, camera `garden/lib/camera.ts` + `hooks/useFarmCamera.ts`): the full-bleed home page (`/`) under the site header. An isometric farmstead on an island: plots 1.45 tiles apart on raised soil beds with border stones and contact shadows, cobblestone lanes (spanning tree from the dock + a lane to the farmhouse), a white picket fence along the front edge (open at the dock), lampposts, benches, straw bales, beehives beside flowering trees (sakura / apple from stage 3), flower patches and grass tufts (seeded). Scenery is pure SVG (`FarmScenery.tsx`); trees and landmarks are HTML buttons over it, stacked back-to-front
+- **Farm World** (`garden/components/FarmIslandView.tsx`, geometry `garden/lib/farmLayout.ts`, camera `shared/lib/camera.ts` + `shared/hooks/useCamera.ts`, shared with the mindmap): the full-bleed home page (`/`) under the site header. An isometric farmstead on an island: plots 1.45 tiles apart on raised soil beds with border stones and contact shadows, cobblestone lanes (spanning tree from the dock + a lane to the farmhouse), a white picket fence along the front edge (open at the dock), lampposts, benches, straw bales, beehives beside flowering trees (sakura / apple from stage 3), flower patches and grass tufts (seeded). Scenery is pure SVG (`FarmScenery.tsx`); trees and landmarks are HTML buttons over it, stacked back-to-front
   - **Landmarks**: 🏡 farmhouse → `/profile` (sign-in dialog when signed out); 🚜 tractor → Daily Delivery dialog listing today's thirsty trees with a "Start delivery" into the first one's drill (no quest system yet)
   - **Per plot**: 💧 when signed in and not practised today (player's local day), ✨ at 100%, wooden nameplate; stage 4–5 trees drop leaves/petals, apple & sakura get two orbiting bees (max 12 animated trees); a one-time water splash + ripple the first time a watered tree is seen that day (per browser, `localStorage`)
   - **HUD** (corners): level + XP bar (top-left); 🔥 streak, 🪙 coins, 💎 gems (top-right); zoom − / % / + / fit (bottom-left); Farm/Grid toggle (bottom-centre); seed sack → `/deck/new` (bottom-right); island switcher + notices (top-centre, when needed). Coins = 5 per mastery step, gems = Mighty Roots on the island: display only, nothing to spend

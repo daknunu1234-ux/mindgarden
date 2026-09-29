@@ -6,6 +6,7 @@ import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useStreak } from '@/shared/stores/StreakProvider'
 import type { ErrorCode } from '@/shared/types/errors'
 import { checkDrillAnswer } from '../actions/checkDrillAnswer'
+import { becameMighty, leveledUp } from '../lib/masteryChange'
 import type { DrillAnswer, DrillProgress, DrillQuestion, DrillTag } from '../types'
 
 export type DrillState =
@@ -74,8 +75,8 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean)
 
       setStats((s) => ({
         correct: s.correct + (answer.isCorrect ? 1 : 0),
-        improved: s.improved + (progress && progress.masteryLevel > progress.previousMasteryLevel ? 1 : 0),
-        mastered: s.mastered + (progress && progress.masteryLevel === 3 && progress.previousMasteryLevel < 3 ? 1 : 0),
+        improved: s.improved + (leveledUp(progress) ? 1 : 0),
+        mastered: s.mastered + (becameMighty(progress) ? 1 : 0),
       }))
       setState({ status: 'feedback', picked: tag, answer, progress })
     })

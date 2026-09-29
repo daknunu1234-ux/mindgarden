@@ -1,0 +1,12 @@
+// Game design system: chunky, glossy, toy-like game UI used instead of flat shadcn surfaces.
+export { GameButton, KeyChip, type GameTone } from './GameButton'
+export { GamePanel, GameSlab, Ribbon, type PanelTone, type RibbonTone } from './GamePanel'
+export { GameProgressBar } from './GameProgressBar'
+export { GameDialog, GameDialogClose, GameDialogContent, GameDialogTrigger, GameModal, GameModalContent } from './GameDialog'
+export { GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger } from './GameTabs'
+export { GAME_FIELD, GameInput, GameLabel, GameTextarea } from './GameField'
+export { ActionDock, DOCK_BUTTON, DockOrb, LevelCrest, PodShadow, ResourcePill } from './GameHUD'
+export { GameIcon, type GameIconName } from './GameIcon'
+export { ParticleBurst } from './ParticleBurst'
+export { gaugePercent, notchOffsets } from './gauge'
+export { burstParticles } from './particles'

@@ -1,9 +1,9 @@
 'use client'
 
 import { MASTERY_NAMES } from '@/features/progress'
-import { Badge } from '@/shared/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { GamePanel, GameProgressBar, GameSlab, ParticleBurst } from '@/shared/components/game'
 import type { DrillState } from '../hooks/useDrillSession'
+import { becameMighty, leveledUp } from '../lib/masteryChange'
 import type { DrillProgress, DrillQuestion, DrillTag } from '../types'
 import { ChoiceButton, type ChoiceState } from './ChoiceButton'
 import { MutationHighlight } from './MutationHighlight'
@@ -23,93 +23,74 @@ function choiceState(tag: DrillTag, state: DrillState): ChoiceState {
   return 'muted'
 }
 
+// The question plaque + tactile choice slabs + feedback scroll.
 function DrillCard({ question, state, onSelect }: DrillCardProps) {
   const locked = state.status !== 'answering'
   const textOf = (tag: DrillTag) => question.choices.find((c) => c.tag === tag)?.text ?? ''
 
   return (
-    <Card>
-      <CardHeader>
-        {/* Items authored in-app use the root title as their prompt; skip the duplicate badge. */}
+    <div className="space-y-5">
+      {/* Items authored in-app use the root title as their prompt; then the ribbon says so instead. */}
+      <GamePanel tone="parchment" ribbon="leaf" title={question.prompt !== question.nodeTitle ? question.nodeTitle : 'Which is true?'}>
+        <h2 className="text-center font-game text-xl leading-snug font-bold whitespace-pre-wrap sm:text-2xl">{question.prompt}</h2>
         {question.prompt !== question.nodeTitle && (
-          <Badge variant="secondary" className="w-fit">
-            {question.nodeTitle}
-          </Badge>
+          <p className="mt-1 text-center text-sm font-medium text-amber-900/65">Which statement is true?</p>
         )}
-        <CardTitle className="mt-2 text-xl leading-snug whitespace-pre-wrap">{question.prompt}</CardTitle>
-        <p className="text-sm text-muted-foreground">Which statement is true?</p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          Keys: {question.choices.map((_, i) => i + 1).join(' / ')} or {question.choices.map((c) => c.tag).join(' / ')} to
-          answer, Enter or Space for the next question.
-        </p>
-        {question.choices.map((choice) => (
-          <ChoiceButton
-            key={choice.tag}
-            choice={choice}
-            state={choiceState(choice.tag, state)}
-            disabled={locked}
-            onSelect={onSelect}
-          />
-        ))}
+      </GamePanel>
 
-        {state.status === 'feedback' && (
-          <div
-            role="status"
-            className={
-              state.answer.isCorrect
-                ? 'rounded-xl border border-yellow-500 bg-yellow-50 p-4 text-yellow-900'
-                : 'rounded-xl border border-amber-500 bg-amber-50 p-4 text-amber-900'
-            }
-          >
-            {state.answer.isCorrect ? (
-              <p className="font-medium">Golden! This root just got stronger ✨</p>
-            ) : (
-              <>
-                <p className="font-medium">Almost! This root needs a little more water 🌿</p>
-                <p className="mt-3 text-sm">
-                  The trap changed:{' '}
-                  <MutationHighlight
-                    text={textOf(state.picked)}
-                    compareTo={textOf(state.answer.correctTag)}
-                    tone="amber"
-                  />
-                </p>
-                <p className="mt-1 text-sm">
-                  The true statement:{' '}
-                  <MutationHighlight
-                    text={textOf(state.answer.correctTag)}
-                    compareTo={textOf(state.picked)}
-                    tone="gold"
-                  />
-                </p>
-              </>
-            )}
-            {state.progress && <MasteryMeter progress={state.progress} />}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <div className="space-y-3.5" role="group" aria-label="Choices">
+        {question.choices.map((choice) => (
+          <ChoiceButton key={choice.tag} choice={choice} state={choiceState(choice.tag, state)} disabled={locked} onSelect={onSelect} />
+        ))}
+      </div>
+      <p className="hidden text-center text-xs font-medium text-amber-900/55 sm:block">
+        Press {question.choices.map((_, i) => i + 1).join(' / ')} or {question.choices.map((c) => c.tag).join(' / ')} to answer · Enter
+        for the next one
+      </p>
+
+      {state.status === 'feedback' && (
+        <GameSlab role="status" tone={state.answer.isCorrect ? 'gold' : 'cream'} className="mg-land relative p-4 sm:p-5">
+          {leveledUp(state.progress) && <ParticleBurst key={question.itemId} count={becameMighty(state.progress) ? 28 : 16} />}
+          {state.answer.isCorrect ? (
+            <p className="font-game text-lg font-bold text-amber-900">✨ Golden! This root just got stronger</p>
+          ) : (
+            <div className="text-amber-950">
+              <p className="font-game text-lg font-bold text-amber-700">🌿 Almost! This root needs a little more water</p>
+              <p className="mt-3 text-sm">
+                <span className="font-semibold">The trap changed: </span>
+                <MutationHighlight text={textOf(state.picked)} compareTo={textOf(state.answer.correctTag)} tone="amber" />
+              </p>
+              <p className="mt-1.5 text-sm">
+                <span className="font-semibold">The true statement: </span>
+                <MutationHighlight text={textOf(state.answer.correctTag)} compareTo={textOf(state.picked)} tone="gold" />
+              </p>
+            </div>
+          )}
+          {state.progress && <MasteryMeter progress={state.progress} />}
+        </GameSlab>
+      )}
+    </div>
   )
 }
 
+// Root mastery as a 3-notch capsule: gold as it climbs to Mighty Root.
 function MasteryMeter({ progress }: { progress: DrillProgress }) {
   const { masteryLevel } = progress
+  const up = leveledUp(progress)
   return (
-    <p className="mt-3 flex items-center gap-2 text-sm">
-      <span className="flex gap-1" aria-hidden>
-        {[1, 2, 3].map((step) => (
-          <span
-            key={step}
-            className={step <= masteryLevel ? 'size-2.5 rounded-full bg-yellow-500' : 'size-2.5 rounded-full bg-muted-foreground/25'}
-          />
-        ))}
+    <div className="mt-4 flex items-center gap-3">
+      <GameProgressBar
+        value={masteryLevel}
+        max={3}
+        segments={3}
+        tone={masteryLevel === 3 ? 'gold' : 'leaf'}
+        label="Root mastery"
+        className="flex-1"
+      />
+      <span className={up ? 'mg-spring font-game text-sm font-bold text-amber-900' : 'font-game text-sm font-bold text-amber-900/80'}>
+        {MASTERY_NAMES[masteryLevel]} · {masteryLevel}/3{up && ' ⬆'}
       </span>
-      <span>
-        {MASTERY_NAMES[masteryLevel]} · {masteryLevel}/3
-      </span>
-    </p>
+    </div>
   )
 }
 

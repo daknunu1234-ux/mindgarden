@@ -2,16 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Button } from '@/shared/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/components/ui/dialog'
-import { Input } from '@/shared/components/ui/input'
-import { Label } from '@/shared/components/ui/label'
+import { GameButton, GameDialog, GameDialogContent, GameInput, GameLabel, GameSlab } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { signInWithEmail } from '../actions/signInWithEmail'
 
@@ -42,25 +33,27 @@ function LoginDialog() {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Sign in to MindGarden 🌱</DialogTitle>
-          <DialogDescription>
-            We&apos;ll email you a magic link. Signing in saves the mastery your trees earn.
-          </DialogDescription>
-        </DialogHeader>
-
+    <GameDialog open={isOpen} onOpenChange={onOpenChange}>
+      <GameDialogContent
+        title="🌱 Join the Garden"
+        ribbon="leaf"
+        description="We'll email you a magic link. Signing in saves the mastery your trees earn."
+      >
         {status.kind === 'sent' ? (
-          <div role="status" className="rounded-xl border border-yellow-500 bg-yellow-50 p-4 text-sm text-yellow-900">
-            Check <span className="font-medium">{status.email}</span> for your sign-in link. Open it in this
-            browser to come right back here.
-          </div>
+          <GameSlab role="status" tone="gold" className="p-4 text-center text-sm text-amber-950">
+            <p aria-hidden className="text-4xl">
+              📬
+            </p>
+            <p className="mt-2">
+              Check <span className="font-bold">{status.email}</span> for your sign-in link. Open it in this browser to come right back
+              here.
+            </p>
+          </GameSlab>
         ) : (
           <form onSubmit={submit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="login-email">Email</Label>
-              <Input
+            <div>
+              <GameLabel htmlFor="login-email">Email</GameLabel>
+              <GameInput
                 id="login-email"
                 type="email"
                 autoComplete="email"
@@ -71,17 +64,17 @@ function LoginDialog() {
               />
             </div>
             {status.kind === 'error' && (
-              <p role="alert" className="text-sm text-amber-800">
+              <p role="alert" className="text-sm font-medium text-amber-800">
                 {status.message}.
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={isPending}>
-              {isPending ? 'Sending…' : 'Email me a magic link'}
-            </Button>
+            <GameButton type="submit" tone="leaf" size="lg" className="w-full" disabled={isPending}>
+              {isPending ? 'Sending…' : '✉️ Email me a magic link'}
+            </GameButton>
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+      </GameDialogContent>
+    </GameDialog>
   )
 }
 

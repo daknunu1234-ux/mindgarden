@@ -2,79 +2,35 @@
 
 import Link from 'next/link'
 import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
+import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, ResourcePill } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import type { FarmHudView } from '../types'
 
-// Game HUD pieces, floated in the farm's corners. Each panel re-enables pointer events;
-// the overlay around them lets drags and clicks through to the world.
-const PANEL = 'pointer-events-auto rounded-2xl border-2 border-amber-900/25 bg-amber-50/90 shadow-lg backdrop-blur-sm'
-const ROUND =
-  'pointer-events-auto flex items-center justify-center rounded-full border-2 border-amber-900/25 bg-amber-50/95 text-amber-950 shadow-md transition-transform hover:scale-105 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:scale-95 disabled:opacity-40 disabled:hover:scale-100'
+// Floating game HUD for the farm. The overlay around these pieces is pointer-events-none so drags
+// and clicks reach the world; every piece re-enables pointer events.
 
-// Top-left: level medallion + XP bar. Signed out: a gentle sign-in invite.
+// Top-left: level crest + XP capsule. Signed out: a gentle sign-in invite.
 function LevelBadge({ level }: { level: FarmHudView['level'] }) {
   const { open } = useLoginDialog()
   if (!level) {
     return (
-      <button type="button" onClick={open} className={cn(PANEL, 'px-3 py-2 text-left text-xs font-semibold text-emerald-900 hover:bg-white')}>
+      <GameButton tone="cream" size="md" onClick={open} className="pointer-events-auto">
         🧑‍🌾 Sign in to start farming
-      </button>
+      </GameButton>
     )
   }
-  const pct = Math.round(level.progress * 100)
-  return (
-    <div className={cn(PANEL, 'flex items-center gap-2.5 py-1.5 pr-3 pl-1.5')}>
-      <div
-        aria-hidden
-        className="flex size-11 shrink-0 items-center justify-center rounded-full border-[3px] border-yellow-500 bg-gradient-to-b from-yellow-200 to-amber-400 text-base font-black text-amber-900 shadow-inner"
-      >
-        {level.level}
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-xs font-bold text-amber-950">{level.title}</p>
-        <div
-          className="mt-1 h-2.5 w-28 overflow-hidden rounded-full border border-amber-900/20 bg-amber-900/10 sm:w-40"
-          role="progressbar"
-          aria-label={`Level ${level.level} experience`}
-          aria-valuemin={0}
-          aria-valuemax={level.xpForNextLevel}
-          aria-valuenow={level.xpIntoLevel}
-        >
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-lime-400 to-emerald-500 transition-[width] duration-700"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <p className="mt-0.5 text-[10px] font-medium tabular-nums text-amber-900/70">
-          Lv {level.level} · {level.xpIntoLevel}/{level.xpForNextLevel} XP
-        </p>
-      </div>
-    </div>
-  )
-}
-
-type CounterProps = { icon: string; value: number | string; label: string; hint: string; tone: string }
-
-function Counter({ icon, value, label, hint, tone }: CounterProps) {
-  return (
-    <span className={cn('flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5', tone)} title={hint}>
-      <span aria-hidden className="text-base leading-none">
-        {icon}
-      </span>
-      <span className="sr-only">{label}:</span>
-      <span className="tabular-nums">{value}</span>
-    </span>
-  )
+  return <LevelCrest level={level.level} title={level.title} xpIntoLevel={level.xpIntoLevel} xpForNextLevel={level.xpForNextLevel} />
 }
 
 // Top-right: streak flame, coins, gems.
 function Counters({ hud }: { hud: FarmHudView }) {
   const streak = hud.streak
   return (
-    <div className={cn(PANEL, 'flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold')}>
-      <Counter
-        icon={streak?.practicedToday ? '🔥' : '🌱'}
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+      <ResourcePill
+        icon={streak?.practicedToday ? 'flame' : 'sprout'}
+        tone={streak?.practicedToday ? 'fire' : 'leaf'}
         value={streak?.current ?? 0}
         label="Daily streak"
         hint={
@@ -84,16 +40,9 @@ function Counters({ hud }: { hud: FarmHudView }) {
               : 'Practise today to keep your streak'
             : 'Sign in to keep a streak'
         }
-        tone={streak?.practicedToday ? 'text-orange-700' : 'text-emerald-800'}
       />
-      <Counter icon="🪙" value={hud.coins ?? 0} label="Coins" hint="5 coins for every mastery step you earn" tone="text-amber-700" />
-      <Counter
-        icon="💎"
-        value={hud.gems}
-        label="Gems"
-        hint="One gem per Mighty Root (all statements at 3/3) on this island"
-        tone="text-sky-700"
-      />
+      <ResourcePill icon="coin" tone="gold" value={hud.coins ?? 0} label="Coins" hint="5 coins for every mastery step you earn" />
+      <ResourcePill icon="gem" tone="gem" value={hud.gems} label="Gems" hint="One gem per Mighty Root (all statements at 3/3) on this island" />
     </div>
   )
 }
@@ -107,75 +56,103 @@ type ZoomControlsProps = {
   canZoomOut: boolean
 }
 
-// Bottom-left: zoom out / level / zoom in / fit.
+// Bottom-left: a stack of small round camera buttons.
 function ZoomControls({ zoom, onZoomIn, onZoomOut, onReset, canZoomIn, canZoomOut }: ZoomControlsProps) {
-  const button = cn(ROUND, 'size-8 border-0 shadow-none')
   return (
-    <div role="toolbar" aria-label="Camera" className={cn(PANEL, 'flex items-center gap-1 p-1')}>
-      <button type="button" onClick={onZoomOut} disabled={!canZoomOut} aria-label="Zoom out" className={button}>
-        <Minus className="size-4" />
-      </button>
-      <span className="w-10 text-center text-xs font-semibold tabular-nums text-amber-950" aria-live="polite">
+    <div role="toolbar" aria-label="Camera" className="pointer-events-auto flex flex-col items-center gap-2">
+      <GameButton tone="cream" size="icon-sm" onClick={onZoomIn} disabled={!canZoomIn} aria-label="Zoom in">
+        <Plus strokeWidth={3} />
+      </GameButton>
+      <span className="rounded-full bg-slate-900/70 px-2 py-0.5 font-game text-[11px] font-bold text-white tabular-nums" aria-live="polite">
         {Math.round(zoom * 100)}%
       </span>
-      <button type="button" onClick={onZoomIn} disabled={!canZoomIn} aria-label="Zoom in" className={button}>
-        <Plus className="size-4" />
-      </button>
-      <button type="button" onClick={onReset} aria-label="Fit the whole farm" title="Fit the whole farm" className={button}>
-        <Maximize className="size-4" />
-      </button>
+      <GameButton tone="cream" size="icon-sm" onClick={onZoomOut} disabled={!canZoomOut} aria-label="Zoom out">
+        <Minus strokeWidth={3} />
+      </GameButton>
+      <GameButton tone="cream" size="icon-sm" onClick={onReset} aria-label="Fit the whole farm" title="Fit the whole farm">
+        <Maximize strokeWidth={2.5} />
+      </GameButton>
     </div>
   )
 }
 
-// Bottom-right: the seed sack, i.e. plant a new deck.
-function SeedSack() {
+// Burlap sack with a sprout peeking out.
+function SeedSackIcon() {
   return (
-    <Link
-      href="/deck/new"
-      aria-label="Plant New Seed"
-      title="Plant New Seed"
-      className={cn(ROUND, 'group size-16 flex-col border-amber-900/40 bg-gradient-to-b from-amber-200 to-amber-400 sm:size-[72px]')}
-    >
-      {/* Burlap sack with a sprout peeking out. */}
-      <svg aria-hidden viewBox="0 0 40 40" className="size-9 overflow-visible sm:size-10">
-        <path d="M 20 6 q 2 -5 7 -5 q -2 5 -7 5 z" fill="#22c55e" />
-        <path d="M 20 6 q -2 -4 -6 -4 q 1 4 6 4 z" fill="#4ade80" />
-        <path d="M 12 12 q 8 -6 16 0 l -1 3 q -7 -3 -14 0 z" fill="#a16207" />
-        <path d="M 11 14 q 9 -4 18 0 q 5 8 3 18 q -12 5 -24 0 q -2 -10 3 -18 z" fill="#d6b58c" stroke="#a16207" strokeWidth="1.5" />
-        <path d="M 13 14.5 q 7 3 14 0" stroke="#78350f" strokeWidth="2" fill="none" />
-        <text x="20" y="29" fontSize="9" textAnchor="middle" fontWeight="700" fill="#78350f">
-          SEED
-        </text>
-      </svg>
-      <span className="text-[9px] leading-none font-bold text-amber-950 group-hover:underline">Plant</span>
-    </Link>
+    <svg aria-hidden viewBox="0 0 40 40" className="size-10 overflow-visible sm:size-11">
+      <path d="M 20 6 q 2 -5 7 -5 q -2 5 -7 5 z" fill="#16a34a" />
+      <path d="M 20 6 q -2 -4 -6 -4 q 1 4 6 4 z" fill="#22c55e" />
+      <path d="M 12 12 q 8 -6 16 0 l -1 3 q -7 -3 -14 0 z" fill="#a16207" />
+      <path d="M 11 14 q 9 -4 18 0 q 5 8 3 18 q -12 5 -24 0 q -2 -10 3 -18 z" fill="#f5deb3" stroke="#a16207" strokeWidth="1.5" />
+      <path d="M 13 14.5 q 7 3 14 0" stroke="#78350f" strokeWidth="2" fill="none" />
+      <text x="20" y="29" fontSize="9" textAnchor="middle" fontWeight="800" fill="#78350f">
+        SEED
+      </text>
+    </svg>
+  )
+}
+
+type FarmDockProps = {
+  gridHref: string
+  onQuests: () => void
+  // Thirsty trees today (red badge on Daily Quests).
+  quests: number
+}
+
+// Bottom-centre dock: Daily Quests · Seed Sack (hero) · switch to the grid view.
+function FarmDock({ gridHref, onQuests, quests }: FarmDockProps) {
+  return (
+    <ActionDock label="Farm actions">
+      <button type="button" onClick={onQuests} className={DOCK_BUTTON} aria-label={`Daily Quests${quests > 0 ? `: ${quests} thirsty` : ''}`}>
+        <DockOrb tone="sky" badge={quests > 0 ? quests : undefined}>
+          <GameIcon name="drop" className="size-8" />
+        </DockOrb>
+        Quests
+      </button>
+      <Link href="/deck/new" className={cn(DOCK_BUTTON, '-mt-6')} aria-label="Seed Sack: plant a new tree">
+        <DockOrb tone="sun" big>
+          <SeedSackIcon />
+        </DockOrb>
+        Plant
+      </Link>
+      <Link href={gridHref} className={DOCK_BUTTON} aria-label="Switch to the classic grid view">
+        <DockOrb tone="leaf">
+          <LayoutGrid className="size-6 text-white drop-shadow" strokeWidth={2.5} />
+        </DockOrb>
+        Grid
+      </Link>
+    </ActionDock>
   )
 }
 
 type ViewToggleProps = { view: 'farm' | 'grid'; farmHref: string; gridHref: string; className?: string }
 
-// Farm World ⇄ Classic Grid (URL-driven, so it survives a refresh).
+// Farm World ⇄ Classic Grid (URL-driven, so it survives a refresh). A two-slot wooden switch.
 function ViewToggle({ view, farmHref, gridHref, className }: ViewToggleProps) {
   const item = (active: boolean) =>
     cn(
-      'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors',
-      'focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-      active ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-900 hover:bg-emerald-100',
+      'inline-flex h-9 items-center gap-1.5 rounded-full px-4 font-game text-sm font-bold transition-[transform,background] duration-150',
+      'focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none',
+      active
+        ? 'bg-gradient-to-b from-lime-300 to-emerald-500 text-white shadow-[0_3px_0_#065f46] [text-shadow:0_1px_0_rgba(6,78,59,0.5)]'
+        : 'text-amber-100 hover:-translate-y-px hover:bg-amber-700/60',
     )
   return (
     <nav
       aria-label="Garden view"
-      className={cn('pointer-events-auto inline-flex rounded-full border border-emerald-200 bg-white/90 p-0.5 shadow-sm', className)}
+      className={cn(
+        'pointer-events-auto inline-flex gap-1 rounded-full border-[3px] border-amber-950/60 bg-gradient-to-b from-amber-700 to-amber-800 p-1 shadow-[inset_0_2px_0_rgba(255,255,255,0.15),0_4px_0_#451a03]',
+        className,
+      )}
     >
       <Link href={farmHref} className={item(view === 'farm')} aria-current={view === 'farm' ? 'page' : undefined}>
-        <MapIcon className="size-3.5" aria-hidden /> Farm
+        <MapIcon className="size-4" aria-hidden /> Farm
       </Link>
       <Link href={gridHref} className={item(view === 'grid')} aria-current={view === 'grid' ? 'page' : undefined}>
-        <LayoutGrid className="size-3.5" aria-hidden /> Grid
+        <LayoutGrid className="size-4" aria-hidden /> Grid
       </Link>
     </nav>
   )
 }
 
-export { Counters, LevelBadge, SeedSack, ViewToggle, ZoomControls }
+export { Counters, FarmDock, LevelBadge, ViewToggle, ZoomControls }

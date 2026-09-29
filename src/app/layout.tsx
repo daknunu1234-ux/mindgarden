@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
 import { getStreak, StreakBadge } from "@/features/progress";
-import { Button } from "@/shared/components/ui/button";
+import { GameButton } from "@/shared/components/game";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
 import { StreakProvider } from "@/shared/stores/StreakProvider";
+import { ToastProvider } from "@/shared/stores/ToastProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +18,13 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Rounded display face for game UI (buttons, plaques, HUD). Vietnamese subset for deck titles.
+const baloo = Baloo_2({
+  variable: "--font-baloo",
+  subsets: ["latin", "vietnamese"],
+  weight: ["500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -32,20 +40,28 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${baloo.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <LoginDialogProvider>
+          <ToastProvider>
           <StreakProvider initial={streak && { current: streak.current, best: streak.best, practicedToday: streak.practicedToday }}>
-          <header className="border-b">
-            <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-              <Link href="/" className="font-semibold tracking-tight">
-                MindGarden 🌳
+          {/* Wooden top bar: carved logo, plant button, streak capsule, gardener badge. */}
+          <header className="relative z-40 border-b-[3px] border-amber-950/60 bg-gradient-to-b from-amber-700 to-amber-800 shadow-[inset_0_2px_0_rgba(255,255,255,0.15),0_4px_0_rgba(69,26,3,0.35)]">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 rounded-xl font-game text-xl font-extrabold tracking-tight text-amber-50 [text-shadow:0_2px_0_rgba(69,26,3,0.7)] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
+              >
+                <span aria-hidden className="text-2xl">
+                  🌳
+                </span>
+                MindGarden
               </Link>
-              <div className="flex items-center gap-2">
-                <Button asChild size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <GameButton asChild tone="leaf" size="sm" className="hidden sm:inline-flex">
                   <Link href="/deck/new">Plant a Tree 🌱</Link>
-                </Button>
+                </GameButton>
                 {user && <StreakBadge />}
                 <ProfileButton user={user} />
               </div>
@@ -57,6 +73,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <LoginDialog />
           </Suspense>
           </StreakProvider>
+          </ToastProvider>
         </LoginDialogProvider>
       </body>
     </html>

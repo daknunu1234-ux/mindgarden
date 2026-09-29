@@ -2,7 +2,8 @@
 export type RootNodeView = {
   id: string
   title: string
-  items: { id: string }[]
+  // prompt is optional so plain { id } items still fit; decks' DeckTreeNode items carry it.
+  items: { id: string; prompt?: string }[]
   children: RootNodeView[]
 }
 

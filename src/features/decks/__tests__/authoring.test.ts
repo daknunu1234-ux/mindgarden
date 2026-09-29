@@ -96,3 +96,14 @@ describe('UpdateDeckDto', () => {
     expect(UpdateDeckDto.parse({ deckId: ID, description: '' })).toEqual({ deckId: ID, description: null })
   })
 })
+
+describe('ManageRootsDto', () => {
+  it('validates rename, delete-root and remove-statement input', async () => {
+    const { DeleteKnowledgeItemDto, DeleteMindmapNodeDto, UpdateMindmapNodeDto } = await import('../dto/ManageRootsDto')
+    expect(UpdateMindmapNodeDto.parse({ nodeId: ID, title: '  Ty thể  ' })).toEqual({ nodeId: ID, title: 'Ty thể' })
+    expect(UpdateMindmapNodeDto.safeParse({ nodeId: ID, title: ' ' }).success).toBe(false)
+    expect(UpdateMindmapNodeDto.safeParse({ nodeId: 'x', title: 'ok' }).success).toBe(false)
+    expect(DeleteMindmapNodeDto.safeParse({ nodeId: ID }).success).toBe(true)
+    expect(DeleteKnowledgeItemDto.safeParse({ itemId: 'nope' }).success).toBe(false)
+  })
+})

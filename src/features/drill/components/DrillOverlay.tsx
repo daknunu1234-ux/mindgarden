@@ -3,33 +3,38 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
-import { Button } from '@/shared/components/ui/button'
-import { Card, CardContent } from '@/shared/components/ui/card'
-import { Kbd } from '@/shared/components/ui/kbd'
+import { ArrowLeft } from 'lucide-react'
+import { GameButton, GamePanel, GameProgressBar, GameSlab, KeyChip, ParticleBurst } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
-import { useDrillSession } from '../hooks/useDrillSession'
+import { cn } from '@/shared/utils/cn'
+import { useDrillSession, type DrillState } from '../hooks/useDrillSession'
 import { useDrillShortcuts } from '../hooks/useDrillShortcuts'
+import type { WaterMood } from '../lib/masteryChange'
 import type { DrillSession } from '../types'
 import { DrillCard } from './DrillCard'
+import { WateringScene } from './WateringScene'
 
 type DrillOverlayProps = { session: DrillSession; isSignedIn: boolean }
 
 // One burst when a round ends with at least one root grown. Loaded lazily; respects reduced motion.
 function celebrate() {
   import('canvas-confetti').then(({ default: confetti }) =>
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, disableForReducedMotion: true }),
+    confetti({ particleCount: 90, spread: 75, origin: { y: 0.55 }, disableForReducedMotion: true }),
   )
 }
 
-// Practice round for one deck: question → answer → feedback → next, then a summary.
+function moodOf(state: DrillState): WaterMood {
+  if (state.status === 'checking') return 'checking'
+  if (state.status === 'feedback') return state.answer.isCorrect ? 'golden' : 'practice'
+  if (state.status === 'done') return 'golden'
+  return 'idle'
+}
+
+// The Watering Session: question → answer → the can pours on the roots → next, then a summary.
 function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   const router = useRouter()
   const { open: openLogin } = useLoginDialog()
-  const { question, index, total, state, stats, saving, isPending, pick, retry, next } = useDrillSession(
-    session.questions,
-    isSignedIn,
-  )
+  const { question, index, total, state, stats, saving, isPending, pick, retry, next } = useDrillSession(session.questions, isSignedIn)
   useDrillShortcuts({
     status: state.status,
     tags: question?.choices.map((c) => c.tag) ?? [],
@@ -46,92 +51,97 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
   const answered = index + (state.status === 'feedback' || state.status === 'done' ? 1 : 0)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
-        <span>
-          {state.status === 'done' ? 'Round complete' : `Question ${index + 1} of ${total}`}
-        </span>
-        <Link href={deckHref} className="hover:text-foreground">
-          Back to tree
-        </Link>
-      </div>
-      <div
-        className="h-2 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-label="Round progress"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={answered}
-      >
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-          style={{ width: `${(answered / total) * 100}%` }}
+    <div className="space-y-5">
+      {/* Floating round HUD: back, round gauge. */}
+      <div className="flex items-center gap-3">
+        <GameButton asChild tone="cream" size="icon-sm">
+          <Link href={deckHref} aria-label="Back to tree">
+            <ArrowLeft strokeWidth={3} />
+          </Link>
+        </GameButton>
+        <GameProgressBar
+          value={answered}
+          max={total}
+          tone="sky"
+          size="lg"
+          segments={total <= 20 ? total : 0}
+          label="Round progress"
+          caption={isDone ? 'Round complete!' : `💧 ${answered} / ${total}`}
+          className="flex-1"
         />
       </div>
 
-      {state.status === 'done' ? (
-        <Card>
-          <CardContent className="py-10 text-center">
-            <p aria-hidden className="text-5xl">
-              🌳
-            </p>
-            <h2 className="mt-4 text-2xl font-semibold">Your tree soaked it all up!</h2>
-            <p className="mt-2 text-muted-foreground">
-              <span className="font-medium text-yellow-700">{stats.correct} golden</span>
-              {total - stats.correct > 0 && (
-                <>
-                  {' · '}
-                  <span className="font-medium text-amber-700">{total - stats.correct} to water again</span>
-                </>
-              )}
-            </p>
-            {saving && grewRoots && (
-              <p className="mt-3 text-sm">
-                {stats.improved} {stats.improved === 1 ? 'root' : 'roots'} grew stronger
-                {stats.mastered > 0 && ` · ${stats.mastered} reached Mighty Root ✨`}
-              </p>
+      <div className="overflow-hidden rounded-[24px] border-[3px] border-amber-900/30 shadow-[0_5px_0_rgba(120,53,15,0.3)]">
+        {/* The pour class is added on every answer and removed on the next question, so it replays. */}
+        <WateringScene
+          treeType={session.deck.treeType}
+          mood={moodOf(state)}
+          growth={total > 0 ? answered / total : 0}
+        />
+      </div>
+
+      {isDone ? (
+        <GamePanel tone="gold" ribbon="gold" title="🏆 Round Complete">
+          {grewRoots && <ParticleBurst count={24} radius={140} />}
+          <p className="text-center font-game text-2xl font-extrabold text-amber-900">Your tree soaked it all up!</p>
+          <div className={saving ? 'mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3' : 'mt-5 grid grid-cols-2 gap-3'}>
+            <SummaryStat icon="✨" value={stats.correct} label="Golden" tone="gold" />
+            <SummaryStat icon="🌿" value={total - stats.correct} label="To water again" tone="cream" />
+            {saving && (
+              <SummaryStat
+                icon="⬆️"
+                value={stats.improved}
+                label={stats.improved === 1 ? 'Root grew' : 'Roots grew'}
+                tone="leaf"
+                className="col-span-2 sm:col-span-1"
+              />
             )}
-            {!saving && (
-              <p className="mt-3 text-sm text-muted-foreground">
-                <button type="button" onClick={openLogin} className="font-medium text-foreground underline underline-offset-4">
-                  Sign in
-                </button>{' '}
-                to save mastery and grow your tree.
-              </p>
-            )}
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Button onClick={() => router.refresh()}>Practice again</Button>
-              <Button variant="outline" asChild>
-                <Link href={deckHref}>Back to tree</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          {saving && stats.mastered > 0 && (
+            <p className="mt-4 text-center font-game font-bold text-amber-900">
+              💎 {stats.mastered} reached Mighty Root!
+            </p>
+          )}
+          {!saving && (
+            <p className="mt-4 text-center text-sm font-medium">
+              <button type="button" onClick={openLogin} className="font-game font-bold text-emerald-800 underline underline-offset-4">
+                Sign in
+              </button>{' '}
+              to save mastery and grow your tree.
+            </p>
+          )}
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <GameButton tone="leaf" size="lg" onClick={() => router.refresh()}>
+              💧 Water again
+            </GameButton>
+            <GameButton asChild tone="wood" size="lg">
+              <Link href={deckHref}>Back to tree</Link>
+            </GameButton>
+          </div>
+        </GamePanel>
       ) : (
         question && (
           <>
             <DrillCard question={question} state={state} onSelect={pick} />
 
             {state.status === 'error' && (
-              <Alert className="border-amber-500 bg-amber-50 text-amber-900">
-                <AlertTitle>We couldn&apos;t check that answer</AlertTitle>
-                <AlertDescription>{state.error.message}.</AlertDescription>
-                <AlertAction>
-                  <Button size="sm" variant="outline" onClick={retry} disabled={isPending}>
-                    Try again
-                  </Button>
-                </AlertAction>
-              </Alert>
+              <GameSlab role="alert" className="flex flex-wrap items-center gap-3 p-4">
+                <p className="flex-1 text-sm text-amber-950">
+                  <span className="block font-game font-bold">We couldn&apos;t check that answer</span>
+                  {state.error.message}.
+                </p>
+                <GameButton tone="sun" size="sm" onClick={retry} disabled={isPending}>
+                  Try again
+                </GameButton>
+              </GameSlab>
             )}
 
             {state.status === 'feedback' && (
-              <div className="flex justify-end">
-                <Button onClick={next} autoFocus>
-                  {index + 1 >= total ? 'See results' : 'Next question'}
-                  <Kbd className="ml-1 hidden border-primary-foreground/30 bg-transparent text-primary-foreground/80 sm:inline-flex" aria-hidden>
-                    Enter
-                  </Kbd>
-                </Button>
+              <div className="flex justify-center sm:justify-end">
+                <GameButton tone="leaf" size="lg" onClick={next} autoFocus className="min-w-48">
+                  {index + 1 >= total ? 'See results 🏆' : 'Next ▶'}
+                  <KeyChip className="hidden border-emerald-900/30 bg-emerald-50 text-emerald-900 sm:inline-flex">Enter</KeyChip>
+                </GameButton>
               </div>
             )}
           </>
@@ -139,12 +149,26 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
       )}
 
       {session.skippedCount > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {session.skippedCount} {session.skippedCount === 1 ? 'item was' : 'items were'} skipped: their
-          statements have no word the trap engine can flip yet.
+        <p className="text-center text-xs font-medium text-amber-900/60">
+          {session.skippedCount} {session.skippedCount === 1 ? 'item was' : 'items were'} skipped: their statements have no word the
+          trap engine can flip yet.
         </p>
       )}
     </div>
+  )
+}
+
+type SummaryStatProps = { icon: string; value: number; label: string; tone: 'gold' | 'cream' | 'leaf'; className?: string }
+
+function SummaryStat({ icon, value, label, tone, className }: SummaryStatProps) {
+  return (
+    <GameSlab tone={tone} className={cn('flex flex-col items-center px-2 py-3 text-center', className)}>
+      <span aria-hidden className="text-2xl">
+        {icon}
+      </span>
+      <span className="font-game text-3xl leading-none font-extrabold text-amber-950 tabular-nums">{value}</span>
+      <span className="mt-1 text-xs font-semibold text-amber-900/70">{label}</span>
+    </GameSlab>
   )
 }
 

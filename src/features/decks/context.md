@@ -15,6 +15,10 @@ Server feature for decks, their mindmap tree and knowledge items.
 | `index.ts` | `createKnowledgeItem({ nodeId, statement })` | Server Action, owner only. Stores `trap_rules = { negate: true }`, `prompt` = root title; returns `drillable` |
 | `index.ts` | `getDeckEditor({ deckId })` | Server Action, owner only. Flattened roots with true statements |
 | `index.ts` | `updateDeck({ deckId, title?, description?, treeType?, isPublic? })` | Server Action, owner only; the editor uses it for the species picker |
+| `index.ts` | `updateMindmapNode`, `deleteMindmapNode` (empty roots only, else `NODE_NOT_EMPTY`), `deleteKnowledgeItem` | Server Actions, owner only (`dto/ManageRootsDto.ts`, `services/authoring.ts`) |
+| `index.ts` | `deleteDeck({ deckId })` | Server Action, owner only (`dto/DeleteDeckDto.ts`, `services/authoring.ts` `removeDeck`). Cascades roots, statements and progress; success = `redirect('/')`, failure = `ActionResult` |
+| `index.ts` | `DeleteDeckDialog({ deckId, deckTitle, open, onOpenChange })`, `DeckDangerZone({ deckId, deckTitle })` | Client. "Uproot Tree? 🪓" game dialog: type the name to confirm (`lib/confirmName.ts` `matchesTreeName`, NFC/case/space-insensitive), "Keep Tree 🌿" / "Uproot Forever 🪓"; farewell toast via `shared/stores/ToastProvider`. `DeckDangerZone` = the Tree Workshop section with the trigger button |
+| `index.ts` | `NodeManageDialog({ deckId, node, onOpenChange })`, `AddRootDialog` | Client. Owner tools opened from the mindmap: rename, add sub-branch / statement, remove statements (inline confirm), delete an empty root. Shows owner-only statement texts from `getDeckEditor`; refreshes page data in place |
 | `index.ts` | `TreeSpeciesPicker({ value, onChange })` | Radio cards for every species in `shared/lib/treeSkins` |
 | `index.ts` | `CreateDeckForm`, `DeckEditor({ editor })` | Client UI for `/deck/new` and the owner section of the deck page. No trap settings are shown |
 | `index.ts` | `countDeckTree(tree)` | Pure: `{ nodeCount, itemCount }` for a deck header |

@@ -25,18 +25,25 @@ function StreakBadge() {
       href="/profile"
       title={hint}
       aria-label={`Daily streak: ${days}${practicedToday ? ', practised today' : ', not practised yet today'}`}
-      className={cn(
-        'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium tabular-nums transition-colors',
-        'focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-        !practicedToday
-          ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-50'
-          : milestone && milestone >= 7
-            ? 'border-yellow-400 bg-yellow-50 text-yellow-800 hover:bg-yellow-100'
-            : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
-      )}
+      className="group inline-flex items-center rounded-full focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
     >
-      <span aria-hidden>{practicedToday ? '🔥' : '🌱'}</span>
-      {days}
+      {/* Resource capsule: round icon socket + dark value well (matches the farm HUD). */}
+      <span
+        aria-hidden
+        className={cn(
+          'relative z-10 flex size-8 items-center justify-center rounded-full border-2 bg-gradient-to-b text-base shadow-[0_2px_0_rgba(0,0,0,0.25)] transition-transform group-hover:scale-110',
+          !practicedToday
+            ? 'border-emerald-700 from-lime-200 to-emerald-500'
+            : milestone && milestone >= 7
+              ? 'border-amber-700 from-yellow-200 to-amber-500'
+              : 'border-rose-700 from-orange-300 to-rose-500',
+        )}
+      >
+        {practicedToday ? '🔥' : '🌱'}
+      </span>
+      <span className="-ml-3 flex h-6 items-center rounded-r-full border-2 border-l-0 border-black/20 bg-slate-900/70 pr-2.5 pl-4 font-game text-sm leading-none font-bold text-white tabular-nums shadow-[inset_0_2px_3px_rgba(0,0,0,0.4)]">
+        {days}
+      </span>
     </Link>
   )
 }

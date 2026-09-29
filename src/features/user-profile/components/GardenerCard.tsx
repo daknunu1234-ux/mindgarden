@@ -1,30 +1,50 @@
 import { CalendarDays, Mail } from 'lucide-react'
-import { Badge } from '@/shared/components/ui/badge'
-import { Card, CardContent } from '@/shared/components/ui/card'
+import { GamePanel, GameProgressBar, Ribbon } from '@/shared/components/game'
 import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { formatJoined, gardenerName } from '../lib/format'
-import type { GardenerView } from '../types'
+import type { GardenerLevelView, GardenerView } from '../types'
 
-type GardenerCardProps = { gardener: GardenerView; masteryPercent: number }
+type GardenerCardProps = { gardener: GardenerView; masteryPercent: number; level?: GardenerLevelView | null }
 
-function GardenerCard({ gardener, masteryPercent }: GardenerCardProps) {
+// The hall's nameplate: a carved wooden board with a gold-framed portrait and the level gauge.
+function GardenerCard({ gardener, masteryPercent, level }: GardenerCardProps) {
   const name = gardenerName(gardener.email)
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div
-          aria-hidden
-          className="flex size-16 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-2xl font-semibold text-emerald-800 uppercase"
-        >
-          {name.charAt(0)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
-            <Badge variant="secondary">🧑‍🌾 Gardener</Badge>
-            {masteryPercent >= GOLDEN_BLOOM_PERCENT && <Badge className="border-yellow-500 bg-yellow-50 text-yellow-800">✨ Golden garden</Badge>}
+    <GamePanel tone="wood" className="text-amber-50">
+      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
+        <div className="relative shrink-0">
+          <div
+            aria-hidden
+            className="flex size-24 items-center justify-center rounded-full border-[5px] border-yellow-400 bg-gradient-to-b from-emerald-300 to-emerald-600 font-game text-5xl font-extrabold text-white uppercase shadow-[0_0_0_3px_#92400e,0_5px_0_3px_#451a03] [text-shadow:0_2px_0_rgba(6,78,59,0.6)]"
+          >
+            {name.charAt(0)}
           </div>
-          <dl className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:gap-5">
+          {level && (
+            <span className="absolute -right-1 -bottom-1 flex size-10 items-center justify-center rounded-full border-[3px] border-amber-700 bg-gradient-to-b from-yellow-200 to-amber-400 font-game text-lg font-extrabold text-amber-900 shadow-[0_3px_0_#78350f]">
+              <span className="sr-only">Level </span>
+              {level.level}
+            </span>
+          )}
+        </div>
+        <div className="w-full min-w-0 flex-1 text-center sm:text-left">
+          <p className="font-game text-sm font-bold tracking-wide text-amber-200/80 uppercase">Gardener&apos;s Trophy Hall</p>
+          <h1 className="truncate font-game text-3xl leading-tight font-extrabold [text-shadow:0_2px_0_rgba(69,26,3,0.6)]">{name}</h1>
+          <div className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2 sm:justify-start">
+            <Ribbon tone="leaf">🧑‍🌾 {level ? level.title : 'Gardener'}</Ribbon>
+            {masteryPercent >= GOLDEN_BLOOM_PERCENT && <Ribbon tone="gold">✨ Golden garden</Ribbon>}
+          </div>
+          {level && (
+            <GameProgressBar
+              value={level.xpIntoLevel}
+              max={level.xpForNextLevel}
+              tone="gold"
+              size="lg"
+              label={`Level ${level.level} experience`}
+              caption={`Lv ${level.level} · ${level.xpIntoLevel} / ${level.xpForNextLevel} XP`}
+              className="mt-4 border-amber-950/40"
+            />
+          )}
+          <dl className="mt-3 flex flex-col items-center gap-1 text-sm text-amber-100/80 sm:flex-row sm:gap-5">
             <div className="flex min-w-0 items-center gap-1.5">
               <dt>
                 <Mail className="size-4" aria-label="Email" />
@@ -39,8 +59,8 @@ function GardenerCard({ gardener, masteryPercent }: GardenerCardProps) {
             </div>
           </dl>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </GamePanel>
   )
 }
 

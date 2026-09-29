@@ -1,6 +1,6 @@
 'use client'
 
-import { Kbd } from '@/shared/components/ui/kbd'
+import { KeyChip } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
 import { shortcutKeyFor } from '../lib/shortcuts'
 import type { DrillChoice } from '../types'
@@ -8,12 +8,21 @@ import type { DrillChoice } from '../types'
 // idle → pending (picked, waiting) → correct (gold) / practice (amber) / muted (not involved)
 export type ChoiceState = 'idle' | 'pending' | 'correct' | 'practice' | 'muted'
 
+// Tactile slabs: a raised card with a bevel lip that sinks when pressed.
 const STATE_CLASS: Record<ChoiceState, string> = {
-  idle: 'border-border bg-card hover:border-emerald-300 hover:bg-emerald-50/50',
-  pending: 'border-emerald-300 bg-emerald-50/50 animate-pulse',
-  correct: 'border-yellow-500 bg-yellow-50',
-  practice: 'border-amber-500 bg-amber-50',
-  muted: 'border-border bg-card opacity-60',
+  idle: 'border-amber-900/20 bg-gradient-to-b from-white to-amber-50 shadow-[0_5px_0_rgba(120,53,15,0.25),0_10px_18px_rgba(120,53,15,0.1)] enabled:hover:-translate-y-1 enabled:hover:border-emerald-400 enabled:hover:shadow-[0_7px_0_rgba(4,120,87,0.35),0_14px_22px_rgba(4,120,87,0.15)] enabled:active:translate-y-[4px] enabled:active:shadow-[0_1px_0_rgba(120,53,15,0.25)]',
+  pending: 'mg-spring translate-y-[2px] border-emerald-400 bg-gradient-to-b from-emerald-50 to-lime-50 shadow-[0_3px_0_rgba(4,120,87,0.35)]',
+  correct: 'mg-spring border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_5px_0_#ca8a04,0_0_26px_rgba(250,204,21,0.55)]',
+  practice: 'mg-wobble border-amber-400 bg-gradient-to-b from-orange-50 to-amber-100 shadow-[0_5px_0_rgba(217,119,6,0.55)]',
+  muted: 'border-amber-900/10 bg-white/60 opacity-55 shadow-[0_3px_0_rgba(120,53,15,0.12)]',
+}
+
+const TAG_CLASS: Record<ChoiceState, string> = {
+  idle: 'border-emerald-700 from-emerald-400 to-emerald-500 text-white',
+  pending: 'border-emerald-700 from-emerald-400 to-emerald-500 text-white',
+  correct: 'border-amber-600 from-yellow-300 to-amber-400 text-amber-950',
+  practice: 'border-orange-700 from-orange-300 to-amber-500 text-white',
+  muted: 'border-stone-400 from-stone-200 to-stone-300 text-stone-600',
 }
 
 type ChoiceButtonProps = {
@@ -32,19 +41,23 @@ function ChoiceButton({ choice, state, disabled, onSelect }: ChoiceButtonProps) 
       aria-pressed={state !== 'idle' && state !== 'muted'}
       aria-keyshortcuts={`${shortcutKeyFor(choice.tag)} ${choice.tag}`}
       className={cn(
-        'flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition-colors duration-200',
-        'focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-default',
+        'relative flex w-full items-center gap-3 rounded-[20px] border-[3px] px-4 py-3.5 text-left text-amber-950 sm:gap-4 sm:px-5 sm:py-4',
+        'transition-[transform,box-shadow,border-color,opacity] duration-200 ease-[cubic-bezier(.34,1.56,.64,1)]',
+        'focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none disabled:cursor-default',
         STATE_CLASS[state],
       )}
     >
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-background text-sm font-semibold">
-        {choice.tag}
+      <span
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-full border-[3px] bg-gradient-to-b font-game text-lg font-extrabold shadow-[0_3px_0_rgba(0,0,0,0.2)]',
+          TAG_CLASS[state],
+        )}
+      >
+        {state === 'correct' ? '✓' : choice.tag}
       </span>
-      <span className="flex-1 pt-0.5 whitespace-pre-wrap">{choice.text}</span>
-      {/* Shortcut hint; hidden on small (usually touch) screens. */}
-      <Kbd className="mt-0.5 hidden sm:inline-flex" aria-hidden>
-        {shortcutKeyFor(choice.tag)}
-      </Kbd>
+      <span className="flex-1 text-base leading-snug font-medium whitespace-pre-wrap sm:text-lg">{choice.text}</span>
+      {/* Hotkey chip; hidden on small (usually touch) screens. */}
+      <KeyChip className="hidden sm:inline-flex">{shortcutKeyFor(choice.tag)}</KeyChip>
     </button>
   )
 }

@@ -1,10 +1,9 @@
 import Link from 'next/link'
-import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
-import { Button } from '@/shared/components/ui/button'
+import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
 import { getDecks, type Deck } from '@/features/decks'
+import { FarmWorld } from './_components/FarmWorld'
 import {
-  FarmIslandView,
   GardenGrid,
   ViewToggle,
   type DeckCardView,
@@ -94,39 +93,28 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   // Farm World: full-bleed game viewport under the site header; everything else floats in the HUD.
   if (view === 'farm' && res.success) {
     const loginNotice = login === 'error' && (
-      <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 text-xs font-medium text-amber-900 shadow">
+      <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 font-game text-sm font-semibold text-amber-900 shadow-[0_3px_0_rgba(180,83,9,0.4)]">
         That sign-in link didn&apos;t work. Request a new one with Sign in.
       </p>
     )
     const islands = lastPage > 1 && (
-      <nav aria-label="Islands" className="flex items-center gap-1 rounded-full border-2 border-amber-900/25 bg-amber-50/90 p-1 text-xs font-semibold text-amber-950 shadow">
-        {currentPage > 1 ? (
-          <Link href={hrefFor('farm', currentPage - 1)} className="rounded-full px-2 py-0.5 hover:bg-amber-100">
-            ◀
-          </Link>
-        ) : (
-          <span className="px-2 py-0.5 opacity-40">◀</span>
-        )}
-        <span className="tabular-nums">
-          Island {currentPage} / {lastPage}
-        </span>
-        {currentPage < lastPage ? (
-          <Link href={hrefFor('farm', currentPage + 1)} className="rounded-full px-2 py-0.5 hover:bg-amber-100">
-            ▶
-          </Link>
-        ) : (
-          <span className="px-2 py-0.5 opacity-40">▶</span>
-        )}
+      <nav aria-label="Islands" className="flex items-center gap-4">
+        <IslandStep href={currentPage > 1 ? hrefFor('farm', currentPage - 1) : null} label="Previous island" glyph="◀" />
+        <Ribbon tone="sky">
+          <span className="tabular-nums">
+            Island {currentPage} / {lastPage}
+          </span>
+        </Ribbon>
+        <IslandStep href={currentPage < lastPage ? hrefFor('farm', currentPage + 1) : null} label="Next island" glyph="▶" />
       </nav>
     )
     return (
       <main className="flex w-full flex-1 flex-col">
         <h1 className="sr-only">Farm World</h1>
-        <FarmIslandView
+        <FarmWorld
           plots={plots}
           hud={hudView}
           signedIn={userId !== null}
-          farmHref={hrefFor('farm', currentPage)}
           gridHref={hrefFor('grid', currentPage)}
           topCenter={
             (loginNotice || islands) && (
@@ -142,36 +130,52 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Garden 🌳</h1>
-          <p className="mt-1 text-muted-foreground">Pick a tree and start growing its roots.</p>
-        </div>
-        <ViewToggle view={view} farmHref={hrefFor('farm', currentPage)} gridHref={hrefFor('grid', currentPage)} />
-      </header>
+    <main className="mg-meadow-bg w-full flex-1">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="font-game text-4xl font-extrabold tracking-tight text-emerald-900 [text-shadow:0_2px_0_rgba(255,255,255,0.8)]">
+              Garden 🌳
+            </h1>
+            <p className="mt-1 font-medium text-emerald-900/70">Pick a tree and start growing its roots.</p>
+          </div>
+          <ViewToggle view={view} farmHref={hrefFor('farm', currentPage)} gridHref={hrefFor('grid', currentPage)} />
+        </header>
 
-      {login === 'error' && (
-        <Alert className="mb-6 border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTitle>That sign-in link didn&apos;t work</AlertTitle>
-          <AlertDescription>
-            It may have expired or been opened in a different browser. Request a new one with Sign in.
-          </AlertDescription>
-        </Alert>
-      )}
+        {login === 'error' && (
+          <GamePanel tone="gold" ribbon="gold" title="Sign-in link wilted" className="mb-8">
+            <p className="text-center text-sm">
+              It may have expired or been opened in a different browser. Request a new one with Sign in.
+            </p>
+          </GamePanel>
+        )}
 
-      {res.success ? (
-        <>
-          <GardenGrid decks={cards} />
-          <Pagination view={view} page={currentPage} limit={limit} total={total} />
-        </>
-      ) : (
-        <Alert className="border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTitle>The garden is resting</AlertTitle>
-          <AlertDescription>{res.error.message}. Try again in a moment.</AlertDescription>
-        </Alert>
-      )}
+        {res.success ? (
+          <>
+            <GardenGrid decks={cards} />
+            <Pagination view={view} page={currentPage} limit={limit} total={total} />
+          </>
+        ) : (
+          <GamePanel tone="stone" title="The garden is resting">
+            <p className="text-center text-sm">{res.error.message}. Try again in a moment.</p>
+          </GamePanel>
+        )}
+      </div>
     </main>
+  )
+}
+
+function IslandStep({ href, label, glyph }: { href: string | null; label: string; glyph: string }) {
+  return href ? (
+    <GameButton asChild tone="cream" size="icon-sm">
+      <Link href={href} aria-label={label}>
+        {glyph}
+      </Link>
+    </GameButton>
+  ) : (
+    <GameButton tone="cream" size="icon-sm" disabled aria-label={label}>
+      {glyph}
+    </GameButton>
   )
 }
 
@@ -180,12 +184,14 @@ function Pagination({ view, page, limit, total }: { view: View; page: number; li
   if (lastPage === 1) return null
 
   return (
-    <nav aria-label="Pagination" className="mt-6 flex items-center justify-between">
-      <PageLink href={hrefFor(view, page - 1)} enabled={page > 1} label="Previous" />
-      <span className="text-sm text-muted-foreground">
-        {view === 'farm' ? 'Island' : 'Page'} {page} of {lastPage}
-      </span>
-      <PageLink href={hrefFor(view, page + 1)} enabled={page < lastPage} label="Next" />
+    <nav aria-label="Pagination" className="mt-8 flex items-center justify-between gap-3">
+      <PageLink href={hrefFor(view, page - 1)} enabled={page > 1} label="◀ Previous" />
+      <Ribbon tone="leaf">
+        <span className="tabular-nums">
+          {view === 'farm' ? 'Island' : 'Page'} {page} of {lastPage}
+        </span>
+      </Ribbon>
+      <PageLink href={hrefFor(view, page + 1)} enabled={page < lastPage} label="Next ▶" />
     </nav>
   )
 }
@@ -193,14 +199,14 @@ function Pagination({ view, page, limit, total }: { view: View; page: number; li
 function PageLink({ href, enabled, label }: { href: string; enabled: boolean; label: string }) {
   if (!enabled) {
     return (
-      <Button variant="outline" disabled>
+      <GameButton tone="cream" disabled>
         {label}
-      </Button>
+      </GameButton>
     )
   }
   return (
-    <Button variant="outline" asChild>
+    <GameButton tone="cream" asChild>
       <Link href={href}>{label}</Link>
-    </Button>
+    </GameButton>
   )
 }

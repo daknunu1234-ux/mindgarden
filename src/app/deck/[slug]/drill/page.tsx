@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Alert, AlertDescription, AlertTitle } from '@/shared/components/ui/alert'
-import { Badge } from '@/shared/components/ui/badge'
-import { Button } from '@/shared/components/ui/button'
+import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { getCurrentUser } from '@/features/auth'
 import { DrillOverlay, getDrillSession } from '@/features/drill'
 
@@ -26,24 +24,25 @@ export default async function DrillPage({ params, searchParams }: PageProps<'/de
 
     const noItems = code === 'DRILL_NO_ITEMS'
     return (
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-12 sm:px-6">
-        <Alert className="border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTitle>{noItems ? 'Nothing to practice yet 🌱' : 'The drill is resting'}</AlertTitle>
-          <AlertDescription>
-            {noItems
-              ? `${nodeId ? 'This branch' : 'This tree'} has no drillable statements yet. Add statements about sibling concepts, or with words like tăng/giảm, trước/sau or là.`
-              : `${message}. Try again in a moment.`}
-          </AlertDescription>
-        </Alert>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="outline" asChild>
-            <Link href={`/deck/${slug}`}>Back to tree</Link>
-          </Button>
-          {nodeId && noItems && (
-            <Button variant="ghost" asChild>
-              <Link href={`/deck/${slug}/drill`}>Practice the whole tree</Link>
-            </Button>
-          )}
+      <main className="mg-meadow-bg w-full flex-1">
+        <div className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
+          <GamePanel tone="parchment" ribbon={noItems ? 'leaf' : 'wood'} title={noItems ? 'Nothing to water yet 🌱' : 'The drill is resting'}>
+            <p className="text-center">
+              {noItems
+                ? `${nodeId ? 'This branch' : 'This tree'} has no drillable statements yet. Add statements about sibling concepts, or with words like tăng/giảm, trước/sau or là.`
+                : `${message}. Try again in a moment.`}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <GameButton asChild tone="wood">
+                <Link href={`/deck/${slug}`}>Back to tree</Link>
+              </GameButton>
+              {nodeId && noItems && (
+                <GameButton asChild tone="leaf">
+                  <Link href={`/deck/${slug}/drill`}>Practice the whole tree</Link>
+                </GameButton>
+              )}
+            </div>
+          </GamePanel>
         </div>
       </main>
     )
@@ -51,20 +50,25 @@ export default async function DrillPage({ params, searchParams }: PageProps<'/de
 
   const { deck, focus, sessionId } = res.data
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-12 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{deck.title}</h1>
-        {focus && (
-          <>
-            <Badge variant="secondary">Branch: {focus.title}</Badge>
-            <Link href={`/deck/${deck.slug}/drill`} className="text-sm text-muted-foreground hover:text-foreground">
-              Practice the whole tree
-            </Link>
-          </>
-        )}
+    <main className="mg-meadow-bg w-full flex-1">
+      <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <p className="font-game text-sm font-bold tracking-wide text-emerald-800/70 uppercase">Watering Session</p>
+          <h1 className="font-game text-3xl leading-tight font-extrabold text-emerald-950 [text-shadow:0_2px_0_rgba(255,255,255,0.8)]">
+            {deck.title}
+          </h1>
+          {focus && (
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+              <Ribbon tone="sky">Branch: {focus.title}</Ribbon>
+              <Link href={`/deck/${deck.slug}/drill`} className="font-game text-sm font-bold text-emerald-800 underline-offset-4 hover:underline">
+                Practice the whole tree
+              </Link>
+            </div>
+          )}
+        </div>
+        {/* A new session (e.g. after "Water again" refreshes) remounts the overlay with fresh state. */}
+        <DrillOverlay key={sessionId} session={res.data} isSignedIn={isSignedIn} />
       </div>
-      {/* A new session (e.g. after "Practice again" refreshes) remounts the overlay with fresh state. */}
-      <DrillOverlay key={sessionId} session={res.data} isSignedIn={isSignedIn} />
     </main>
   )
 }
