@@ -1,5 +1,32 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database setup (Supabase)
+
+1. Create a Supabase project and copy its keys into `.env.local` (never commit it):
+
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=...
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+   SUPABASE_SERVICE_ROLE_KEY=...   # server only, never NEXT_PUBLIC_
+   ```
+
+2. Run the migrations in `supabase/migrations/` **in this order**:
+
+   | # | File | Creates |
+   |---|------|---------|
+   | 1 | `20260928000000_initial_schema.sql` | Tables, signup trigger, cascades, indexes, RLS policies |
+   | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges that hide drill answers |
+   | 3 | `20260928000200_practice_days.sql` | Daily streak log |
+
+   With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
+   Supabase Dashboard → SQL Editor, and paste and run each file in the order above.
+   Set `SUPABASE_SERVICE_ROLE_KEY` before running file 2: after it, answers are read only with that key.
+
+3. Existing project from before the baseline file: don't run file 1 (its schema came from the dashboard).
+   Apply only new migrations.
+
+Details: `01.share-docx/DATABASE.md` → "Migration Rules".
+
 ## Getting Started
 
 First, run the development server:

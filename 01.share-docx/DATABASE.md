@@ -245,7 +245,7 @@ GRANT UPDATE (full_name, avatar_url) ON public.users TO authenticated;
 ```
 
 - **Perf**: Use `(SELECT auth.uid())` instead of bare `auth.uid()` so it's evaluated once per query
-- **Full policy set**: see `supabase/migrations/*_rls_policies.sql`
+- **Full policy set**: `supabase/migrations/20260928000000_initial_schema.sql` (all six baseline tables, one policy per action as in the table above, `public.is_admin()` for the admin read on `users`) and `20260928000200_practice_days.sql`
 
 ### Answer secrecy (column privileges on `knowledge_items`)
 
@@ -269,9 +269,18 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 ## Migration Rules
 
 - **Location**: `supabase/migrations/`
-- ⚠️ The base schema (tables, RLS, trigger) was created in the Supabase dashboard and is not in `supabase/migrations/` yet, so `npx supabase db reset` cannot rebuild it. Until it is, apply new migrations in the SQL Editor
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`)
-- **One feature per file**: auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies
+- **Execution order** (a fresh database runs all three, in this order):
+
+  | # | File | What it does |
+  |---|------|--------------|
+  | 1 | `20260928000000_initial_schema.sql` | Baseline: `roles` (+ seed), `users` + `handle_new_user()` trigger, `decks`, `mindmap_nodes`, `knowledge_items`, `user_progress`; FKs and cascades, checks, indexes, RLS + policies, `users` column grants, `is_admin()` |
+  | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges: `correct_stmt` / `trap_rules` readable only by the service role |
+  | 3 | `20260928000200_practice_days.sql` | Streak log table + RLS + backfill from `user_progress` |
+
+- **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
+- ⚠️ **Existing hosted project**: its base schema was built in the dashboard before file 1 existed, and files 2 and 3 are already applied there. Don't run file 1 on it: it is re-runnable (`if not exists`, `drop policy if exists`), but it can't reconcile differences with the dashboard schema, and dashboard policies with other names would stay next to its policies (permissive policies OR together)
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928000200`
+- **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing
 - **Regenerate types** after every migration:
