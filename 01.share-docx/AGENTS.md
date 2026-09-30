@@ -70,6 +70,7 @@ npx supabase gen types typescript --project-id <PROJECT_ID> > src/shared/types/d
 - [ ] New/changed action → `01.share-docx/API SPEC.md` updated
 - [ ] New/changed feature export → that feature's `context.md` updated
 - [ ] Commit follows Conventional Commits: `feat(drill): ...`, `fix(progress): ...`, `docs: ...`
+- [ ] Before creating any commit, review and update `PROJECT_STATUS.md` at the project root to reflect current architecture, database changes, and the latest commit history.
 
 ## When docs and code disagree
 

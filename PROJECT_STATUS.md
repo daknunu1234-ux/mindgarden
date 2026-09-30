@@ -131,11 +131,13 @@ yet; migrations are applied in the hosted SQL Editor.
 
 ## Recent commits
 
-Newest first. Add one line per commit.
+Newest first. Add one line per commit. A commit can't know its own hash: log it as `(pending)`, and the
+next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (this commit) | feat(garden): isometric farm grid with shop, placements, buffs and woodshop refund; gems removed; this file created |
+| (pending) | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
+| `4b1ffea` | feat(garden): isometric farm grid with shop, placements, buffs and woodshop refund; gems removed; this file created |
 | `44c14d9` | feat(decks): edit statements and roots with owner-only hover tools |
 | `2d77113` | feat(decks): delete statements and whole root branches with confirmation |
 | `e21e76c` | feat(decks): bulk import statements from pasted notes and bullets |
