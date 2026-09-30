@@ -48,6 +48,21 @@ export function checkPlacement(placements: readonly Placement[], spot: Footprint
   return placements.some((p) => overlaps(p, spot)) ? 'occupied' : 'ok'
 }
 
+// Whether a placement can move so its top tile is `to`: same footprint, inside the grid, clear of
+// everything except itself (move_garden_placement() checks the same). Unknown id: 'occupied'.
+export function checkMove(placements: readonly Placement[], id: string, to: { x: number; y: number }): PlacementCheck {
+  const moving = placements.find((p) => p.id === id)
+  if (!moving) return 'occupied'
+  return checkPlacement(
+    placements.filter((p) => p.id !== id),
+    { x: to.x, y: to.y, width: moving.width, height: moving.height },
+  )
+}
+
+// The farm with one placement moved (for showing a move before the server confirms it).
+export const withMoved = (placements: readonly Placement[], id: string, to: { x: number; y: number }): Placement[] =>
+  placements.map((p) => (p.id === id ? { ...p, x: to.x, y: to.y } : p))
+
 // Painter's order: things further back (smaller bottom-tile x + y) are drawn first.
 export const depthOf = ({ x, y, width, height }: Footprint): number => x + width - 1 + (y + height - 1)
 

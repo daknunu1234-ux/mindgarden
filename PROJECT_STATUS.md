@@ -102,6 +102,16 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
   - Fractions are carried in `users.coin_carry` (0 ≤ carry < 1), so ×1.2 is never lost to rounding.
 - **Woodshop refund cap**: with a Woodshop anywhere on the farm, chopping (deleting) a tree refunds
   `min(floor(25% × statements), 50)` 🪙: at most half a seed, so chopping never profits.
+- **Move mode**: ↔️ Move in a tree's or item's popover (owner only) picks it up: it lifts 12 px, turns
+  see-through and casts a soft shadow at its old spot while a ghost follows the pointer, floating glowing
+  green over a free footprint or throbbing red with "✖ Blocked!". Neighbouring streams, fences and tree
+  beds retile live at both the old and the new spot, and buff tags preview what the move gains. A click
+  (touch: tap twice, or "Move here") on a green tile moves it; Esc, right-click or Cancel leaves it where
+  it was. Free. Server-authoritative: `moveFarmPlacement` → `move_garden_placement()` (migration 14)
+  checks ownership, keeps the footprint (1 × 1 / 2 × 2) inside the 16 × 16 grid, refuses overlaps with
+  anything but itself, and locks the gardener's row like purchases. Players still can't UPDATE placements
+  directly. Buffs need no recalculation: they are read from the current tiles at every payout. The farm
+  shows the move at once and then refreshes from the server.
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
@@ -229,6 +239,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 11 | `20260928001000_display_names.sql` | Custom garden display names |
 | 12 | `20260930000000_farm_grid.sql` | `garden_placements`, `purchase_and_place_item()`, `farm_coin_multiplier()`, buffed `award_mastery_coin()`, `users.coin_carry`, `uproot_deck()`, backfill of existing trees onto the grid |
 | 13 | `20261001000000_ten_tree_species.sql` | Retired species → successor, `decks_tree_type_check` (the ten ids). Run **after** deploying the code |
+| 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement()`: owner-only move, bounds + overlap checks, row lock |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -241,7 +252,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
+| (pending) | feat(garden): move mode for farm trees and items |
+| `082d9cc` | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
 | `eb89c78` | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
 | `1a167c0` | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
 | `d91e334` | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
@@ -261,5 +273,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 60 files, 540 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 61 files, 550 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

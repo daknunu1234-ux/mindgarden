@@ -1,4 +1,5 @@
 export { getFarmPlacements } from './actions/getFarmPlacements'
+export { moveFarmPlacement } from './actions/moveFarmPlacement'
 export { placeFarmItem } from './actions/placeFarmItem'
 export { removeFarmPlacement } from './actions/removeFarmPlacement'
 export { VisitedGardensDrawer } from './components/VisitedGardensDrawer'

@@ -17,25 +17,27 @@ type FarmPlotDialogProps = {
   onUproot?: (plot: FarmPlotView) => void
   // Owners only: take the tree off the farm (back to the Shop's Trees tab, nothing deleted).
   onRemoveFromFarm?: (plot: FarmPlotView) => void
+  // Owners only: pick the tree up and move it to another tile (Move mode on the farm).
+  onMove?: (plot: FarmPlotView) => void
 }
 
-// Tree popover: 💧 water (practise), 🔍 roots (mindmap), edit, 📦 remove from the farm and 🪓 chop, all
+// Tree popover: 💧 water (practise), 🔍 roots (mindmap), edit, ↔️ move, 📦 remove from the farm and 🪓 chop, all
 // owner only. Visitors (strict read-only mode) explore the roots, clone to practise, and ⚔️ compete
 // while the owner hosts a Mind Tournament.
-function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm }: FarmPlotDialogProps) {
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm, onMove }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} onMove={onMove} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm'> & { plot: FarmPlotView }
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm' | 'onMove'> & { plot: FarmPlotView }
 
-function PlotDetails({ plot, onUproot, onRemoveFromFarm }: PlotDetailsProps) {
+function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -133,6 +135,11 @@ function PlotDetails({ plot, onUproot, onRemoveFromFarm }: PlotDetailsProps) {
             </GameButton>
           )}
         </div>
+        {plot.isOwner && onMove && plot.placementId && (
+          <GameButton type="button" tone="sky" className="w-full" onClick={() => onMove(plot)} title="Pick the tree up and put it on another tile">
+            ↔️ Move
+          </GameButton>
+        )}
         {plot.isOwner && (onRemoveFromFarm || onUproot) && (
           <div className="flex gap-3">
             {onRemoveFromFarm && plot.placementId && (

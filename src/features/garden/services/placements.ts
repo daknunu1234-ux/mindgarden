@@ -3,7 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
-import type { PlaceFarmItemInput, RemoveFarmPlacementInput } from '../dto/FarmDto'
+import type { MoveFarmPlacementInput, PlaceFarmItemInput, RemoveFarmPlacementInput } from '../dto/FarmDto'
 import { catalogItem } from '../lib/farmCatalog'
 import type { Placement } from '../lib/farmGrid'
 
@@ -71,4 +71,24 @@ export async function removePlacement(supabase: Client, userId: string, { placem
   }
   if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'That is not on your farm')
   return ok({ id: placementId })
+}
+
+export type MovedPlacement = { id: string; x: number; y: number }
+
+// Moves one of your placements through move_garden_placement(): owner only, the whole footprint on
+// the grid and clear of everything else (the item itself aside), in one locked transaction.
+export async function movePlacement(supabase: Client, { placementId, x, y }: MoveFarmPlacementInput): Promise<ActionResult<MovedPlacement>> {
+  const { data, error } = await supabase.rpc('move_garden_placement', { p_placement_id: placementId, p_new_x: x, p_new_y: y })
+  if (error) {
+    const message = error.message ?? ''
+    if (message.includes('TILE_UNAVAILABLE')) return fail('TILE_UNAVAILABLE', 'That spot is taken or off the farm')
+    if (message.includes('PLACEMENT_NOT_FOUND')) return fail('AUTH_FORBIDDEN', 'That is not on your farm')
+    if (message.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to build your farm')
+    if (MISSING.has(error.code)) console.error('[garden] movePlacement: run supabase/migrations/20261002000000_move_garden_placement.sql')
+    else console.error('[garden] movePlacement failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not move that')
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) return fail('INTERNAL_ERROR', 'Could not move that')
+  return ok({ id: row.placement_id, x: row.grid_x, y: row.grid_y })
 }

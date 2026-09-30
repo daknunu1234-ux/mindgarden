@@ -6,6 +6,7 @@ import { beachPalms, FARM_WORLD } from '../lib/diorama'
 import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
 import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
 import {
+  checkMove,
   checkPlacement,
   depthOf,
   fenceLinks,
@@ -14,6 +15,7 @@ import {
   screenToTile,
   streamLinks,
   TILE_H,
+  withMoved,
   type Footprint,
   type Placement,
 } from '../lib/farmGrid'
@@ -45,6 +47,8 @@ export type BuildGhost = {
   footprint: Pick<Footprint, 'width' | 'height'>
   // What is being placed ('tree' for one of your trees): drives the aura preview.
   itemType: FarmItemType
+  // Move mode: the placement being moved (lifted at its old spot while the ghost looks for a new one).
+  movingId?: string | null
   // The floating miniature, drawn around its ground point (0, 0).
   preview: ReactNode
   // The tile under the pointer (or the last tapped one); null before the first move.
@@ -87,11 +91,17 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
 
   const ghost =
     build?.tile && ({ ...build.tile, width: build.footprint.width, height: build.footprint.height } satisfies Footprint)
-  const ghostOk = ghost ? checkPlacement(placements, ghost) === 'ok' : false
-  // A stream or Farmer's House being placed on a free spot: preview the buffs it would give.
+  const movingId = build?.movingId ?? null
+  const ghostOk = ghost ? (movingId ? checkMove(placements, movingId, ghost) === 'ok' : checkPlacement(placements, ghost) === 'ok') : false
+  // Move mode: everything else stays; the moved thing has left its old tile and, on a green spot, is
+  // already at the new one, so neighbouring streams, fences and tree beds retile live at both places.
+  const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
+  const layout: readonly Placement[] = movingId && ghost && ghostOk ? withMoved(placements, movingId, ghost) : others
+  // A stream or Farmer's House being placed or moved to a free spot: preview the buffs it would give.
   const auraKind = build && (build.itemType === 'stream' || build.itemType === 'farmer_house') ? build.itemType : null
-  const withGhost: readonly Placement[] =
-    ghost && ghostOk && auraKind
+  const withGhost: readonly Placement[] = movingId
+    ? layout
+    : ghost && ghostOk && auraKind
       ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: ghost.x, y: ghost.y, width: ghost.width, height: ghost.height, variant: null }]
       : placements
 
@@ -100,8 +110,10 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
     return plot ? [{ placement: p, plot }] : []
   })
   // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
-  const treeBeds: LinkedTile[] = trees.map(({ placement: p }) => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(placements, 'tree', p) }))
-  const streams: LinkedTile[] = placements.filter((p) => p.itemType === 'stream').map((p) => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(placements, p) }))
+  const treeBeds: LinkedTile[] = trees
+    .filter(({ placement: p }) => p.id !== movingId)
+    .map(({ placement: p }) => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'tree', p) }))
+  const streams: LinkedTile[] = others.filter((p) => p.itemType === 'stream').map((p) => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) }))
   const standing = placements.filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
   const animated = new Set(
     trees
@@ -167,6 +179,13 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
       <div className={build ? 'pointer-events-none' : undefined}>
         {trees.map(({ placement, plot }) => {
           const ground = groundOf(placement)
+          if (placement.id === movingId) {
+            return (
+              <Lifted key={placement.id} z={Math.round(ground.y) + 1}>
+                <PlotButton geometry={ground} plot={plot} animate={false} phase={treeSwayPhase(placement.x, placement.y)} onOpen={onOpenPlot} />
+              </Lifted>
+            )
+          }
           const current = treeBuff(placement.x, placement.y, placements)
           const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
           return (
@@ -177,9 +196,15 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
             </div>
           )
         })}
-        {standing.map((p, i) => (
-          <FarmItem key={p.id} placement={p} ground={groundOf(p)} index={i} placements={placements} onOpen={onOpenItem} />
-        ))}
+        {standing.map((p, i) =>
+          p.id === movingId ? (
+            <Lifted key={p.id} z={Math.round(groundOf(p).y) + 1}>
+              <FarmItem placement={p} ground={groundOf(p)} index={i} placements={others} onOpen={onOpenItem} />
+            </Lifted>
+          ) : (
+            <FarmItem key={p.id} placement={p} ground={groundOf(p)} index={i} placements={layout} onOpen={onOpenItem} />
+          ),
+        )}
       </div>
 
       <WorldClouds world={FARM_WORLD} />
@@ -206,6 +231,16 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// The thing being moved, picked up at its old spot: raised 12 px, see-through, a soft shadow below.
+// Its own layer at its depth (a transformed wrapper is a stacking context of its own).
+function Lifted({ z, children }: { z: number; children: ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 -translate-y-3 opacity-60 drop-shadow-[0_10px_6px_rgba(6,40,20,0.35)] transition-[transform,opacity] duration-200" style={{ zIndex: z }}>
+      {children}
     </div>
   )
 }

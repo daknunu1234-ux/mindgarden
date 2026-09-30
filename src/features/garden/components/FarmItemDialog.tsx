@@ -12,22 +12,36 @@ type FarmItemDialogProps = {
   // Only the owner may pick items up.
   isOwner: boolean
   onClose: () => void
+  // Owner: start Move mode for this item (the farm closes this dialog).
+  onMove?: (placement: Placement) => void
 }
 
-// A bought item on the farm: what it is and what it does. The owner can pick it up again (it's gone,
-// no refund), which frees its tiles.
-function FarmItemDialog({ placement, isOwner, onClose }: FarmItemDialogProps) {
+// A bought item on the farm: what it is and what it does. The owner can move it to another tile, or
+// pick it up again (it's gone, no refund), which frees its tiles.
+function FarmItemDialog({ placement, isOwner, onClose, onMove }: FarmItemDialogProps) {
   const entry = placement ? catalogFor(placement.itemType, placement.variant) : undefined
   return (
     <GameDialog open={placement !== null} onOpenChange={(open) => !open && onClose()}>
       <GameDialogContent title={entry ? `${entry.icon} ${entry.name}` : 'Farm item'} ribbon="wood" tone="parchment">
-        {placement && entry && <ItemBody key={placement.id} placement={placement} description={entry.description} isOwner={isOwner} onClose={onClose} />}
+        {placement && entry && <ItemBody key={placement.id} placement={placement} description={entry.description} isOwner={isOwner} onClose={onClose} onMove={onMove} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-function ItemBody({ placement, description, isOwner, onClose }: { placement: Placement; description: string; isOwner: boolean; onClose: () => void }) {
+function ItemBody({
+  placement,
+  description,
+  isOwner,
+  onClose,
+  onMove,
+}: {
+  placement: Placement
+  description: string
+  isOwner: boolean
+  onClose: () => void
+  onMove?: (placement: Placement) => void
+}) {
   const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -69,9 +83,16 @@ function ItemBody({ placement, description, isOwner, onClose }: { placement: Pla
             </GameButton>
           </div>
         ) : (
-          <GameButton tone="cream" onClick={() => setConfirming(true)}>
-            📦 Pick up
-          </GameButton>
+          <div className="flex flex-wrap justify-center gap-3">
+            {onMove && (
+              <GameButton tone="sky" onClick={() => onMove(placement)} title="Pick it up and put it on another tile">
+                ↔️ Move
+              </GameButton>
+            )}
+            <GameButton tone="cream" onClick={() => setConfirming(true)}>
+              📦 Pick up
+            </GameButton>
+          </div>
         ))}
     </div>
   )

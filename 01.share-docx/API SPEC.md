@@ -111,6 +111,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Tournament | `getTournamentBoards` | Action | Hall of Fame + Active Learners boards, and your own standing | Optional |
 | Garden | `getFarmPlacements` | Action | A farm's placements: yours, or a neighbour's (items + public trees) | Optional |
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
+| Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
 | Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
@@ -454,16 +455,19 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
 - UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone and the owner's 🗑 badge in the farm plot popup
 
-### `getFarmPlacements` / `placeFarmItem` / `removeFarmPlacement` (garden)
+### `getFarmPlacements` / `placeFarmItem` / `moveFarmPlacement` / `removeFarmPlacement` (garden)
 ```typescript
 // getFarmPlacements({ ownerId?: uuid }) → Placement[]   // { id, itemType, deckId, x, y, width, height, variant }
 //   yours without ownerId (signed out → []); a neighbour's: their items and PUBLIC trees only (RLS)
 // placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'farmer_house' | 'woodshop' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
 //   → { placementId, remainingCoins, cost }   x, y = top tile, 0–15
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS, TILE_UNAVAILABLE, DECK_NOT_FOUND, INTERNAL_ERROR
+// moveFarmPlacement({ placementId, x, y }) → { id, x, y }   x, y = new top tile, 0–15; same footprint, no coins
+//   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not yours), TILE_UNAVAILABLE (taken / off the grid), INTERNAL_ERROR
 // removeFarmPlacement({ placementId }) → { id }   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not yours), INTERNAL_ERROR
 ```
 - `placeFarmItem` calls `purchase_and_place_item()`: the database charges its own catalogue price (no price or size is sent), refuses overlaps / off-grid tiles, and inserts in one transaction. Trees are free. `revalidatePath('/')`; the farm pushes `remainingCoins` into `CoinsProvider`
+- `moveFarmPlacement` calls `move_garden_placement()` (migration 14): the caller's own placement only, the whole footprint on the grid and clear of every other placement (the moved one aside), under the same row lock as purchases. `revalidatePath('/')`. Buffs and stream / fence auto-tiling follow from the new tiles; nothing else is stored
 - `removeFarmPlacement`: no refund. A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
 - UI (`garden`): the farm's 🏪 Shop (`FarmShopModal`, tabs 🌳 Trees · 🏗️ Structures · 🌊 Landscape · 🪵 Decorations · 🐮 Animals) → placement mode on `FarmIsometricGrid` (green / red ghost; click to place, tap twice on touch; Esc, right-click or Cancel leaves without paying)
 

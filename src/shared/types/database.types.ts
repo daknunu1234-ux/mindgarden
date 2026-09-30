@@ -533,6 +533,11 @@ export type Database = {
         Args: { p_item_type: string; p_x: number; p_y: number; p_deck_id?: string | null; p_variant?: string | null }
         Returns: { placement_id: string; remaining_coins: number; cost: number }[]
       }
+      // Migration 20261002000000: move one of your placements (owner, bounds and overlaps checked).
+      move_garden_placement: {
+        Args: { p_placement_id: string; p_new_x: number; p_new_y: number }
+        Returns: { placement_id: string; grid_x: number; grid_y: number }[]
+      }
       // Migration 20260930000000: chop (delete) a tree, with the Woodshop refund.
       uproot_deck: {
         Args: { p_deck_id: string }

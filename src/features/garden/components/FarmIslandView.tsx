@@ -9,12 +9,13 @@ import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/came
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
+import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
 import { getTreeStage } from '../hooks/useTreeStage'
 import { treeBuff } from '../lib/farmBuffs'
-import type { CatalogItem } from '../lib/farmCatalog'
-import { checkPlacement, firstFreeTile, type Placement } from '../lib/farmGrid'
+import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
+import { checkMove, checkPlacement, firstFreeTile, withMoved, type Placement } from '../lib/farmGrid'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
@@ -48,14 +49,20 @@ type FarmIslandViewProps = {
   onUproot?: (plot: FarmPlotView) => void
 }
 
-// What is being placed: one of your trees (free) or a shop item (paid when put down).
-type BuildRequest = { kind: 'tree'; tree: FarmPlotView } | { kind: 'item'; item: CatalogItem }
+// What is being placed: one of your trees (free), a shop item (paid when put down), or something
+// already on the farm being moved (free; `tree` set when it's a tree).
+type BuildRequest =
+  | { kind: 'tree'; tree: FarmPlotView }
+  | { kind: 'item'; item: CatalogItem }
+  | { kind: 'move'; placement: Placement; name: string; tree: FarmPlotView | null }
 
 // The Farm World: a 16 × 16 isometric grid (FarmIsometricGrid) with the player's trees and
 // everything bought in the 🏪 Shop. Choosing something in the shop enters placement mode: a ghost
 // follows the pointer, green where it fits, red where it doesn't; clicking puts it down (and pays),
 // Esc / right-click / Cancel leaves without spending. On touch screens a tap moves the ghost and a
-// second tap on the same tile (or "Place here") puts it down.
+// second tap on the same tile (or "Place here") puts it down. Move mode (↔️ Move in a tree or item
+// popover) works the same way for something already placed: it lifts, the ghost shows where it can
+// go, and putting it down moves it (Esc / Cancel leaves it where it was).
 function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -82,11 +89,25 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const [isPending, startTransition] = useTransition()
   const thirsty = plots.filter((p) => p.needsWater === true && p.itemCount > 0).length
 
+  // Moves the server has confirmed but the refreshed page hasn't brought yet: applied on top of the
+  // placements so the farm (and its stream / fence tiling) updates at once. New props clear them.
+  const [moves, setMoves] = useState<{ base: Placement[]; to: Record<string, { x: number; y: number }> }>({ base: placements, to: {} })
+  const farm = useMemo(
+    () => (moves.base === placements ? Object.entries(moves.to).reduce<Placement[]>((acc, [id, to]) => withMoved(acc, id, to), placements) : placements),
+    [moves, placements],
+  )
+
   const footprint =
-    build?.request.kind === 'item' ? { width: build.request.item.width, height: build.request.item.height } : { width: 1, height: 1 }
+    build?.request.kind === 'item'
+      ? { width: build.request.item.width, height: build.request.item.height }
+      : build?.request.kind === 'move'
+        ? { width: build.request.placement.width, height: build.request.placement.height }
+        : { width: 1, height: 1 }
   const ghostPreview = useMemo(() => (build ? buildPreview(build.request) : null), [build])
-  const buffs = useMemo(() => buffSummary(placements, plotsByDeck), [placements, plotsByDeck])
-  const ghostOk = build?.tile ? checkPlacement(placements, { ...build.tile, ...footprint }) === 'ok' : false
+  const buffs = useMemo(() => buffSummary(farm, plotsByDeck), [farm, plotsByDeck])
+  const fits = (tile: { x: number; y: number }) =>
+    build?.request.kind === 'move' ? checkMove(farm, build.request.placement.id, tile) === 'ok' : checkPlacement(farm, { ...tile, ...footprint }) === 'ok'
+  const ghostOk = build?.tile ? fits(build.tile) : false
 
   // Esc leaves placement mode (nothing is spent before the item is put down).
   useEffect(() => {
@@ -99,21 +120,53 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   }, [build])
 
   const startBuild = (request: BuildRequest) => {
-    const size = request.kind === 'item' ? request.item : { width: 1, height: 1 }
     setShopOpen(false)
+    setSelectedPlot(null)
+    setSelectedItem(null)
     setBuildError(null)
-    // Start the ghost on the free spot nearest the middle, so touch players see it at once.
-    setBuild({ request, tile: firstFreeTile(placements, size.width, size.height) })
+    // A move starts where the thing stands; anything new on the free spot nearest the middle, so
+    // touch players see the ghost at once.
+    if (request.kind === 'move') {
+      setBuild({ request, tile: { x: request.placement.x, y: request.placement.y } })
+      return
+    }
+    const size = request.kind === 'item' ? request.item : { width: 1, height: 1 }
+    setBuild({ request, tile: firstFreeTile(farm, size.width, size.height) })
+  }
+
+  // Move mode for a placed tree (by its placement) or item.
+  const startMove = (placement: Placement) => {
+    const current = farm.find((p) => p.id === placement.id) ?? placement
+    const tree = current.itemType === 'tree' && current.deckId ? (plotsByDeck.get(current.deckId) ?? null) : null
+    startBuild({ kind: 'move', placement: current, tree, name: tree ? `“${tree.title}”` : (catalogFor(current.itemType, current.variant)?.name ?? 'Item') })
   }
 
   const place = (tile: { x: number; y: number }) => {
     if (!build || isPending) return
-    if (checkPlacement(placements, { ...tile, ...footprint }) !== 'ok') {
+    if (!fits(tile)) {
       setBuildError('That spot is taken or off the farm: pick a green tile.')
       return
     }
     const request = build.request
     setBuildError(null)
+    if (request.kind === 'move') {
+      if (tile.x === request.placement.x && tile.y === request.placement.y) {
+        setBuild(null)
+        return
+      }
+      startTransition(async () => {
+        const res = await moveFarmPlacement({ placementId: request.placement.id, x: tile.x, y: tile.y })
+        if (!res.success) {
+          setBuildError(`${res.error.message}.`)
+          return
+        }
+        setMoves((m) => ({ base: placements, to: { ...(m.base === placements ? m.to : {}), [res.data.id]: { x: res.data.x, y: res.data.y } } }))
+        setBuild(null)
+        toast({ message: `${request.name} moved`, icon: '↔️' })
+        router.refresh()
+      })
+      return
+    }
     startTransition(async () => {
       const res = await placeFarmItem(
         request.kind === 'tree' ? { item: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y } : { item: request.item.id, x: tile.x, y: tile.y },
@@ -164,12 +217,18 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
             style={{ left: offset.x, top: offset.y, width: world.w, height: world.h, transform: `scale(${zoom})` }}
           >
             <FarmIsometricGrid
-              placements={placements}
+              placements={farm}
               plotsByDeck={plotsByDeck}
               seed={visitor?.name ?? gardenName ?? 'garden'}
               build={
                 build
-                  ? { footprint, itemType: build.request.kind === 'tree' ? 'tree' : build.request.item.itemType, preview: ghostPreview, tile: build.tile }
+                  ? {
+                      footprint,
+                      itemType: build.request.kind === 'tree' ? 'tree' : build.request.kind === 'move' ? build.request.placement.itemType : build.request.item.itemType,
+                      movingId: build.request.kind === 'move' ? build.request.placement.id : null,
+                      preview: ghostPreview,
+                      tile: build.tile,
+                    }
                   : null
               }
               onBuildHover={(tile) => setBuild((b) => (b ? { ...b, tile } : b))}
@@ -257,14 +316,16 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
             <span>
               {build.request.kind === 'tree'
                 ? `🌳 Planting “${build.request.tree.title}” · free`
-                : `${build.request.item.icon} Placing ${build.request.item.name} · ${build.request.item.price} 🪙`}
+                : build.request.kind === 'move'
+                  ? `↔️ Moving ${build.request.name} · free`
+                  : `${build.request.item.icon} Placing ${build.request.item.name} · ${build.request.item.price} 🪙`}
               <span className="block font-sans text-xs font-semibold text-amber-900/70">
                 {buildError ?? 'Click a green tile (tap twice on touch). Esc or right-click cancels.'}
               </span>
             </span>
             {build.tile && (
               <GameButton tone="leaf" size="sm" onClick={() => build.tile && place(build.tile)} disabled={!ghostOk || isPending}>
-                {isPending ? 'Placing…' : 'Place here'}
+                {isPending ? (build.request.kind === 'move' ? 'Moving…' : 'Placing…') : build.request.kind === 'move' ? 'Move here' : 'Place here'}
               </GameButton>
             )}
             <GameButton tone="cream" size="sm" onClick={() => setBuild(null)} disabled={isPending}>
@@ -300,6 +361,14 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         plot={selectedPlot}
         onOpenChange={(open) => !open && setSelectedPlot(null)}
         onRemoveFromFarm={isOwner ? removeFromFarm : undefined}
+        onMove={
+          isOwner
+            ? (plot) => {
+                const placement = farm.find((p) => p.id === plot.placementId)
+                if (placement) startMove(placement)
+              }
+            : undefined
+        }
         onUproot={
           onUproot &&
           ((plot) => {
@@ -309,7 +378,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           })
         }
       />
-      <FarmItemDialog placement={selectedItem} isOwner={isOwner} onClose={() => setSelectedItem(null)} />
+      <FarmItemDialog placement={selectedItem} isOwner={isOwner} onClose={() => setSelectedItem(null)} onMove={isOwner ? startMove : undefined} />
       <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={plots} signedIn={signedIn} />
     </div>
   )
@@ -317,11 +386,14 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
 
 // The floating miniature shown over the ghost footprint: the tree being planted or the item's drawing.
 function buildPreview(request: BuildRequest): ReactNode {
-  if (request.kind === 'tree') {
+  const tree = request.kind === 'tree' ? request.tree : request.kind === 'move' ? request.tree : null
+  const item = request.kind === 'item' ? request.item : request.kind === 'move' && !request.tree ? catalogFor(request.placement.itemType, request.placement.variant) : undefined
+  if (!tree && !item) return null
+  if (tree) {
     return (
       <TreeStageSvg
-        stage={getTreeStage(request.tree.masteryPercent)}
-        treeType={request.tree.treeType}
+        stage={getTreeStage(tree.masteryPercent)}
+        treeType={tree.treeType}
         label=""
         className="absolute size-[120px] -translate-x-1/2 -translate-y-[90%]"
       />
@@ -329,7 +401,7 @@ function buildPreview(request: BuildRequest): ReactNode {
   }
   return (
     <svg aria-hidden className="absolute overflow-visible" width={1} height={1} style={{ left: 0, top: 0 }}>
-      <ItemDrawing item={request.item} />
+      <ItemDrawing item={item!} />
     </svg>
   )
 }
