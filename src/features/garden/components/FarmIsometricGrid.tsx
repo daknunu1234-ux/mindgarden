@@ -1,43 +1,30 @@
 'use client'
 
-import { useRef, type MouseEvent as ReactMouseEvent } from 'react'
-import { catalogFor } from '../lib/farmCatalog'
-import {
-  checkPlacement,
-  depthOf,
-  fenceLinks,
-  footprintCenter,
-  GRID_SIZE,
-  screenToTile,
-  TILE_H,
-  TILE_W,
-  type Footprint,
-  type Placement,
-} from '../lib/farmGrid'
+import { useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { cn } from '@/shared/utils/cn'
+import { beachPalms, FARM_WORLD } from '../lib/diorama'
+import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
+import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
+import { checkPlacement, depthOf, fenceLinks, footprintCenter, screenToTile, TILE_H, type Footprint, type Placement } from '../lib/farmGrid'
+import { plotSprite } from '../lib/plotSprite'
+import { getTreeSizeTier } from '@/shared/lib/treeSkins'
 import { getTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
-import { FarmerHouseSprite } from './FarmerHouseSprite'
-import { AnimalSprite, FenceSprite, GhostFootprint, GroundTiles, RockerySprite, StreamTile, WoodshopSprite } from './FarmStructures'
-import { PlotButton, PlotLabels } from './FarmTree'
-import { Waves } from './FarmScenery'
+import { IslandBase, OceanLayer, Palm, WorldClouds } from './FarmDiorama'
+import { AnimalSprite, BuffAura, FarmerHouse, FenceSprite, GhostFootprint, RockerySprite, StreamTile, TreePad, WoodshopSprite } from './FarmStructures'
+import { LABEL_LAYER, PlotButton, PlotLabels } from './FarmTree'
 
-// World size: the 16 × 16 diamond plus water all round and sky above for tall trees.
-const SIDE = 150
-const HEADROOM = 250
-const BOTTOM = 160
-export const FARM_WORLD = {
-  w: GRID_SIZE * TILE_W + SIDE * 2,
-  h: GRID_SIZE * TILE_H + HEADROOM + BOTTOM,
-  // Top corner of tile (0, 0).
-  origin: { x: SIDE + (GRID_SIZE * TILE_W) / 2, y: HEADROOM },
-} as const
+export { FARM_WORLD }
 
 // Animate at most this many trees (particles, bees): keeps big farms light.
 const MAX_ANIMATED = 12
 
 export type BuildGhost = {
   footprint: Pick<Footprint, 'width' | 'height'>
-  icon: string
+  // What is being placed ('tree' for one of your trees): drives the aura preview.
+  itemType: FarmItemType
+  // The floating miniature, drawn around its ground point (0, 0).
+  preview: ReactNode
   // The tile under the pointer (or the last tapped one); null before the first move.
   tile: { x: number; y: number } | null
 }
@@ -46,6 +33,8 @@ type FarmIsometricGridProps = {
   placements: readonly Placement[]
   // The trees' data by deck id (a tree placement whose deck isn't here is skipped: e.g. private).
   plotsByDeck: ReadonlyMap<string, FarmPlotView>
+  // Seeds the grass scatter so every farm keeps its own look.
+  seed: string
   // Placement (build) mode: the ghost follows the pointer; items stop reacting to clicks.
   build: BuildGhost | null
   onBuildHover: (tile: { x: number; y: number }) => void
@@ -55,10 +44,11 @@ type FarmIsometricGridProps = {
   onOpenItem: (placement: Placement) => void
 }
 
-// The farm's 16 × 16 isometric grass grid with everything placed on it, Hay Day style. Screen
-// position of tile (x, y): ((x − y) · TILE_W / 2, (x + y) · TILE_H / 2) from the grid origin
-// (lib/farmGrid.ts, tested); standing things are painted back to front by their ground point.
-function FarmIsometricGrid({ placements, plotsByDeck, build, onBuildHover, onBuildTap, onBuildCancel, onOpenPlot, onOpenItem }: FarmIsometricGridProps) {
+// The farm's 16 × 16 isometric grid on a floating tropical island (FarmDiorama), with everything
+// placed on it. Screen position of tile (x, y): ((x − y) · TILE_W / 2, (x + y) · TILE_H / 2) from
+// the grid origin (lib/farmGrid.ts, tested); standing things are painted back to front by their
+// ground point (z-index = ground y).
+function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover, onBuildTap, onBuildCancel, onOpenPlot, onOpenItem }: FarmIsometricGridProps) {
   const worldRef = useRef<HTMLDivElement>(null)
   const pointerType = useRef('mouse')
   const origin = FARM_WORLD.origin
@@ -76,13 +66,28 @@ function FarmIsometricGrid({ placements, plotsByDeck, build, onBuildHover, onBui
   const ghost =
     build?.tile && ({ ...build.tile, width: build.footprint.width, height: build.footprint.height } satisfies Footprint)
   const ghostOk = ghost ? checkPlacement(placements, ghost) === 'ok' : false
-  const standing = placements.filter((p) => p.itemType !== 'stream').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
+  // A stream or Farmer's House being placed on a free spot: preview the buffs it would give.
+  const auraKind = build && (build.itemType === 'stream' || build.itemType === 'farmer_house') ? build.itemType : null
+  const withGhost: readonly Placement[] =
+    ghost && ghostOk && auraKind
+      ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: ghost.x, y: ghost.y, width: ghost.width, height: ghost.height, variant: null }]
+      : placements
+
+  const trees = placements.flatMap((p) => {
+    const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
+    return plot ? [{ placement: p, plot }] : []
+  })
+  const standing = placements.filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
   const animated = new Set(
-    standing
-      .filter((p) => p.itemType === 'tree' && p.deckId && getTreeStage(plotsByDeck.get(p.deckId)?.masteryPercent ?? 0) >= 4)
+    trees
+      .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3)
       .slice(0, MAX_ANIMATED)
-      .map((p) => p.id),
+      .map(({ placement }) => placement.id),
   )
+  const groundOf = (f: Footprint) => {
+    const c = footprintCenter(f)
+    return { x: c.x + origin.x, y: c.y + origin.y }
+  }
 
   return (
     <div
@@ -111,50 +116,111 @@ function FarmIsometricGrid({ placements, plotsByDeck, build, onBuildHover, onBui
       }}
     >
       <svg aria-hidden width={FARM_WORLD.w} height={FARM_WORLD.h} className="absolute inset-0 overflow-visible">
-        <Waves width={FARM_WORLD.w} height={FARM_WORLD.h} />
-        <GroundTiles origin={origin} />
+        <OceanLayer world={FARM_WORLD} origin={origin} />
+        <IslandBase origin={origin} seed={seed} />
+        {trees.map(({ placement }) => (
+          <TreePad key={placement.id} footprint={placement} origin={origin} />
+        ))}
         {placements
           .filter((p) => p.itemType === 'stream')
           .map((p) => (
             <StreamTile key={p.id} footprint={p} origin={origin} />
           ))}
+        {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
         {ghost && <GhostFootprint footprint={ghost} origin={origin} valid={ghostOk} />}
       </svg>
 
+      {/* Palms on the beach, in the same painter's order as everything else. */}
+      {beachPalms().map((palm, i) => (
+        <svg
+          key={i}
+          aria-hidden
+          className="pointer-events-none absolute overflow-visible"
+          width={1}
+          height={1}
+          style={{ left: palm.x + origin.x, top: palm.y + origin.y, zIndex: Math.round(palm.y + origin.y) }}
+        >
+          <Palm scale={palm.scale} flip={palm.flip} />
+        </svg>
+      ))}
+
       {/* Standing things, back to front. In build mode they let clicks through to the grid. */}
       <div className={build ? 'pointer-events-none' : undefined}>
-        {standing.map((p, i) => {
-          const c = footprintCenter(p)
-          const ground = { x: c.x + origin.x, y: c.y + origin.y }
-          if (p.itemType === 'tree') {
-            const plot = p.deckId ? plotsByDeck.get(p.deckId) : undefined
-            if (!plot) return null
-            return (
-              <div key={p.id}>
-                <PlotButton geometry={ground} plot={plot} animate={animated.has(p.id)} onOpen={onOpenPlot} />
-                <PlotLabels geometry={ground} plot={plot} onOpen={onOpenPlot} />
-              </div>
-            )
-          }
-          return <FarmItem key={p.id} placement={p} ground={ground} index={i} placements={placements} onOpen={onOpenItem} />
+        {trees.map(({ placement, plot }) => {
+          const ground = groundOf(placement)
+          const current = treeBuff(placement.x, placement.y, placements)
+          const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
+          return (
+            <div key={placement.id}>
+              <PlotButton geometry={ground} plot={plot} animate={animated.has(placement.id)} onOpen={onOpenPlot} />
+              <PlotLabels geometry={ground} plot={plot} onOpen={onOpenPlot} />
+              <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
+            </div>
+          )
         })}
+        {standing.map((p, i) => (
+          <FarmItem key={p.id} placement={p} ground={groundOf(p)} index={i} placements={placements} onOpen={onOpenItem} />
+        ))}
       </div>
 
-      {/* Ghost of the item being placed, floating over its footprint. */}
+      <WorldClouds world={FARM_WORLD} />
+
+      {/* The item being placed, floating over its footprint: glowing green, or red and blocked. */}
       {ghost && build && (
-        <span
+        <div
           aria-hidden
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-full text-[44px] leading-none opacity-80 drop-shadow-[0_4px_0_rgba(0,0,0,0.25)]"
-          style={{
-            left: footprintCenter(ghost).x + origin.x,
-            top: footprintCenter(ghost).y + origin.y,
-            zIndex: 300_000,
-            filter: ghostOk ? undefined : 'grayscale(0.6)',
-          }}
+          className="pointer-events-none absolute"
+          style={{ left: groundOf(ghost).x, top: groundOf(ghost).y, zIndex: 500_000 }}
         >
-          {build.icon}
-        </span>
+          <div
+            className={cn(
+              'relative',
+              ghostOk ? 'mg-float [filter:drop-shadow(0_0_10px_#b8ff5c)]' : 'opacity-75 [filter:drop-shadow(0_0_8px_#ff1f3d)_saturate(0.55)]',
+            )}
+          >
+            {build.preview}
+          </div>
+          {!ghostOk && (
+            <span className="mg-throb absolute -top-28 left-1/2 -translate-x-1/2 -rotate-6 rounded-xl border-[3px] border-[#5c0011] bg-gradient-to-b from-[#ff6b6b] to-[#d90429] px-2.5 py-1 font-game text-sm font-extrabold whitespace-nowrap text-white shadow-[0_4px_0_#5c0011] [text-shadow:0_2px_0_#5c0011]">
+              ✖ Blocked!
+            </span>
+          )}
+        </div>
       )}
+    </div>
+  )
+}
+
+// Floating cartoon badges over a buffed tree: "+20% 🪙" for a stream beside it, "+50% 🪙" inside a
+// Farmer's House aura. While a stream / house is being placed, the badges it would add pulse in.
+function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: number }; scale: number; current: TreeBuff; next: TreeBuff }) {
+  const tags = [
+    { key: 'stream', label: '+20%', on: current.stream, soon: !current.stream && next.stream, tone: 'stream' as const },
+    { key: 'house', label: '+50%', on: current.house, soon: !current.house && next.house, tone: 'house' as const },
+  ].filter((t) => t.on || t.soon)
+  if (tags.length === 0) return null
+  const anchor = plotSprite(ground.x, ground.y, scale).badge
+  return (
+    <div aria-hidden className="pointer-events-none absolute" style={{ left: anchor.x + 14, top: anchor.y - 30, zIndex: LABEL_LAYER + Math.round(ground.y) + 1 }}>
+      <div className="flex flex-col items-start gap-1">
+        {tags.map((t) => (
+          <span
+            key={t.key}
+            className={cn(
+              'mg-bob relative inline-flex items-center gap-0.5 overflow-hidden rounded-full border-[2.5px] px-2 py-0.5 font-game text-[12px] leading-none font-extrabold whitespace-nowrap text-white tabular-nums',
+              'shadow-[inset_0_2px_0_rgba(255,255,255,0.55),0_3px_0_var(--tag-edge),0_6px_8px_rgba(0,0,0,0.2)] [text-shadow:0_1.5px_0_var(--tag-edge),1px_0_0_var(--tag-edge),-1px_0_0_var(--tag-edge)]',
+              t.tone === 'stream'
+                ? 'border-[#075e73] bg-gradient-to-b from-[#7ff5f0] via-[#22c9e0] to-[#0891b2] [--tag-edge:#075e73]'
+                : 'border-[#8a4a0c] bg-gradient-to-b from-[#fff3a3] via-[#fbbf24] to-[#f97316] [--tag-edge:#8a4a0c]',
+              t.soon && 'mg-throb border-dashed',
+            )}
+          >
+            <span aria-hidden className="pointer-events-none absolute inset-x-1 top-0.5 h-[40%] rounded-full bg-white/40" />
+            <span className="relative">{t.soon ? `${t.label}?` : t.label}</span>
+            <span className="relative text-[11px]">🪙</span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -175,7 +241,7 @@ function FarmItem({
 }) {
   const entry = catalogFor(placement.itemType, placement.variant)
   const big = placement.width > 1
-  const box = big ? { w: 150, h: 150 } : placement.itemType === 'fence' ? { w: 56, h: 44 } : { w: 64, h: 56 }
+  const box = big ? { w: 170, h: 170 } : placement.itemType === 'fence' ? { w: 56, h: 50 } : { w: 70, h: 62 }
   const z = Math.round(ground.y)
   return (
     <>
@@ -185,7 +251,7 @@ function FarmItem({
         </div>
       ) : (
         <svg aria-hidden className="pointer-events-none absolute overflow-visible" width={1} height={1} style={{ left: ground.x, top: ground.y, zIndex: z }}>
-          {placement.itemType === 'farmer_house' && <FarmerHouseSprite />}
+          {placement.itemType === 'farmer_house' && <FarmerHouse />}
           {placement.itemType === 'woodshop' && <WoodshopSprite />}
           {placement.itemType === 'rockery' && <RockerySprite />}
           {placement.itemType === 'fence' && <FenceSprite links={fenceLinks(placements, placement)} />}

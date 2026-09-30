@@ -102,10 +102,14 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   // Visited Gardens drawer: shared trees this player opened. A failed load shows an empty drawer.
   // Gardeners show by their chosen Garden Name, else their pseudonym.
   const visited = visitedRes.success ? visitedRes.data : []
-  const namesRes = await getDisplayNames({ userIds: [...new Set([...visited.map((t) => t.ownerId), ...(visitOwnerId ? [visitOwnerId] : [])])] })
+  // Your own name too: the farm's top banner shows it.
+  const namesRes = await getDisplayNames({
+    userIds: [...new Set([...visited.map((t) => t.ownerId), ...(visitOwnerId ? [visitOwnerId] : []), ...(userId && !visitOwnerId ? [userId] : [])])],
+  })
   const names = namesRes.success ? namesRes.data : {}
   const visitedGardens = groupVisitedGardens(visited, userId, names)
   const visitName = visitOwnerId ? publicName(names[visitOwnerId], visitOwnerId) : null
+  const gardenName = userId && !visitOwnerId ? publicName(names[userId], userId) : undefined
 
   const cards: DeckCardView[] = decks.map((d) => ({
     id: d.id,
@@ -171,6 +175,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           placements={placements}
           unplacedTrees={unplacedTrees}
           hud={hudView}
+          gardenName={gardenName}
           signedIn={userId !== null}
           gridHref={hrefFor('grid', currentPage)}
           visitor={visitName ? { name: visitName, backHref: '/' } : null}

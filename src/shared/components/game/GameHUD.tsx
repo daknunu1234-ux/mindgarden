@@ -12,8 +12,9 @@ function PodShadow({ className }: { className?: string }) {
   return <span aria-hidden className={cn('pointer-events-none absolute -bottom-3 left-1/2 h-3 w-[80%] -translate-x-1/2 rounded-[50%] bg-black/25 blur-[3px]', className)} />
 }
 
+// Glossy cream slab with a golden rim line inside its chunky border.
 const POD =
-  'relative rounded-[20px] border-[3px] border-[#b98a5a] bg-gradient-to-b from-white via-[#fffaf0] to-[#f6e3c3] shadow-[inset_0_2px_0_rgba(255,255,255,0.95),inset_0_-4px_0_rgba(185,138,90,0.25),0_5px_0_#a8784a]'
+  'relative rounded-[20px] border-[3px] border-[#a8702a] bg-gradient-to-b from-white via-[#fffaf0] to-[#f6e3c3] shadow-[inset_0_0_0_2px_rgba(255,206,84,0.75),inset_0_3px_0_rgba(255,255,255,0.95),inset_0_-4px_0_rgba(185,138,90,0.3),0_5px_0_#8a5a1f,0_9px_14px_rgba(0,0,0,0.18)]'
 
 // Top-left: level shield + title + XP juice-bar in one pod.
 function LevelCrest({
@@ -154,10 +155,11 @@ const DOCK_TONES: Record<DockTone, string> = {
 
 // Class for the dock's clickable element (a <button> or <Link>); put a <DockOrb> and a caption inside.
 const DOCK_BUTTON =
-  'group/dock relative flex flex-col items-center gap-1.5 rounded-2xl font-game text-xs leading-none font-extrabold tracking-wide text-[#fff7e6] [text-shadow:0_2px_0_rgba(69,26,3,0.7)] focus-visible:outline-none'
+  'group/dock relative flex flex-col items-center gap-1.5 rounded-2xl font-game text-xs leading-none font-extrabold tracking-wide text-white [text-shadow:0_2px_0_#3b1f0e,1.5px_1px_0_#3b1f0e,-1.5px_1px_0_#3b1f0e,0_-1.5px_0_#3b1f0e] focus-visible:outline-none'
 
 // Glossy round orb: bounces on hover, sinks onto its bevel on press (driven by the parent's group/dock).
-function DockOrb({ children, badge, tone, big = false }: { children: React.ReactNode; badge?: React.ReactNode; tone: DockTone; big?: boolean }) {
+// `sheen`: a light sweep across it every few seconds (the hero action).
+function DockOrb({ children, badge, tone, big = false, sheen = false }: { children: React.ReactNode; badge?: React.ReactNode; tone: DockTone; big?: boolean; sheen?: boolean }) {
   return (
     <span
       className={cn(
@@ -168,6 +170,11 @@ function DockOrb({ children, badge, tone, big = false }: { children: React.React
         DOCK_TONES[tone],
       )}
     >
+      {sheen && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
+          <span className="mg-sheen absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-white/0 via-white/70 to-white/0" />
+        </span>
+      )}
       <span aria-hidden className="pointer-events-none absolute inset-x-[16%] top-[7%] h-[34%] rounded-full bg-gradient-to-b from-white/75 to-white/0" />
       <span aria-hidden className="pointer-events-none absolute top-[14%] left-[20%] size-[10%] rounded-full bg-white" />
       <span className="relative drop-shadow-[0_2px_0_rgba(0,0,0,0.25)]">{children}</span>

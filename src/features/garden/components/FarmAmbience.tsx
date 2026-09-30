@@ -60,15 +60,19 @@ export function FallingParticles({ seed, stage, treeType, size }: { seed: string
   )
 }
 
-// Two bees orbiting flowering apple / sakura trees at stages 4–5.
+// Bees buzzing round the crown of a growing tree: two from stage 3, three at full bloom (cacti
+// only when flowering at stage 5).
+const BEES = [
+  { orbit: 30, dur: 3.4, delay: 0, top: 0.3 },
+  { orbit: 22, dur: 2.6, delay: -1.3, top: 0.42 },
+  { orbit: 38, dur: 4.2, delay: -2.1, top: 0.2 },
+]
 export function Bees({ stage, treeType, size }: { stage: TreeStage; treeType: string; size: number }) {
-  if (stage < 4 || (treeType !== 'apple' && treeType !== 'sakura')) return null
+  const { form } = getTreeSpecies(treeType)
+  if (stage < 3 || (form === 'cactus' && stage < 5)) return null
   return (
     <>
-      {[
-        { orbit: 30, dur: 3.4, delay: 0, top: 0.3 },
-        { orbit: 22, dur: 2.6, delay: -1.3, top: 0.42 },
-      ].map((b, i) => (
+      {BEES.slice(0, stage === 5 ? 3 : 2).map((b, i) => (
         <span
           key={i}
           aria-hidden

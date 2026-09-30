@@ -118,7 +118,7 @@ export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; 
       {/* Floating wooden mastery badge by the right corner of the mound. */}
       <MasteryBadge percent={plot.masteryPercent} style={at(badge)} onClick={open} />
       {/* Rustic post sign at the front-left of the mound: the deck title, out of the tree's way. */}
-      <PlotSign title={plot.title} style={at(sign)} onClick={open} />
+      <PlotSign title={plot.title} emoji={TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} mighty={mighty} style={at(sign)} onClick={open} />
     </div>
   )
 }
@@ -147,12 +147,21 @@ function MasteryBadge({ percent, style, onClick }: { percent: number; style: CSS
   )
 }
 
-// A little wooden sign on a post: plank with the title, stake into the soil, soft ground shadow.
-function PlotSign({ title, style, onClick }: { title: string; style: CSSProperties; onClick: () => void }) {
+// A chunky wooden sign on a post: the growth stage's emoji and the title on a glossy plank (gold
+// trim once fully mastered), stake into the soil, soft ground shadow. Wiggles on hover.
+function PlotSign({ title, emoji, mighty, style, onClick }: { title: string; emoji: string; mighty: boolean; style: CSSProperties; onClick: () => void }) {
   return (
     <span onClick={onClick} className="group/sign pointer-events-auto absolute flex -translate-x-1/2 cursor-pointer flex-col items-center" style={style}>
-      <span className="relative z-10 max-w-[112px] truncate rounded-[7px] border-[2px] border-[#4a230c] bg-gradient-to-b from-[#f0b872] via-[#d88f48] to-[#b8702f] px-2 py-[3px] font-game text-[11px] leading-tight font-extrabold text-[#fff7e6] shadow-[inset_0_1.5px_0_rgba(255,255,255,0.45),0_2px_0_#4a230c] [text-shadow:0_1px_0_rgba(69,26,3,0.7)] transition-transform duration-200 group-hover/sign:-rotate-3">
-        {title}
+      <span
+        className={cn(
+          'relative z-10 flex max-w-[132px] items-center gap-1 rounded-[9px] border-[2.5px] border-[#3b1f0e] bg-gradient-to-b from-[#f6c27e] via-[#dc9148] to-[#b8702f] px-2 py-[3px] font-game text-[12px] leading-tight font-extrabold text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.5),0_3px_0_#3b1f0e] [text-shadow:0_1.5px_0_#3b1f0e,1px_0_0_#3b1f0e,-1px_0_0_#3b1f0e,0_-1px_0_#3b1f0e] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] group-hover/sign:-translate-y-0.5 group-hover/sign:-rotate-3',
+          mighty && 'border-[#8a4a0c] ring-2 ring-[#ffd23f]',
+        )}
+      >
+        <span aria-hidden className="shrink-0 text-[12px] [text-shadow:none]">
+          {emoji}
+        </span>
+        <span className="truncate">{title}</span>
       </span>
       <span className="-mt-0.5 h-3.5 w-[5px] rounded-b-sm border-x-[1.5px] border-b-[1.5px] border-[#4a230c] bg-[#a8652c]" />
       <span className="-mt-1 h-1.5 w-5 rounded-[50%] bg-[#2f5f16]/35" />

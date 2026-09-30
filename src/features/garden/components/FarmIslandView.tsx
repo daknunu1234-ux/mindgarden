@@ -11,15 +11,20 @@ import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
+import { getTreeStage } from '../hooks/useTreeStage'
+import { treeBuff } from '../lib/farmBuffs'
 import type { CatalogItem } from '../lib/farmCatalog'
 import { checkPlacement, firstFreeTile, type Placement } from '../lib/farmGrid'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
-import { Counters, FarmDock, LevelBadge, ZoomControls } from './FarmHud'
+import { SkyClouds } from './FarmDiorama'
+import { BuffPills, Counters, FarmDock, GardenBanner, LevelBadge, ZoomControls, type FarmBuffSummary } from './FarmHud'
 import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
 import { FarmItemDialog } from './FarmItemDialog'
 import { FarmPlotDialog } from './FarmPlotDialog'
 import { FarmShopModal } from './FarmShopModal'
+import { ItemDrawing } from './FarmStructures'
+import { TreeStageSvg } from './TreeStageSvg'
 
 type FarmIslandViewProps = {
   // Trees standing on the farm (by deck id, with their placement id).
@@ -29,6 +34,8 @@ type FarmIslandViewProps = {
   // Own trees not planted yet (the Shop's Trees tab). Empty for visitors.
   unplacedTrees?: FarmPlotView[]
   hud: FarmHudView
+  // The owner's Garden Name for the top banner (visitors see the host's name instead).
+  gardenName?: string
   signedIn: boolean
   gridHref: string
   // Optional top-centre content (sign-in notice, refund notice).
@@ -49,7 +56,7 @@ type BuildRequest = { kind: 'tree'; tree: FarmPlotView } | { kind: 'item'; item:
 // follows the pointer, green where it fits, red where it doesn't; clicking puts it down (and pays),
 // Esc / right-click / Cancel leaves without spending. On touch screens a tap moves the ghost and a
 // second tap on the same tile (or "Place here") puts it down.
-function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
+function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
   const router = useRouter()
   const { toast } = useToast()
   const { setCoins } = useCoins()
@@ -77,7 +84,8 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, 
 
   const footprint =
     build?.request.kind === 'item' ? { width: build.request.item.width, height: build.request.item.height } : { width: 1, height: 1 }
-  const ghostIcon = build?.request.kind === 'item' ? build.request.item.icon : '🌳'
+  const ghostPreview = useMemo(() => (build ? buildPreview(build.request) : null), [build])
+  const buffs = useMemo(() => buffSummary(placements, plotsByDeck), [placements, plotsByDeck])
   const ghostOk = build?.tile ? checkPlacement(placements, { ...build.tile, ...footprint }) === 'ok' : false
 
   // Esc leaves placement mode (nothing is spent before the item is put down).
@@ -140,7 +148,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, 
   }
 
   return (
-    <div className="relative min-h-[480px] flex-1 overflow-hidden bg-[linear-gradient(180deg,#6ad8f5_0%,#27bdec_40%,#0ba2dd_100%)]">
+    <div className="relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]">
       <div
         ref={scrollRef}
         className={
@@ -158,7 +166,12 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, 
             <FarmIsometricGrid
               placements={placements}
               plotsByDeck={plotsByDeck}
-              build={build ? { footprint, icon: ghostIcon, tile: build.tile } : null}
+              seed={visitor?.name ?? gardenName ?? 'garden'}
+              build={
+                build
+                  ? { footprint, itemType: build.request.kind === 'tree' ? 'tree' : build.request.item.itemType, preview: ghostPreview, tile: build.tile }
+                  : null
+              }
               onBuildHover={(tile) => setBuild((b) => (b ? { ...b, tile } : b))}
               onBuildTap={(tile, pointerType) => {
                 // Mouse: click places. Touch / pen: the first tap moves the ghost, the second places.
@@ -190,27 +203,36 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, 
         </div>
       </div>
 
-      {/* Warm morning sunlight over the whole viewport from the upper left (never blocks input). */}
+      {/* Tropical sunlight from the upper left, and clouds sailing over the sea (never block input). */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_12%_0%,rgba(255,226,140,0.42),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_10%_0%,rgba(255,236,150,0.5),transparent_55%)]"
       />
+      <SkyClouds />
 
-      {/* HUD: corners only; the overlay itself lets everything through. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2 sm:p-4">
+      {/* HUD top bar: a soft sea-blue wash for contrast, then level · island banner + buffs · purse. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#053b57]/45 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-x-2 gap-y-1 p-2 sm:flex-nowrap sm:p-4">
         <LevelBadge level={hud.level} />
-        {visitor ? (
-          <div className="pointer-events-auto flex flex-col items-center gap-2">
-            <span className="rounded-full border-[3px] border-[#4a230c] bg-gradient-to-b from-[#fffcf3] to-[#f5dcb2] px-4 py-1.5 font-game text-base font-extrabold text-[#4a2511] shadow-[inset_0_2px_0_#fff,0_4px_0_#b07a45]">
-              👣 Visiting {visitor.name}&apos;s Garden · read-only
-            </span>
-            <GameButton asChild tone="leaf" size="sm">
-              <Link href={visitor.backHref}>🏡 Back to my garden</Link>
-            </GameButton>
-          </div>
-        ) : (
-          topCenter && <div className="pointer-events-auto">{topCenter}</div>
-        )}
+        <div className="pointer-events-auto order-last flex w-full flex-col items-center gap-1.5 sm:order-none sm:w-auto sm:min-w-0">
+          {visitor ? (
+            <>
+              <GardenBanner name={`${visitor.name}'s Garden`} />
+              <span className="rounded-full border-2 border-white/70 bg-[#064e6e]/55 px-3 py-1 font-game text-[11px] font-bold text-white backdrop-blur-sm">
+                👣 Visiting · read-only
+              </span>
+              <GameButton asChild tone="leaf" size="sm">
+                <Link href={visitor.backHref}>🏡 Back to my garden</Link>
+              </GameButton>
+            </>
+          ) : (
+            <>
+              <GardenBanner name={gardenName ?? 'MindGarden Island'} />
+              {signedIn && <BuffPills summary={buffs} hint={placements.length > 0} />}
+              {topCenter}
+            </>
+          )}
+        </div>
         <Counters hud={hud} />
       </div>
       {leftEdge && !build && <div className="pointer-events-none absolute top-1/2 left-0 z-10 -translate-y-1/2">{leftEdge}</div>}
@@ -291,6 +313,37 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, signedIn, 
       <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={plots} signedIn={signedIn} />
     </div>
   )
+}
+
+// The floating miniature shown over the ghost footprint: the tree being planted or the item's drawing.
+function buildPreview(request: BuildRequest): ReactNode {
+  if (request.kind === 'tree') {
+    return (
+      <TreeStageSvg
+        stage={getTreeStage(request.tree.masteryPercent)}
+        treeType={request.tree.treeType}
+        label=""
+        className="absolute size-[120px] -translate-x-1/2 -translate-y-[90%]"
+      />
+    )
+  }
+  return (
+    <svg aria-hidden className="absolute overflow-visible" width={1} height={1} style={{ left: 0, top: 0 }}>
+      <ItemDrawing item={request.item} />
+    </svg>
+  )
+}
+
+// How many standing trees each farm buff boosts (for the top bar's pills).
+function buffSummary(placements: readonly Placement[], plotsByDeck: ReadonlyMap<string, FarmPlotView>): FarmBuffSummary {
+  const summary: FarmBuffSummary = { stream: 0, house: 0, woodshop: placements.some((p) => p.itemType === 'woodshop') }
+  for (const p of placements) {
+    if (p.itemType !== 'tree' || !p.deckId || !plotsByDeck.has(p.deckId)) continue
+    const buff = treeBuff(p.x, p.y, placements)
+    if (buff.stream) summary.stream++
+    if (buff.house) summary.house++
+  }
+  return summary
 }
 
 export { FarmIslandView }

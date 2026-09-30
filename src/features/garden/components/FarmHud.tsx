@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
-import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, ResourcePill } from '@/shared/components/game'
+import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, PodShadow, ResourcePill } from '@/shared/components/game'
 import { SEED_PRICE_COINS } from '@/shared/lib/economy'
 import { useCoinShop } from '@/shared/stores/CoinShopProvider'
 import { useDisplayedCoins } from '@/shared/stores/CoinsProvider'
@@ -111,13 +111,18 @@ function FarmDock({ gridHref, onQuests, quests, onShop, unplaced }: FarmDockProp
         </DockOrb>
         Quests
       </button>
-      <button type="button" onClick={onShop} className={cn(DOCK_BUTTON, '-mt-6')} aria-label={`Shop${unplaced > 0 ? `: ${unplaced} ${unplaced === 1 ? 'tree' : 'trees'} to plant` : ''}`}>
-        <DockOrb tone="sun" big badge={unplaced > 0 ? unplaced : undefined}>
-          <span aria-hidden className="text-[34px] leading-none sm:text-[38px]">
-            🏪
-          </span>
-        </DockOrb>
-        Shop
+      <button type="button" onClick={onShop} className={cn(DOCK_BUTTON, '-mt-9')} aria-label={`Shop${unplaced > 0 ? `: ${unplaced} ${unplaced === 1 ? 'tree' : 'trees'} to plant` : ''}`}>
+        {/* Hero: hops for attention every few seconds, a light sweep across its gloss. */}
+        <span className="mg-hop block">
+          <DockOrb tone="sun" big sheen badge={unplaced > 0 ? unplaced : undefined}>
+            <span aria-hidden className="text-[34px] leading-none sm:text-[40px]">
+              🏪
+            </span>
+          </DockOrb>
+        </span>
+        <span className="-mt-3 rounded-full border-[2.5px] border-[#8a1033] bg-gradient-to-b from-[#fda4af] via-[#fb7185] to-[#e11d48] px-2.5 py-1 text-[13px] tracking-wider uppercase shadow-[inset_0_2px_0_rgba(255,255,255,0.45),0_3px_0_#8a1033] [text-shadow:0_2px_0_#8a1033,1px_0_0_#8a1033,-1px_0_0_#8a1033]">
+          Shop
+        </span>
       </button>
       <Link href={gridHref} className={DOCK_BUTTON} aria-label="Switch to the classic grid view">
         <DockOrb tone="leaf">
@@ -159,4 +164,71 @@ function ViewToggle({ view, farmHref, gridHref, className }: ViewToggleProps) {
   )
 }
 
-export { Counters, FarmDock, LevelBadge, ViewToggle, ZoomControls }
+export type FarmBuffSummary = { stream: number; house: number; woodshop: boolean }
+
+// Top-centre: the island's name on a glossy wooden banner with golden trim and rivets.
+function GardenBanner({ name }: { name: string }) {
+  return (
+    <div className="relative flex items-center pb-1">
+      <PodShadow className="w-[85%]" />
+      <span
+        className={cn(
+          'relative flex max-w-[min(78vw,340px)] items-center gap-2 rounded-[16px] border-[3px] border-[#3b1f0e] px-4 py-1.5',
+          '[background-image:repeating-linear-gradient(180deg,rgba(0,0,0,0.06)_0_3px,transparent_3px_14px),linear-gradient(to_bottom,#f0a55c,#c96f2c_60%,#a2521c)]',
+          'shadow-[inset_0_0_0_2px_rgba(255,214,102,0.8),inset_0_3px_0_rgba(255,255,255,0.4),0_5px_0_#3b1f0e,0_10px_16px_rgba(0,0,0,0.25)]',
+        )}
+      >
+        <span aria-hidden className="absolute top-1.5 left-1.5 size-1.5 rounded-full bg-[#ffd23f] shadow-[0_1px_0_#3b1f0e]" />
+        <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-[#ffd23f] shadow-[0_1px_0_#3b1f0e]" />
+        <span aria-hidden className="text-lg leading-none">
+          🏝️
+        </span>
+        <span className="truncate font-game text-base leading-tight font-extrabold text-white [text-shadow:0_2px_0_#3b1f0e,1.5px_1px_0_#3b1f0e,-1.5px_1px_0_#3b1f0e,0_-1.5px_0_#3b1f0e] sm:text-lg">
+          {name}
+        </span>
+      </span>
+    </div>
+  )
+}
+
+// Under the banner: the farm's active coin buffs as glossy pills (how many trees each boosts),
+// or a hint for owners who have none yet.
+function BuffPills({ summary, hint }: { summary: FarmBuffSummary; hint: boolean }) {
+  const pills = [
+    summary.stream > 0 && { key: 'stream', icon: '🌊', text: `+20% · ${summary.stream} ${summary.stream === 1 ? 'tree' : 'trees'}`, tone: 'stream' as const },
+    summary.house > 0 && { key: 'house', icon: '🏡', text: `+50% · ${summary.house} ${summary.house === 1 ? 'tree' : 'trees'}`, tone: 'house' as const },
+    summary.woodshop && { key: 'woodshop', icon: '🪚', text: 'Chop refund', tone: 'wood' as const },
+  ].filter((p) => p !== false)
+  if (pills.length === 0) {
+    if (!hint) return null
+    return (
+      <span className="rounded-full border-2 border-white/70 bg-[#064e6e]/55 px-3 py-1 font-game text-[11px] font-bold text-white backdrop-blur-sm">
+        💡 Streams and houses next to trees boost 🪙
+      </span>
+    )
+  }
+  return (
+    <ul aria-label="Active farm buffs" className="flex flex-wrap justify-center gap-1.5">
+      {pills.map((p) => (
+        <li
+          key={p.key}
+          className={cn(
+            'relative inline-flex items-center gap-1 overflow-hidden rounded-full border-[2.5px] px-2.5 py-1 font-game text-xs leading-none font-extrabold whitespace-nowrap text-white tabular-nums',
+            'shadow-[inset_0_2px_0_rgba(255,255,255,0.5),0_3px_0_var(--pill-edge)] [text-shadow:0_1.5px_0_var(--pill-edge),1px_0_0_var(--pill-edge),-1px_0_0_var(--pill-edge)]',
+            p.tone === 'stream' && 'border-[#075e73] bg-gradient-to-b from-[#7ff5f0] via-[#22c9e0] to-[#0891b2] [--pill-edge:#075e73]',
+            p.tone === 'house' && 'border-[#8a4a0c] bg-gradient-to-b from-[#fff3a3] via-[#fbbf24] to-[#f97316] [--pill-edge:#8a4a0c]',
+            p.tone === 'wood' && 'border-[#5a2a0c] bg-gradient-to-b from-[#f0b574] via-[#c9793e] to-[#9a4a17] [--pill-edge:#5a2a0c]',
+          )}
+        >
+          <span aria-hidden className="pointer-events-none absolute inset-x-1.5 top-0.5 h-[40%] rounded-full bg-white/35" />
+          <span aria-hidden className="relative">
+            {p.icon}
+          </span>
+          <span className="relative">{p.text}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export { BuffPills, Counters, FarmDock, GardenBanner, LevelBadge, ViewToggle, ZoomControls }

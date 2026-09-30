@@ -105,6 +105,47 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
+## Visual system: tropical island diorama
+
+A stylized 3D casual-mobile look over the same grid, RPCs and buffs (presentation only: no rule,
+price or buff changed). All art is inline SVG / CSS, so there are no image assets to load.
+
+- **Diorama** (`garden/components/FarmDiorama.tsx`, geometry in `lib/diorama.ts`, tested): the grid
+  floats as an island on a turquoise ocean. Around it: a glowing lagoon, swell rings rolling out from the
+  shore, sun glints and the island's shadow on the water. Under it: a layered cliff (grass lip, terracotta
+  topsoil, deep soil, stone with pebbles, hanging vines) and a rocky underside tapering to a keel. On top:
+  a wet / dry sand beach with a foam rim, saturated emerald / lime checkered grass with seeded tufts and
+  flowers, and swaying palms. Four distant islets bob in the ocean corners; clouds drift in the world and
+  sail across the screen at two speeds for parallax.
+- **Palette**: emerald / lime grass, turquoise water, citrus sand, terracotta soil and roofs, coral
+  flowers; thick dark-brown outlines (`#3b1f0e`), lit left faces and shaded right faces (sun upper left).
+- **Chunky toy sprites** (`FarmStructures.tsx`):
+  - Farmer's House: a cottage with an oversized terracotta hip roof, a rounded brick chimney puffing
+    smoke, and glowing windows and door.
+  - Woodshop: a plank shed with an oversized cartoon saw blade and round-ended logs.
+  - Stream: turquoise water with a white foam edge and rising bubbles.
+  - Fence: thick capped posts with outlined rails that auto-join.
+  - Rockery: mossy boulders with tiny flowers.
+  - Cow and pig: plump SVG animals that wander and squash as they idle.
+  - Trees: stand on a terracotta soil pad, carry a sign with their stage emoji (gold trim at 100%),
+    and get bees from stage 3.
+- **Placement feedback**: the item floats over a free footprint with a glowing green outline, or throbs
+  comic red with "✖ Blocked!". Placing a stream or Farmer's House previews its aura and pulses in the
+  "+20% 🪙" / "+50% 🪙" tags it would add. Placed buffs show as floating glossy tags over each tree.
+- **HUD**: a top bar with the level crest, the island's Garden Name on a wooden banner with gold trim,
+  pills for the active buffs (how many trees each boosts, Woodshop refund on), and the streak and coin
+  pods (gold rim). The dock's 🏪 Shop is a hero orb that hops, with a gloss sheen and a red "SHOP" label.
+- **Game kit** (`shared/components/game`, every screen): `GameButton` has deeper bottom borders and
+  bold white labels with a thick dark outline; dock captions are outlined too.
+- **Shop** (`FarmShopModal`): a wooden frame with a coin purse chip and chunky tabs. Items are trading
+  cards with a coloured header, a gold coin price badge, the real sprite on a 3D grass pedestal, a perk
+  tag, the size, and a green "Buy & Place". Unplanted trees get the same card with a soil pedestal.
+- **Motion**: `.mg-cloud`, `.mg-drift`, `.mg-swell`, `.mg-islet`, `.mg-bubble`, `.mg-squash`, `.mg-float`,
+  `.mg-throb`, `.mg-hop`, `.mg-sheen`, `.mg-sway` in `globals.css`, transform / opacity only. All of them
+  are off for `prefers-reduced-motion`.
+- **Responsive**: the camera still drags / pinches / zooms; on phones the island banner and buff pills
+  wrap under the level crest and purse, and Shop cards stack in one column.
+
 ## Database migrations
 
 `supabase/migrations/`, applied in this order on a fresh database (details and hosted-project order:
@@ -136,7 +177,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
+| (pending) | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
+| `ccda259` | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
 | `4b1ffea` | feat(garden): isometric farm grid with shop, placements, buffs and woodshop refund; gems removed; this file created |
 | `44c14d9` | feat(decks): edit statements and roots with owner-only hover tools |
 | `2d77113` | feat(decks): delete statements and whole root branches with confirmation |
@@ -152,5 +194,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 57 files, 511 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 58 files, 519 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

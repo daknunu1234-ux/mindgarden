@@ -294,3 +294,73 @@
     radial-gradient(900px 400px at 100% 100%, rgba(187, 247, 208, 0.7), transparent 60%),
     linear-gradient(180deg, #e0f2fe 0%, #f0fdf4 45%, #fef9c3 100%);
 }
+
+/* ── Tropical diorama (garden/FarmDiorama, FarmStructures, FarmHud) ──────────
+   Clouds drift across the sky (two speeds for parallax), lagoon rings swell out from the island,
+   islets bob, stream bubbles rise, animals squash as they idle, the placement ghost floats (green)
+   or throbs (comic red), and the Shop's hero orb hops for attention. Transform / opacity only. */
+@keyframes mg-cloud {
+  0% { transform: translateX(-30vw); }
+  100% { transform: translateX(130vw); }
+}
+@keyframes mg-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(46px); }
+}
+@keyframes mg-swell {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(1.12); opacity: 0; }
+}
+@keyframes mg-islet {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes mg-bubble {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-14px) scale(1.1); opacity: 0; }
+}
+@keyframes mg-squash {
+  0%, 100% { transform: scale(1, 1); }
+  30% { transform: scale(1.07, 0.9); }
+  55% { transform: scale(0.95, 1.07) translateY(-3px); }
+  80% { transform: scale(1.02, 0.98); }
+}
+@keyframes mg-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+@keyframes mg-throb {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes mg-hop {
+  0%, 72%, 100% { transform: translateY(0) scale(1); }
+  78% { transform: translateY(-8px) scale(1.06, 0.96); }
+  86% { transform: translateY(0) scale(1.06, 0.92); }
+  92% { transform: translateY(-3px) scale(0.98, 1.03); }
+}
+@keyframes mg-sheen {
+  0%, 60% { transform: translateX(-160%) skewX(-18deg); }
+  100% { transform: translateX(260%) skewX(-18deg); }
+}
+@keyframes mg-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2.5deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-cloud { animation: mg-cloud var(--mg-dur, 120s) linear var(--mg-delay, 0s) infinite; }
+  .mg-drift { animation: mg-drift var(--mg-dur, 26s) ease-in-out var(--mg-delay, 0s) infinite; }
+  .mg-swell { animation: mg-swell 5s ease-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-islet { animation: mg-islet 7s ease-in-out var(--mg-delay, 0s) infinite; }
+  .mg-bubble { animation: mg-bubble 2.4s ease-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-squash { animation: mg-squash 1.6s ease-in-out var(--mg-delay, 0s) infinite; transform-origin: 50% 100%; }
+  .mg-float { animation: mg-float 1.4s ease-in-out infinite; }
+  .mg-throb { animation: mg-throb 0.7s ease-in-out infinite; }
+  .mg-hop { animation: mg-hop 3.2s ease-in-out infinite; }
+  .mg-sheen { animation: mg-sheen 3.6s ease-in-out infinite; }
+  .mg-sway { animation: mg-sway 4.8s ease-in-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-cloud, .mg-bubble, .mg-sheen, .mg-swell { display: none; }
+}
