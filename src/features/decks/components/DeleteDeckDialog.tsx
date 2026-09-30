@@ -1,10 +1,10 @@
 'use client'
 
 import { useId, useState, useTransition, type FormEvent } from 'react'
-import { unstable_rethrow } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { GameButton, GameDialog, GameDialogContent, GameInput, GameLabel } from '@/shared/components/game'
 import { useToast } from '@/shared/stores/ToastProvider'
-import { deleteDeck } from '../actions/deleteDeck'
+import { chopDeck } from '../actions/chopDeck'
 import { matchesTreeName } from '../lib/confirmName'
 
 type DeleteDeckDialogProps = {
@@ -17,8 +17,10 @@ type DeleteDeckDialogProps = {
   onChop?: () => void
 }
 
-// Danger-zone confirmation: the gardener types the tree's name, then "Uproot Forever". On success
-// the action redirects to the farm; the farewell toast lives in the root layout, so it rides along.
+// Danger-zone confirmation: the gardener types the tree's name, then "Uproot Forever". The dialog turns
+// to "Uprooting…" at once, chopDeck deletes the tree (no page revalidations, no server redirect), and
+// the browser replaces this page with the farm, whose loading screen shows straight away (replace, so
+// Back never returns to the deleted tree). The farewell toast lives in the root layout, so it rides along.
 // With `onChop` (the farm) it only confirms: the farm does the rest optimistically.
 function DeleteDeckDialog({ deckId, deckTitle, open, onOpenChange, onChop }: DeleteDeckDialogProps) {
   return (
@@ -33,6 +35,7 @@ function DeleteDeckDialog({ deckId, deckTitle, open, onOpenChange, onChop }: Del
 
 function UprootForm({ deckId, deckTitle, onCancel, onChop }: { deckId: string; deckTitle: string; onCancel: () => void; onChop?: () => void }) {
   const { toast } = useToast()
+  const router = useRouter()
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -50,25 +53,21 @@ function UprootForm({ deckId, deckTitle, onCancel, onChop }: { deckId: string; d
     }
     startTransition(async () => {
       try {
-        // Only failures come back: success redirects to the farm (see deleteDeck).
-        const res = await deleteDeck({ deckId })
-        if (!res.success) setError(`${res.error.message}.`)
-      } catch (err) {
-        // The success path arrives here as Next's redirect signal. Say goodbye, then hand the
-        // redirect back to Next so it navigates.
-        try {
-          unstable_rethrow(err)
-        } catch (redirectSignal) {
-          toast({ message: `“${deckTitle}” was uprooted. Goodbye, little tree!`, icon: '🍂', tone: 'farewell' })
-          throw redirectSignal
+        const res = await chopDeck({ deckId })
+        if (!res.success) {
+          setError(`${res.error.message}.`)
+          return
         }
+        toast({ message: `“${deckTitle}” was uprooted. Goodbye, little tree!`, icon: '🍂', tone: 'farewell' })
+        router.replace(res.data.refund > 0 ? `/?refund=${res.data.refund}` : '/')
+      } catch {
         setError('We could not reach the garden. Check your connection and try again.')
       }
     })
   }
 
   return (
-    <form onSubmit={uproot} className="space-y-5">
+    <form onSubmit={uproot} className={isPending ? 'space-y-5 opacity-60 transition-opacity duration-300' : 'space-y-5 transition-opacity duration-300'} aria-busy={isPending}>
       <div className="flex items-start gap-3 rounded-[20px] border-[2.5px] border-[#f5a3a3] bg-gradient-to-b from-[#fff5f5] to-[#ffe1e1] p-3.5 text-sm text-[#7f1d1d] shadow-[inset_0_2px_0_rgba(255,255,255,0.9),0_4px_0_#f08c8c]">
         <span aria-hidden className="text-3xl leading-none">
           ⚠️

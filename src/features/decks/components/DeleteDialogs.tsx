@@ -3,12 +3,13 @@
 import { useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameButton, GameDialog, GameDialogContent } from '@/shared/components/game'
-import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { deleteRootBranch } from '../actions/deleteRootBranch'
+import { useDeckDraftActions } from './DeckDraft'
 
-// Owner-only confirmations for deleting a statement or a whole root branch. Both refresh the
-// page data in place on success: the mindmap re-lays out, a drawer showing a deleted root closes
-// by itself, and the launch pop-up's question counts follow.
+// Owner-only confirmations for deleting a statement or a whole root branch. A statement goes at once
+// (the deck draft removes it everywhere and deletes it in the background; an error puts it back with
+// a toast). A root branch waits for the server, then refreshes the page data in place: the mindmap
+// re-lays out, a drawer showing a deleted root closes by itself, and the launch counts follow.
 
 export type StatementToDelete = { id: string; text: string }
 export type RootToDelete = { id: string; title: string; statements: number; subRoots: number }
@@ -20,15 +21,22 @@ type ConfirmProps = {
   confirmLabel: string
   onConfirm: () => Promise<{ success: boolean; error?: { message: string } }>
   onClose: (deleted: boolean) => void
+  // The change is already on screen (optimistic): close at once, no page refresh.
+  instant?: boolean
 }
 
-function ConfirmDelete({ open, title, children, confirmLabel, onConfirm, onClose }: ConfirmProps) {
+function ConfirmDelete({ open, title, children, confirmLabel, onConfirm, onClose, instant = false }: ConfirmProps) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const confirm = () => {
     setError(null)
+    if (instant) {
+      void onConfirm()
+      onClose(true)
+      return
+    }
     startTransition(async () => {
       const res = await onConfirm()
       if (!res.success) {
@@ -92,14 +100,20 @@ type DeleteStatementDialogProps = {
   onClose: (deleted: boolean) => void
 }
 
-// "Delete Statement": one statement and everyone's progress on it.
-function DeleteStatementDialog({ deckId, statement, onClose }: DeleteStatementDialogProps) {
+// "Delete Statement": one statement and everyone's progress on it. Confirming closes at once: the
+// statement leaves the list, the mindmap and the counts immediately (deck draft).
+function DeleteStatementDialog({ statement, onClose }: DeleteStatementDialogProps) {
+  const { removeStatement } = useDeckDraftActions()
   return (
     <ConfirmDelete
       open={statement !== null}
       title="Delete Statement"
       confirmLabel="Delete Statement"
-      onConfirm={() => deleteKnowledgeItem({ deckId, itemId: statement?.id })}
+      instant
+      onConfirm={async () => {
+        if (statement) removeStatement(statement)
+        return { success: true }
+      }}
       onClose={onClose}
     >
       <p>Are you sure you want to delete this statement? This cannot be undone.</p>

@@ -13,7 +13,6 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/shared/lib/supabase/server'
 import { chopDeck } from '../actions/chopDeck'
-import { deleteDeck } from '../actions/deleteDeck'
 
 const OWNER = '11111111-1111-4111-8111-111111111111'
 const STRANGER = '22222222-2222-4222-8222-222222222222'
@@ -81,93 +80,11 @@ function fakeSupabase({
   return { deleted, rows }
 }
 
-const oakDeck: DeckRow = { id: DECK, user_id: OWNER, slug: 'sinh-hoc', tree_type: 'oak' }
-
 beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('deleteDeck', () => {
-  it('chops through uproot_deck and tells the farm about a Woodshop refund', async () => {
-    const db = fakeSupabase({ userId: OWNER, decks: [oakDeck], uproot: { refund: 12 } })
-
-    await expect(deleteDeck({ deckId: DECK })).rejects.toThrow('NEXT_REDIRECT')
-
-    expect(db.deleted).toEqual([DECK])
-    expect(redirect).toHaveBeenCalledWith('/?refund=12')
-  })
-
-  it('redirects to the plain farm when there is no refund (no Woodshop)', async () => {
-    fakeSupabase({ userId: OWNER, decks: [oakDeck], uproot: { refund: 0 } })
-
-    await expect(deleteDeck({ deckId: DECK })).rejects.toThrow('NEXT_REDIRECT')
-
-    expect(redirect).toHaveBeenCalledWith('/')
-  })
-
-  it('lets the owner uproot the tree, refreshes the pages and redirects to the farm', async () => {
-    const db = fakeSupabase({ userId: OWNER, decks: [oakDeck] })
-
-    await expect(deleteDeck({ deckId: DECK })).rejects.toThrow('NEXT_REDIRECT')
-
-    expect(db.deleted).toEqual([DECK])
-    expect(db.rows).toHaveLength(0)
-    expect(vi.mocked(revalidatePath).mock.calls.map(([path]) => path)).toEqual(['/', '/deck/sinh-hoc', '/profile'])
-    expect(redirect).toHaveBeenCalledWith('/')
-  })
-
-  it('forbids anyone but the owner, and deletes nothing', async () => {
-    const db = fakeSupabase({ userId: STRANGER, decks: [oakDeck] })
-
-    const res = await deleteDeck({ deckId: DECK })
-
-    expect(res).toEqual({ success: false, error: { code: 'AUTH_FORBIDDEN', message: expect.any(String) } })
-    expect(db.deleted).toEqual([])
-    expect(redirect).not.toHaveBeenCalled()
-    expect(revalidatePath).not.toHaveBeenCalled()
-  })
-
-  it('returns DECK_NOT_FOUND for a deck that does not exist (or is hidden)', async () => {
-    const db = fakeSupabase({ userId: OWNER, decks: [oakDeck] })
-
-    const res = await deleteDeck({ deckId: MISSING })
-
-    expect(res.success).toBe(false)
-    if (!res.success) expect(res.error.code).toBe('DECK_NOT_FOUND')
-    expect(db.deleted).toEqual([])
-    expect(redirect).not.toHaveBeenCalled()
-  })
-
-  it('requires a session', async () => {
-    fakeSupabase({ userId: null, decks: [oakDeck] })
-
-    const res = await deleteDeck({ deckId: DECK })
-
-    expect(res.success).toBe(false)
-    if (!res.success) expect(res.error.code).toBe('AUTH_UNAUTHORIZED')
-  })
-
-  it('validates the id before touching the database', async () => {
-    const res = await deleteDeck({ deckId: 'not-a-uuid' })
-
-    expect(res.success).toBe(false)
-    if (!res.success) expect(res.error.code).toBe('VALIDATION_FAILED')
-    expect(createClient).not.toHaveBeenCalled()
-  })
-
-  it('does not report success when RLS silently deletes nothing', async () => {
-    const db = fakeSupabase({ userId: OWNER, decks: [oakDeck], refuseDelete: true })
-
-    const res = await deleteDeck({ deckId: DECK })
-
-    expect(res.success).toBe(false)
-    if (!res.success) expect(res.error.code).toBe('AUTH_FORBIDDEN')
-    expect(db.rows).toHaveLength(1)
-    expect(redirect).not.toHaveBeenCalled()
-  })
-})
-
-describe("chopDeck (the farm's 🪓 Chop)", () => {
+describe('chopDeck (the farm\'s 🪓 Chop and the deck page\'s Danger Zone)', () => {
   const tree = { id: DECK, user_id: OWNER, slug: 'hoa-hoc', tree_type: 'oak' }
 
   it('chops and answers with the refund and the purse, without redirecting or re-rendering the farm', async () => {
@@ -192,5 +109,16 @@ describe("chopDeck (the farm's 🪓 Chop)", () => {
     expect(await chopDeck({ deckId: 'nope' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
     fakeSupabase({ userId: null, decks: [tree] })
     expect(await chopDeck({ deckId: DECK })).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
+  })
+
+  it('validates the id before touching the database', async () => {
+    expect(await chopDeck({ deckId: 'not-a-uuid' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+    expect(createClient).not.toHaveBeenCalled()
+  })
+
+  it('does not report success when RLS silently deletes nothing (plain delete path)', async () => {
+    const db = fakeSupabase({ userId: OWNER, decks: [tree], refuseDelete: true })
+    expect(await chopDeck({ deckId: DECK })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
+    expect(db.rows).toHaveLength(1)
   })
 })

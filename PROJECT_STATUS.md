@@ -234,8 +234,8 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   to `/?refund=N`, rebuilding the whole home page. On the farm it now calls `chopDeck` (same uproot and
   Woodshop refund, answers `{ id, refund, totalCoins }`, no redirect or revalidate): the tree vanishes in a
   puff of dust, leaves and wood chips the moment you confirm, the refund is credited locally (same rule as
-  the database), and a refusal puts the tree back with a toast. The deck page's Danger Zone keeps
-  `deleteDeck` (it must leave the page it deletes). The dev Coin Shop no longer revalidates `/` either.
+  the database), and a refusal puts the tree back with a toast. The dev Coin Shop no longer revalidates
+  `/` either.
 - **Water and the popovers**: 💧 Water is a link to the drill (a practice round waters the tree, and the
   farm reads it fresh on return); the drill route has a `loading.tsx`, so the tap answers at once. There
   is no harvest action. Opening or closing a tree / item popover re-renders only the view's small parts,
@@ -252,6 +252,15 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   show ⏳ and can't be edited or deleted. A refusal rolls back: the old species with a toast, or the
   statement text back in its input (the importer reopens with the notes). The farm isn't mounted on the
   deck page, so nothing re-renders it; the next visit to `/` loads the new species fresh.
+- **Deleting, also instant**: deleting a statement (Workshop list, the mindmap's drawer and ⚙️ Manage
+  dialog) used to wait on `deleteKnowledgeItem` (which revalidated the deck page) and `router.refresh()`.
+  Now the confirmation closes at once and the deck draft's `removeItem` op takes the statement out of the
+  lists, the mindmap and the counts immediately; the delete runs in the background, and a refusal puts it
+  back with a toast. Deleting a whole tree from the deck page's Danger Zone used `deleteDeck`, which
+  revalidated `/`, `/deck/<slug>` and `/profile` and redirected on the server (rendering the home page
+  inside the action). It now shows "Uprooting…" at once, awaits `chopDeck` (one RPC, no revalidations),
+  and `router.replace`s to the farm, whose loading screen appears straight away; `deleteDeck` is gone.
+  Root-branch deletes still wait for the server and refresh (they reshape the tree).
 - **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
   latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
   the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
@@ -296,7 +305,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | perf(decks): optimistic species changes and statement adds on the deck page |
+| (pending) | perf(decks): instant statement deletes and a lighter tree uproot |
+| `44d3381` | perf(decks): optimistic species changes and statement adds on the deck page |
 | `5ce4ce4` | perf(garden): optimistic chop with refund credit, no page re-renders from farm actions |
 | `cf89bf0` | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
 | `38eac10` | feat(garden): move mode for farm trees and items |
@@ -320,5 +330,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 64 files, 570 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 64 files, 566 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

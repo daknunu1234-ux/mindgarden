@@ -91,3 +91,21 @@ describe('confirm / roll back', () => {
     expect(isPendingItemId('6f1c2a8e-2b1e-4c8a-9d3f-1a2b3c4d5e6f')).toBe(false)
   })
 })
+
+describe('removing a statement', () => {
+  it('takes it out of the mindmap tree, the editor list and the counts at once', () => {
+    const view = applyDeckOps(detail, editor, [{ key: 'r', kind: 'removeItem', itemId: 'i1' }])
+    expect(view.detail.tree[0].items).toEqual([])
+    expect(view.editor?.nodes[0].items).toEqual([])
+    expect(countDeckTree(view.detail.tree).itemCount).toBe(0)
+  })
+
+  it('removes a statement added earlier on this visit too, and a refusal brings it back', () => {
+    const ops: DeckOp[] = [
+      { key: 'a', kind: 'addItems', nodeId: 'r2', items: [{ tempId: 't', statement: 'Ty thể sản sinh ATP.' }], confirmed: [{ id: 'i9', statement: 'Ty thể sản sinh ATP.', drillable: true }] },
+      { key: 'r', kind: 'removeItem', itemId: 'i9' },
+    ]
+    expect(applyDeckOps(detail, editor, ops).editor?.nodes[1].items).toEqual([])
+    expect(applyDeckOps(detail, editor, dropOp(ops, 'r')).editor?.nodes[1].items.map((i) => i.id)).toEqual(['i9'])
+  })
+})

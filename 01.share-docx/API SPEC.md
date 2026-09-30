@@ -113,8 +113,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
-| Decks | `chopDeck` | Action/POST | The farm's 🪓 Chop: same uproot as `deleteDeck`, answers `{ id, refund, totalCoins }` (no redirect, no revalidate) | Required |
-| Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
+| Decks | `chopDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress, farm tile; Woodshop refund), answers `{ id, refund, totalCoins }` (no redirect, no revalidate). The farm's 🪓 Chop and the deck page's Danger Zone | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress. Owner only | Required (owner) |
@@ -440,29 +439,19 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (root not in this deck),
 //         ITEM_NOT_FOUND (statement not in this deck), NODE_NOT_EMPTY (deleteMindmapNode only), INTERNAL_ERROR
 ```
-- Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The deletes revalidate `/deck/<slug>`
+- `deleteKnowledgeItem` no longer revalidates: the deck page removes the statement at once (deck draft `removeItem`) and puts it back with a toast if this fails; its confirmation closes immediately
+- Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The other deletes revalidate `/deck/<slug>`
 - **Edit** (✏️): `EditStatementDialog` (textarea, live 5–500 counter, Save / Cancel) and `EditRootDialog` (rename via `updateMindmapNode`). The owner's ✏️ Edit / 🗑️ Delete sit in a **hover-to-reveal** group (`shared/components/game` `HoverActions`: hidden until hover or keyboard focus, always shown on touch screens) on mindmap root pills and statement cards, Tree Workshop rows, the root drawer's statements and the manage dialog's statements
 - UI (owner only, never rendered for visitors or contestants): 🗑️ on each statement and "🗑️ Delete Root" in the Tree Workshop list, the root drawer and the ✏️ manage dialog, each behind a confirmation ("Delete Statement"; "Delete Root Branch" with the number of statements and sub-roots it removes). A deleted root open in the drawer / manage dialog closes on the refresh
 - ⚠️ Mind Tournament totals: a contestant's stored `current_points` / `max_points` are recomputed on their next answer, so the boards show the old totals for them until then
 
-### `deleteDeck` (decks)
-```typescript
-// deleteDeck({ deckId }) → on success: revalidatePath('/', '/deck/<slug>', '/profile') then redirect('/'), or '/?refund=N'
-//                          when a Woodshop paid N coins back (the farm shows "🪚 Woodshop refund: +N 🪙")
-//                        → on failure: { success: false, error }
-// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner, or RLS deleted 0 rows), DECK_NOT_FOUND, INTERNAL_ERROR
-```
-- Chops through `uproot_deck()` (DATABASE.md "Farm Grid"): deletes the deck and, with a Woodshop on the farm, refunds `least(floor(statements × 0.25), 50)` 🪙 in the same transaction. Before migration `20260930000000` it falls back to one `DELETE FROM decks … RETURNING id` (no refund). `mindmap_nodes`, `knowledge_items`, `user_progress` and the tree's farm tile go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP is derived from progress, so it drops accordingly. 🪙 gold already earned is kept (`users.coins` is a stored balance)
-- Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
-- UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone (the farm uses `chopDeck` instead) and the owner's 🗑 badge in the farm plot popup
-
 ### `chopDeck` (decks)
 ```typescript
 // chopDeck({ deckId }) → { id, refund, totalCoins: number | null }   // totalCoins = the purse after the refund (null: no farm-grid migration, no refund)
-// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner, or RLS deleted 0 rows), DECK_NOT_FOUND, INTERNAL_ERROR
 ```
-- The same `removeDeck` → `uproot_deck()` as `deleteDeck`, but returns instead of redirecting and never calls `revalidatePath` (in a Server Action that re-renders the whole farm page before answering). The farm has already removed the tree (with a puff), credited the refund (`calculateWoodshopRefund`, the same rule) and rolls back on error; it settles the purse on `totalCoins`
-- UI: `DeleteDeckDialog` with `onChop` (farm mode), composed in `app/_components/FarmWorld.tsx`: confirming hands `chopDeck` to the farm's chop and closes. `deleteDeck` stays for the deck page's Danger Zone, which has to leave the page it deletes
+- `removeDeck` → `uproot_deck()` (DATABASE.md "Farm Grid"): deletes the deck and, with a Woodshop on the farm, refunds `least(floor(statements × 0.25), 50)` 🪙 in the same transaction (before that migration, a plain delete with no refund). Returns instead of redirecting and never calls `revalidatePath` (in a Server Action that re-renders the whole farm page before answering). The farm has already removed the tree (with a puff), credited the refund (`calculateWoodshopRefund`, the same rule) and rolls back on error; it settles the purse on `totalCoins`
+- UI: `DeleteDeckDialog` with `onChop` (farm mode), composed in `app/_components/FarmWorld.tsx`: confirming hands `chopDeck` to the farm's chop and closes. On the deck page (Danger Zone, type the tree's name to confirm) the dialog turns to "Uprooting…" at once, awaits `chopDeck`, then `router.replace('/')` (or `/?refund=N`): the farm's `loading.tsx` shows straight away and Back never returns to the deleted tree. (`deleteDeck`, which revalidated `/`, `/deck/<slug>` and `/profile` and redirected on the server, is gone.)
 
 ### `getFarmPlacements` / `placeFarmItem` / `moveFarmPlacement` / `removeFarmPlacement` (garden)
 ```typescript

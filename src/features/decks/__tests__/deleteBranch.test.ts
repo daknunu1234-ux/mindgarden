@@ -186,7 +186,8 @@ describe('deleteKnowledgeItem', () => {
     expect(db.knowledge_items).toHaveLength(5)
     expect(db.user_progress).toHaveLength(3)
     expect(db.deck_tournament_item_progress).toHaveLength(2)
-    expect(revalidatePath).toHaveBeenCalledWith('/deck/sinh-hoc')
+    // No page re-render: the deck page already removed it (deck draft).
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('blocks non-owners: AUTH_FORBIDDEN and nothing is deleted', async () => {

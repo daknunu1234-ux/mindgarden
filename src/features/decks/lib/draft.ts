@@ -13,6 +13,8 @@ export type DeckOp =
   // New statements under one root. `confirmed` is set once the server answers: the real ids and
   // drillable flags (statements it skipped as duplicates simply aren't in it).
   | { key: string; kind: 'addItems'; nodeId: string; items: DraftItem[]; confirmed?: ConfirmedItem[] }
+  // A statement deleted: gone from the mindmap tree, the editor list and the counts.
+  | { key: string; kind: 'removeItem'; itemId: string }
 
 // Statement ids the server hasn't confirmed yet (they can't be edited, deleted or drilled until then).
 export const PENDING_ITEM_PREFIX = 'pending-item-'
@@ -22,6 +24,10 @@ export const isPendingItemId = (id: string): boolean => id.startsWith(PENDING_IT
 function opItems(op: Extract<DeckOp, { kind: 'addItems' }>): (EditorItem & { pending: boolean })[] {
   if (op.confirmed) return op.confirmed.map((c) => ({ ...c, pending: false }))
   return op.items.map((i) => ({ id: i.tempId, statement: i.statement, drillable: false, pending: true }))
+}
+
+function removeFromTree(nodes: DeckTreeNode[], itemId: string): DeckTreeNode[] {
+  return nodes.map((n) => ({ ...n, items: n.items.filter((i) => i.id !== itemId), children: removeFromTree(n.children, itemId) }))
 }
 
 function addToTree(nodes: DeckTreeNode[], nodeId: string, items: { id: string }[]): DeckTreeNode[] {
@@ -49,6 +55,11 @@ export function applyDeckOps(detail: DeckDetail, editor: DeckEditor | null, ops:
   for (const op of ops) {
     if (op.kind === 'species') {
       treeType = op.treeType
+      continue
+    }
+    if (op.kind === 'removeItem') {
+      tree = removeFromTree(tree, op.itemId)
+      nodes = nodes?.map((n) => ({ ...n, items: n.items.filter((i) => i.id !== op.itemId) })) ?? null
       continue
     }
     const items = opItems(op)

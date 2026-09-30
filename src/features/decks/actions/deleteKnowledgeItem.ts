@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { DeleteKnowledgeItemDto } from '../dto/ManageRootsDto'
@@ -21,6 +20,7 @@ export async function deleteKnowledgeItem(input: unknown): Promise<ActionResult<
 
   const res = await removeKnowledgeItem(supabase, user.id, parsed.data)
   if (!res.success) return res
-  revalidatePath(`/deck/${res.data.slug}`)
+  // No revalidatePath: in a Server Action it re-renders the whole deck page before answering. The page
+  // has already removed the statement (deck draft) and puts it back if this fails.
   return ok({ id: res.data.id })
 }

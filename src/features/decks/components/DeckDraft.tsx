@@ -5,6 +5,7 @@ import { useToast } from '@/shared/stores/ToastProvider'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createKnowledgeItems, type BulkImportResult } from '../actions/createKnowledgeItems'
+import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { updateDeck } from '../actions/updateDeck'
 import { applyDeckOps, confirmItems, dropOp, PENDING_ITEM_PREFIX, type DeckDraftView, type DeckOp } from '../lib/draft'
 import type { DeckDetail, DeckEditor } from '../types'
@@ -19,6 +20,8 @@ export type DeckDraftActions = {
   addStatement: (nodeId: string, statement: string) => Promise<AddResult>
   // Show every statement at once; resolves with what the server created and skipped.
   addStatements: (deckId: string, nodeId: string, statements: string[]) => Promise<BulkResult>
+  // Remove the statement at once; deleteKnowledgeItem in the background, put back with a toast on error.
+  removeStatement: (statement: { id: string; text: string }) => void
   // A statement still waiting for its server id (no edit / delete until it has one).
   isPending: (itemId: string) => boolean
 }
@@ -35,7 +38,8 @@ export function useDeckDraftActions(): DeckDraftActions {
   return actions
 }
 
-// Owner edits on the deck page, optimistic (lib/draft.ts): a species change or new statements show at
+// Owner edits on the deck page, optimistic (lib/draft.ts): a species change, new statements or a deleted
+// statement show at
 // 0 ms across the whole page (tree sprite, species ribbon, counts, size tier, mindmap, Workshop list)
 // and sync in the background, with no page refresh; a refusal rolls back with a toast.
 export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { view: DeckDraftView; actions: DeckDraftActions } {
@@ -86,6 +90,15 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
         }
         edit((l) => confirmItems(l, key, res.data.created))
         return { success: true, data: res.data }
+      },
+      removeStatement: ({ id, text }) => {
+        const key = `d${nextKey.current++}`
+        edit((l) => [...l, { key, kind: 'removeItem', itemId: id }])
+        void deleteKnowledgeItem({ deckId: detail.deck.id, itemId: id }).then((res) => {
+          if (res.success) return
+          edit((l) => dropOp(l, key))
+          toast({ message: `Could not delete “${text}”: ${res.error.message}. It's back in the list.`, icon: '⚠️', tone: 'farewell' })
+        })
       },
       isPending: (itemId) => current.current.pendingIds.has(itemId),
     }
