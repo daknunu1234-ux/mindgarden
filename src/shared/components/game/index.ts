@@ -7,6 +7,7 @@ export { GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger } from './Game
 export { GAME_FIELD, GameInput, GameLabel, GameTextarea } from './GameField'
 export { ActionDock, DOCK_BUTTON, DockOrb, LevelCrest, PodShadow, ResourcePill } from './GameHUD'
 export { GameIcon, type GameIconName } from './GameIcon'
+export { HOVER_REVEAL, HoverActionButton, HoverActions } from './HoverActions'
 export { ParticleBurst } from './ParticleBurst'
 export { CoinShopModal } from './CoinShopModal'
 export { gaugePercent, notchOffsets } from './gauge'

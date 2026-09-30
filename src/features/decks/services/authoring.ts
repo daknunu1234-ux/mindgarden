@@ -13,7 +13,13 @@ import type { CreateMindmapNodeInput } from '../dto/CreateMindmapNodeDto'
 import type { SetTournamentOpenInput } from '../dto/SetTournamentOpenDto'
 import type { DeleteDeckInput } from '../dto/DeleteDeckDto'
 import type { UpdateDeckInput } from '../dto/UpdateDeckDto'
-import type { DeleteKnowledgeItemInput, DeleteMindmapNodeInput, DeleteRootBranchInput, UpdateMindmapNodeInput } from '../dto/ManageRootsDto'
+import type {
+  DeleteKnowledgeItemInput,
+  DeleteMindmapNodeInput,
+  DeleteRootBranchInput,
+  UpdateKnowledgeItemInput,
+  UpdateMindmapNodeInput,
+} from '../dto/ManageRootsDto'
 import { branchNodeIds } from '../lib/branch'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
 import { answersByNode, readAnswersForNodes } from './answers'
@@ -527,6 +533,41 @@ export async function removeKnowledgeItem(
   }
   if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can delete statements')
   return ok({ id: itemId, slug: owner.data.slug })
+}
+
+// Edits a statement's text (correct_stmt). Owner only; the statement must be in `deckId`. The
+// trap rules stay { negate: true } style defaults, so traps are rebuilt from the new text on the
+// next round. Players' progress on the statement is kept. Returns whether it is drillable with its
+// root's other statements as siblings (answers.ts, authorized by the owner check).
+export async function editKnowledgeItem(
+  supabase: Client,
+  userId: string,
+  { deckId, itemId, text }: UpdateKnowledgeItemInput,
+): Promise<ActionResult<{ id: string; statement: string; drillable: boolean; slug: string }>> {
+  const { data: item, error: itemError } = await supabase.from('knowledge_items').select('id, node_id').eq('id', itemId).maybeSingle()
+  if (itemError) {
+    console.error('[decks] editKnowledgeItem lookup failed', itemError)
+    return fail('INTERNAL_ERROR', 'Could not update the statement')
+  }
+  if (!item) return fail('ITEM_NOT_FOUND', 'Statement not found')
+
+  const node = await findNodeDeck(supabase, item.node_id)
+  if (!node.success) return node
+  if (node.data.deckId !== deckId) return fail('ITEM_NOT_FOUND', 'Statement not found in this tree')
+  const owner = await checkDeckOwner(supabase, deckId, userId)
+  if (!owner.success) return owner
+
+  // RETURNING only id: writing correct_stmt is allowed, reading it back is not. 0 rows = RLS refused.
+  const { data, error } = await supabase.from('knowledge_items').update({ correct_stmt: text }).eq('id', itemId).select('id')
+  if (error) {
+    console.error('[decks] editKnowledgeItem failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not update the statement')
+  }
+  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can edit statements')
+
+  const siblings = await readAnswersForNodes(supabase, [item.node_id])
+  const others = siblings.success ? siblings.data.filter((s) => s.itemId !== itemId).map((s) => s.correctStmt) : []
+  return ok({ id: itemId, statement: text, drillable: isDrillable(text, DEFAULT_TRAP_RULES, others), slug: owner.data.slug })
 }
 
 export type RemovedBranch = { rootId: string; slug: string; deletedStatements: number; deletedSubRoots: number }

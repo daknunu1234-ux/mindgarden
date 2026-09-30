@@ -6,12 +6,16 @@ import {
   branchImpact,
   DeleteRootDialog,
   DeleteStatementDialog,
+  EditRootDialog,
+  EditStatementDialog,
   NodeManageDialog,
   type DeckEditorData,
   type DeckTreeNode,
   type ManagedNode,
   type RootToDelete,
+  type RootToEdit,
   type StatementToDelete,
+  type StatementToEdit,
 } from '@/features/decks'
 import { useSessionLaunch } from '@/features/drill'
 import { RootMap, type ItemLevels, type MindmapOwnerTools, type MindmapPractice } from '@/features/mindmap'
@@ -50,6 +54,8 @@ export function DeckRootsPanel({
   // Owner deletes from the root drawer (decks' confirmation dialogs). A deleted root that is open in
   // the drawer or the manage dialog closes by itself after the refresh (its id no longer resolves).
   const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
+  const [editingStatement, setEditingStatement] = useState<StatementToEdit | null>(null)
+  const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
   const practice: MindmapPractice | null = useMemo(
@@ -84,7 +90,10 @@ export function DeckRootsPanel({
   }, [manageId, editor, childCount, tree])
 
   const ownerTools: MindmapOwnerTools | undefined = useMemo(
-    () => (editor ? { onDeleteStatement: setDeletingStatement, onDeleteRoot: setDeletingRootId } : undefined),
+    () =>
+      editor
+        ? { onEditStatement: setEditingStatement, onDeleteStatement: setDeletingStatement, onEditRoot: setEditingRoot, onDeleteRoot: setDeletingRootId }
+        : undefined,
     [editor],
   )
   const rootToDelete: RootToDelete | null = useMemo(() => {
@@ -112,6 +121,8 @@ export function DeckRootsPanel({
         <>
           <NodeManageDialog deckId={deckId} node={managed} onOpenChange={(open) => !open && setManageId(null)} />
           <AddRootDialog deckId={deckId} open={addRootOpen} onOpenChange={setAddRootOpen} />
+          <EditStatementDialog deckId={deckId} statement={editingStatement} onClose={() => setEditingStatement(null)} />
+          <EditRootDialog root={editingRoot} onClose={() => setEditingRoot(null)} />
           <DeleteStatementDialog deckId={deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
           <DeleteRootDialog deckId={deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
         </>

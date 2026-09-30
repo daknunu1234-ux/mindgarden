@@ -109,6 +109,7 @@ A casual game running as a web app, not a web app with gamification bolted on. P
 | `GameProgressBar` (`segments`, `caption`) | Capsule gauges: XP, growth, round progress, mastery 0–5 (5 notches) |
 | `LevelCrest`, `ResourcePill`, `ActionDock` + `DockOrb` + `DOCK_BUTTON` | Floating HUD (top-left crest, top-right 🔥 🪙 💎, bottom-centre dock) |
 | `KeyChip`, `ParticleBurst` | Hotkey caps, level-up bursts |
+| `HoverActions` + `HoverActionButton`, `HOVER_REVEAL` | Owner tools (✏️ Edit, 🗑️ Delete…) that stay hidden until their `group` (card, pill, row) is hovered or keyboard-focused; always visible on touch screens (`@media (hover: none)`) |
 
 - Display font: Baloo 2 (`font-game`, Vietnamese subset); body stays Geist.
 - Motion: `mg-*` keyframes in `app/globals.css` (`mg-spring`, `mg-land`, `mg-wobble`, `mg-shimmer`, `mg-pour`, `mg-stream`, `mg-burst`), all off under `prefers-reduced-motion`.

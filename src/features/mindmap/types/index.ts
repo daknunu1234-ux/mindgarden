@@ -16,10 +16,13 @@ export type MindmapPractice = {
   onPractice: (request: { rootId: string; review?: boolean }) => void
 }
 
-// Owner-only delete hooks for the root drawer (the page opens decks' confirmation dialogs; the
-// mindmap never deletes anything itself). Absent for everyone else.
+// Owner-only ✏️ Edit / 🗑️ Delete hooks for statements and roots (hover tools on the canvas and in
+// the root drawer). The page opens decks' dialogs; the mindmap never edits or deletes anything
+// itself. Absent for everyone else, so visitors and contestants never see the tools.
 export type MindmapOwnerTools = {
+  onEditStatement: (statement: { id: string; text: string }) => void
   onDeleteStatement: (statement: { id: string; text: string }) => void
+  onEditRoot: (root: { id: string; title: string }) => void
   onDeleteRoot: (rootId: string) => void
 }
 

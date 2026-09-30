@@ -14,6 +14,8 @@ import {
   GameTabsContent,
   GameTabsList,
   GameTabsTrigger,
+  HoverActionButton,
+  HoverActions,
 } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
@@ -21,6 +23,7 @@ import { createMindmapNode } from '../actions/createMindmapNode'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { DeleteRootDialog, DeleteStatementDialog, type StatementToDelete } from './DeleteDialogs'
+import { EditStatementDialog, type StatementToEdit } from './EditDialogs'
 import type { EditorItem } from '../types'
 
 export type ManagedNode = {
@@ -69,6 +72,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
   const [notice, setNotice] = useState<Notice>(null)
   // Confirmation dialogs (DeleteDialogs): a statement, or this whole root branch.
   const [deleting, setDeleting] = useState<StatementToDelete | null>(null)
+  const [editing, setEditing] = useState<StatementToEdit | null>(null)
   const [deletingRoot, setDeletingRoot] = useState(false)
 
   // Run an action, show its result, refresh the page data in place.
@@ -152,7 +156,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
             <ul className="max-h-64 space-y-2 overflow-y-auto pr-1 pb-1">
               {node.statements.map((item, i) => (
                 <li key={item.id}>
-                  <GameSlab className="flex items-start gap-2 px-3 py-2 text-sm">
+                  <GameSlab className="group flex items-start gap-2 px-3 py-2 text-sm">
                     <span aria-hidden className="pt-0.5" title={item.drillable ? 'Ready to drill' : 'Not drillable yet'}>
                       {item.drillable ? '✅' : '💧'}
                     </span>
@@ -160,15 +164,10 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
                       <span className="font-game text-xs font-bold text-amber-900/50">#{i + 1} </span>
                       {item.statement}
                     </span>
-                    <GameButton
-                      tone="cream"
-                      size="icon-sm"
-                      aria-label={`Delete statement ${i + 1}`}
-                      title="Delete statement"
-                      onClick={() => setDeleting({ id: item.id, text: item.statement })}
-                    >
-                      <Trash2 className="size-4" />
-                    </GameButton>
+                    <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
+                      <HoverActionButton icon="✏️" label={`Edit statement ${i + 1}`} tone="edit" onClick={() => setEditing({ id: item.id, text: item.statement })} />
+                      <HoverActionButton icon="🗑️" label={`Delete statement ${i + 1}`} tone="delete" onClick={() => setDeleting({ id: item.id, text: item.statement })} />
+                    </HoverActions>
                   </GameSlab>
                 </li>
               ))}
@@ -234,6 +233,11 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
         </GameButton>
       </div>
 
+      <EditStatementDialog
+        deckId={deckId}
+        statement={editing}
+        onClose={() => setEditing(null)}
+      />
       <DeleteStatementDialog
         deckId={deckId}
         statement={deleting}

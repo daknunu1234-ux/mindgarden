@@ -287,6 +287,16 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                         card={card}
                         level={masteryOf(card) ?? 0}
                         statement={card.itemId ? statements?.[card.itemId] : undefined}
+                        onEdit={
+                          ownerTools && card.itemId
+                            ? () => ownerTools.onEditStatement({ id: card.itemId!, text: statements?.[card.itemId!] ?? card.title })
+                            : undefined
+                        }
+                        onDelete={
+                          ownerTools && card.itemId
+                            ? () => ownerTools.onDeleteStatement({ id: card.itemId!, text: statements?.[card.itemId!] ?? card.title })
+                            : undefined
+                        }
                       />
                     ) : (
                       <NodePill
@@ -297,6 +307,8 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                         statementCount={full ? branchItemIds(full).length : 0}
                         onInspect={() => inspect(card.nodeId)}
                         onManage={onManage ? () => onManage(card.nodeId) : undefined}
+                        onEdit={ownerTools ? () => ownerTools.onEditRoot({ id: card.nodeId, title: card.title }) : undefined}
+                        onDelete={ownerTools ? () => ownerTools.onDeleteRoot(card.nodeId) : undefined}
                         // Rounds start from top-level roots only (never from a statement card).
                         onPractice={practice && card.kind === 'category' ? () => practice.onPractice({ rootId: card.nodeId }) : undefined}
                         practiceMode={practice?.mode}

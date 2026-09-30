@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { GAME_FIELD, GameButton, GameInput, GameLabel, GameSlab } from '@/shared/components/game'
+import { GAME_FIELD, GameButton, GameInput, GameLabel, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
@@ -10,6 +10,7 @@ import { updateDeck } from '../actions/updateDeck'
 import { flatBranchImpact } from '../lib/branch'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './DeleteDialogs'
+import { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './EditDialogs'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
 
@@ -21,7 +22,9 @@ type DeckEditorProps = { editor: DeckEditorData }
 // Owner-only: add roots (optionally under another root) and plain-text statements.
 // Trap rules are never shown; items get { negate: true } on the server.
 function DeckEditor({ editor }: DeckEditorProps) {
-  // Confirmation dialogs for 🗑️ a statement / "Delete Root" (a root with its whole branch).
+  // Hover tools on each root row and statement: ✏️ Edit / 🗑️ Delete (a root takes its whole branch).
+  const [editingStatement, setEditingStatement] = useState<StatementToEdit | null>(null)
+  const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
   const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const rootNode = deletingRootId ? editor.nodes.find((n) => n.id === deletingRootId) : undefined
@@ -36,11 +39,20 @@ function DeckEditor({ editor }: DeckEditorProps) {
         <ul className="space-y-4">
           {editor.nodes.map((node) => (
             <li key={node.id} style={{ marginLeft: `${Math.min(node.depth, 4) * 1.25}rem` }}>
-              <NodeEditor deckId={editor.deckId} node={node} onDeleteStatement={setDeletingStatement} onDeleteRoot={() => setDeletingRootId(node.id)} />
+              <NodeEditor
+                deckId={editor.deckId}
+                node={node}
+                onEditStatement={setEditingStatement}
+                onDeleteStatement={setDeletingStatement}
+                onEditRoot={() => setEditingRoot({ id: node.id, title: node.title })}
+                onDeleteRoot={() => setDeletingRootId(node.id)}
+              />
             </li>
           ))}
         </ul>
       )}
+      <EditStatementDialog deckId={editor.deckId} statement={editingStatement} onClose={() => setEditingStatement(null)} />
+      <EditRootDialog root={editingRoot} onClose={() => setEditingRoot(null)} />
       <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
       <DeleteRootDialog deckId={editor.deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
     </div>
@@ -133,11 +145,13 @@ function AddRootForm({ deckId, nodes }: { deckId: string; nodes: EditorNode[] })
 type NodeEditorProps = {
   deckId: string
   node: EditorNode
+  onEditStatement: (statement: StatementToEdit) => void
   onDeleteStatement: (statement: StatementToDelete) => void
+  onEditRoot: () => void
   onDeleteRoot: () => void
 }
 
-function NodeEditor({ deckId, node, onDeleteStatement, onDeleteRoot }: NodeEditorProps) {
+function NodeEditor({ deckId, node, onEditStatement, onDeleteStatement, onEditRoot, onDeleteRoot }: NodeEditorProps) {
   const router = useRouter()
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<{ tone: 'amber' | 'gold'; text: string } | null>(null)
@@ -158,17 +172,19 @@ function NodeEditor({ deckId, node, onDeleteStatement, onDeleteRoot }: NodeEdito
 
   return (
     <GameSlab tone="leaf" className="p-4 text-emerald-950">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Hover (or focus / touch) reveals the root's ✏️ Edit and 🗑️ Delete. */}
+      <div className="group flex min-h-8 flex-wrap items-center justify-between gap-2">
         <p className="font-game text-lg font-bold">🌱 {node.title}</p>
-        <GameButton type="button" tone="danger" size="sm" onClick={onDeleteRoot} aria-label={`Delete root ${node.title}`}>
-          🗑️ Delete Root
-        </GameButton>
+        <HoverActions label={`Tools for root ${node.title}`}>
+          <HoverActionButton icon="✏️" text="Edit" label={`Edit root ${node.title}`} tone="edit" onClick={onEditRoot} />
+          <HoverActionButton icon="🗑️" text="Delete" label={`Delete root ${node.title}`} tone="delete" onClick={onDeleteRoot} />
+        </HoverActions>
       </div>
 
       {node.items.length > 0 && (
         <ul className="mt-2 space-y-1 text-sm">
           {node.items.map((item) => (
-            <li key={item.id} className="flex items-start gap-2">
+            <li key={item.id} className="group flex items-start gap-2 rounded-lg px-1 py-0.5 hover:bg-white/50">
               <span aria-hidden className="pt-0.5">
                 {item.drillable ? '✅' : '💧'}
               </span>
@@ -176,15 +192,10 @@ function NodeEditor({ deckId, node, onDeleteStatement, onDeleteRoot }: NodeEdito
                 {item.statement}
                 {!item.drillable && <span className="sr-only"> (not drillable yet)</span>}
               </span>
-              <button
-                type="button"
-                onClick={() => onDeleteStatement({ id: item.id, text: item.statement })}
-                aria-label="Delete statement"
-                title="Delete statement"
-                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-xs hover:bg-red-100 focus-visible:ring-4 focus-visible:ring-red-300 focus-visible:outline-none"
-              >
-                🗑️
-              </button>
+              <HoverActions label="Statement tools" className="shrink-0">
+                <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEditStatement({ id: item.id, text: item.statement })} />
+                <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
+              </HoverActions>
             </li>
           ))}
         </ul>

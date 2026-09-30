@@ -1,4 +1,5 @@
 import { isMastered, MASTERY_NAMES, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
+import { HoverActionButton, HoverActions } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
 import { isMightyRoot } from '../hooks/nodeMastery'
 import type { MindmapCard } from '../hooks/mindmapLayout'
@@ -22,8 +23,10 @@ type PillProps = {
   // Statements in the whole branch (shown on the inspect button).
   statementCount: number
   onInspect: () => void
-  // Owners only: open the manage dialog for this root.
+  // Owners only (hover tools): ✏️ edit the title, 🗑️ delete the branch, ⚙️ the full manage dialog.
   onManage?: () => void
+  onEdit?: () => void
+  onDelete?: () => void
   // Top-level roots only: start a round on this root (the page opens the launch pop-up).
   // 'drill' = the owner waters it; 'compete' = a Mind Tournament contestant.
   onPractice?: () => void
@@ -44,6 +47,8 @@ export function NodePill({
   statementCount,
   onInspect,
   onManage,
+  onEdit,
+  onDelete,
   onPractice,
   practiceMode = 'drill',
   inspected = false,
@@ -53,7 +58,7 @@ export function NodePill({
   return (
     <div
       className={cn(
-        'flex size-full items-center gap-2 rounded-full border-2 pr-1.5 pl-1 shadow-sm transition-[border-color,box-shadow,background-color] duration-300',
+        'group relative flex size-full items-center gap-2 rounded-full border-2 pr-1.5 pl-1 shadow-sm transition-[border-color,box-shadow,background-color] duration-300',
         mighty ? GOLD_AURA : category ? 'border-amber-800/40 bg-amber-50' : 'border-amber-800/25 bg-white',
         inspected && 'ring-4 ring-sky-300/70',
       )}
@@ -111,27 +116,25 @@ export function NodePill({
           {practiceMode === 'compete' ? '⚔️ Compete' : '💧 Drill'}
         </button>
       )}
-      {onManage && (
-        <button
-          type="button"
-          onClick={onManage}
-          aria-label={`Manage ${card.title}`}
-          title="Rename, add or remove"
-          className={cn(PILL_BUTTON, 'w-7 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100')}
-        >
-          <span aria-hidden>✏️</span>
-        </button>
+      {/* Owner tools float over the pill's corner and appear on hover / focus (always on touch). */}
+      {(onEdit || onDelete || onManage) && (
+        <HoverActions placement="corner" label={`Tools for root ${card.title}`}>
+          {onEdit && <HoverActionButton icon="✏️" text="Edit" label={`Edit root ${card.title}`} tone="edit" onClick={onEdit} />}
+          {onDelete && <HoverActionButton icon="🗑️" text="Delete" label={`Delete root ${card.title}`} tone="delete" onClick={onDelete} />}
+          {onManage && <HoverActionButton icon="⚙️" label={`Manage ${card.title}: add statements and sub-branches`} onClick={onManage} />}
+        </HoverActions>
       )}
     </div>
   )
 }
 
 // statement = the true text (owner and visitors); "Statement n" only when it is missing. No practice
-// button here: rounds start from the root (pill or inspector).
-type StatementProps = { card: MindmapCard; level: number; statement?: string }
+// button here: rounds start from the root (pill or inspector). onEdit / onDelete: the owner's hover
+// tools (absent for everyone else).
+type StatementProps = { card: MindmapCard; level: number; statement?: string; onEdit?: () => void; onDelete?: () => void }
 
 // Statement (knowledge item) card: the statement and its mastery.
-export function StatementCard({ card, level, statement }: StatementProps) {
+export function StatementCard({ card, level, statement, onEdit, onDelete }: StatementProps) {
   const lvl = toMasteryLevel(Math.round(level))
   const mighty = isMastered(lvl)
   // card.title is the layout's fallback (the prompt, or "Statement n"); a blank text never wins over it.
@@ -140,7 +143,7 @@ export function StatementCard({ card, level, statement }: StatementProps) {
     <article
       aria-label={`${card.title}: ${MASTERY_NAMES[lvl]}, mastery ${lvl} of ${MAX_MASTERY}`}
       className={cn(
-        'flex size-full flex-col justify-between rounded-xl border-2 px-3 py-2 shadow-sm transition-[border-color,box-shadow,background-color] duration-300',
+        'group relative flex size-full flex-col justify-between rounded-xl border-2 px-3 py-2 shadow-sm transition-[border-color,box-shadow,background-color] duration-300',
         mighty ? GOLD_AURA : 'border-amber-800/15 bg-white/95',
       )}
     >
@@ -166,6 +169,12 @@ export function StatementCard({ card, level, statement }: StatementProps) {
           </span>
         </span>
       </div>
+      {(onEdit || onDelete) && (
+        <HoverActions placement="corner" label="Statement tools">
+          {onEdit && <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={onEdit} />}
+          {onDelete && <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={onDelete} />}
+        </HoverActions>
+      )}
     </article>
   )
 }

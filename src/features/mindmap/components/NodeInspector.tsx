@@ -1,6 +1,6 @@
 'use client'
 
-import { GameButton, GameProgressBar } from '@/shared/components/game'
+import { GameButton, GameProgressBar, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/shared/components/ui/sheet'
 import { isMastered, MASTERY_NAMES, masteryFraction, MAX_MASTERY, toMasteryLevel } from '@/shared/lib/mastery'
 import { cn } from '@/shared/utils/cn'
@@ -122,9 +122,14 @@ function InspectorBody({
             </GameButton>
           )}
           {ownerTools && (
-            <GameButton tone="danger" onClick={() => ownerTools.onDeleteRoot(node.id)}>
-              🗑️ Delete Root
-            </GameButton>
+            <>
+              <GameButton tone="cream" onClick={() => ownerTools.onEditRoot({ id: node.id, title: node.title })}>
+                ✏️ Edit
+              </GameButton>
+              <GameButton tone="danger" onClick={() => ownerTools.onDeleteRoot(node.id)}>
+                🗑️ Delete Root
+              </GameButton>
+            </>
           )}
         </div>
       </SheetHeader>
@@ -143,7 +148,7 @@ function InspectorBody({
                 <li
                   key={item.id}
                   className={cn(
-                    'rounded-2xl border-2 px-3 py-2.5',
+                    'group rounded-2xl border-2 px-3 py-2.5',
                     isMastered(lvl)
                       ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_3px_0_#ca8a04,0_0_14px_rgba(234,179,8,0.35)]'
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
@@ -152,15 +157,20 @@ function InspectorBody({
                   <div className="flex items-start gap-2">
                     <p className="min-w-0 flex-1 text-sm font-semibold text-stone-800">{statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)}</p>
                     {ownerTools && (
-                      <button
-                        type="button"
-                        onClick={() => ownerTools.onDeleteStatement({ id: item.id, text: statementLabel(statements?.[item.id], item.prompt, node.title, i + 1) })}
-                        aria-label={`Delete statement ${i + 1}`}
-                        title="Delete statement"
-                        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-xs hover:bg-red-100 focus-visible:ring-4 focus-visible:ring-red-300 focus-visible:outline-none"
-                      >
-                        🗑️
-                      </button>
+                      <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
+                        <HoverActionButton
+                          icon="✏️"
+                          label={`Edit statement ${i + 1}`}
+                          tone="edit"
+                          onClick={() => ownerTools.onEditStatement({ id: item.id, text: statements?.[item.id] ?? '' })}
+                        />
+                        <HoverActionButton
+                          icon="🗑️"
+                          label={`Delete statement ${i + 1}`}
+                          tone="delete"
+                          onClick={() => ownerTools.onDeleteStatement({ id: item.id, text: statementLabel(statements?.[item.id], item.prompt, node.title, i + 1) })}
+                        />
+                      </HoverActions>
                     )}
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">

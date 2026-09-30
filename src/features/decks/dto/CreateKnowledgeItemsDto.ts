@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { cleanStatement, LATEX_COMMAND, MAX_BULK_STATEMENTS, MAX_STATEMENT_LENGTH, MIN_BULK_STATEMENT_LENGTH } from '../lib/bulkStatements'
 
-// One pasted statement: cleaned like the preview (NFC, no invisible characters, single spaces),
-// then 5–500 characters of plain text.
-const BulkStatement = z
+// One statement (pasted in bulk or edited): cleaned like the preview (NFC, no invisible characters,
+// single spaces), then 5–500 characters of plain text.
+export const StatementTextDto = z
   .string()
   .max(5_000, 'A statement is far too long')
   .transform(cleanStatement)
@@ -16,7 +16,7 @@ export const CreateKnowledgeItemsDto = z.object({
   deckId: z.uuid('Invalid tree'),
   rootId: z.uuid('Invalid root'),
   statements: z
-    .array(BulkStatement)
+    .array(StatementTextDto)
     .min(1, 'Paste at least one statement')
     .max(MAX_BULK_STATEMENTS, `Import at most ${MAX_BULK_STATEMENTS} statements at a time`),
 })
