@@ -12,6 +12,7 @@ vi.mock('next/navigation', () => ({
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/shared/lib/supabase/server'
+import { chopDeck } from '../actions/chopDeck'
 import { deleteDeck } from '../actions/deleteDeck'
 
 const OWNER = '11111111-1111-4111-8111-111111111111'
@@ -163,5 +164,33 @@ describe('deleteDeck', () => {
     if (!res.success) expect(res.error.code).toBe('AUTH_FORBIDDEN')
     expect(db.rows).toHaveLength(1)
     expect(redirect).not.toHaveBeenCalled()
+  })
+})
+
+describe("chopDeck (the farm's 🪓 Chop)", () => {
+  const tree = { id: DECK, user_id: OWNER, slug: 'hoa-hoc', tree_type: 'oak' }
+
+  it('chops and answers with the refund and the purse, without redirecting or re-rendering the farm', async () => {
+    const { deleted } = fakeSupabase({ userId: OWNER, decks: [tree], uproot: { refund: 12 } })
+    expect(await chopDeck({ deckId: DECK })).toEqual({ success: true, data: { id: DECK, refund: 12, totalCoins: 112 } })
+    expect(deleted).toEqual([DECK])
+    expect(redirect).not.toHaveBeenCalled()
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('reports no purse before the farm-grid migration (plain delete, no refund)', async () => {
+    fakeSupabase({ userId: OWNER, decks: [tree] })
+    expect(await chopDeck({ deckId: DECK })).toEqual({ success: true, data: { id: DECK, refund: 0, totalCoins: null } })
+  })
+
+  it('refuses strangers, missing trees, bad ids and signed-out players, deleting nothing', async () => {
+    const stranger = fakeSupabase({ userId: STRANGER, decks: [tree], uproot: { refund: 5 } })
+    expect(await chopDeck({ deckId: DECK })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
+    expect(stranger.deleted).toEqual([])
+    fakeSupabase({ userId: OWNER, decks: [tree] })
+    expect(await chopDeck({ deckId: MISSING })).toMatchObject({ success: false, error: { code: 'DECK_NOT_FOUND' } })
+    expect(await chopDeck({ deckId: 'nope' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+    fakeSupabase({ userId: null, decks: [tree] })
+    expect(await chopDeck({ deckId: DECK })).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
   })
 })

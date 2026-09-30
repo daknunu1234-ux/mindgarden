@@ -12,22 +12,26 @@ type DeleteDeckDialogProps = {
   deckTitle: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  // Farm mode: confirming hands the chop to the farm (it removes the tree at once, runs chopDeck in the
+  // background and rolls back on error) and closes; without it the dialog deletes and redirects.
+  onChop?: () => void
 }
 
 // Danger-zone confirmation: the gardener types the tree's name, then "Uproot Forever". On success
 // the action redirects to the farm; the farewell toast lives in the root layout, so it rides along.
-function DeleteDeckDialog({ deckId, deckTitle, open, onOpenChange }: DeleteDeckDialogProps) {
+// With `onChop` (the farm) it only confirms: the farm does the rest optimistically.
+function DeleteDeckDialog({ deckId, deckTitle, open, onOpenChange, onChop }: DeleteDeckDialogProps) {
   return (
     <GameDialog open={open} onOpenChange={onOpenChange}>
       <GameDialogContent title="Uproot Tree? 🪓" ribbon="danger" tone="parchment">
         {/* Remount per open: the typed name and any error start fresh each time. */}
-        {open && <UprootForm key={deckId} deckId={deckId} deckTitle={deckTitle} onCancel={() => onOpenChange(false)} />}
+        {open && <UprootForm key={deckId} deckId={deckId} deckTitle={deckTitle} onCancel={() => onOpenChange(false)} onChop={onChop} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-function UprootForm({ deckId, deckTitle, onCancel }: { deckId: string; deckTitle: string; onCancel: () => void }) {
+function UprootForm({ deckId, deckTitle, onCancel, onChop }: { deckId: string; deckTitle: string; onCancel: () => void; onChop?: () => void }) {
   const { toast } = useToast()
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +43,11 @@ function UprootForm({ deckId, deckTitle, onCancel }: { deckId: string; deckTitle
     event.preventDefault()
     if (!confirmed || isPending) return
     setError(null)
+    if (onChop) {
+      onChop()
+      onCancel()
+      return
+    }
     startTransition(async () => {
       try {
         // Only failures come back: success redirects to the farm (see deleteDeck).

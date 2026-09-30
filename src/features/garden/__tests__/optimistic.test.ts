@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { treeBuff } from '../lib/farmBuffs'
+import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { streamLinks, type Placement } from '../lib/farmGrid'
-import { applyOps, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
+import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 
 const at = (id: string, itemType: Placement['itemType'], x: number, y: number, deckId: string | null = null): Placement => ({
   id,
@@ -86,5 +86,36 @@ describe('splitTrees', () => {
     expect(splitTrees(trees, planted).unplanted).toEqual([])
     const removed = applyOps(server, [{ key: 'r', kind: 'remove', id: 't1' }])
     expect(splitTrees(trees, removed).unplanted.map((t) => t.id)).toEqual(['deck-a', 'deck-b'])
+  })
+})
+
+describe('chop', () => {
+  const trees = [
+    { id: 'deck-a', isOwner: true },
+    { id: 'deck-b', isOwner: true },
+  ]
+  const ops: FarmOp[] = [{ key: 'c', kind: 'chop', deckId: 'deck-a' }]
+
+  it('clears the tree off the farm at once and keeps it out of the Shop', () => {
+    const farm = applyOps(server, ops)
+    expect(farm.some((p) => p.deckId === 'deck-a')).toBe(false)
+    expect(farm).toHaveLength(2)
+    const gone = choppedDecks(ops)
+    const { planted, unplanted } = splitTrees(
+      trees.filter((t) => !gone.has(t.id)),
+      farm,
+    )
+    expect(planted).toEqual([])
+    expect(unplanted.map((t) => t.id)).toEqual(['deck-b'])
+  })
+
+  it('credits the same Woodshop refund the database pays, and nothing without one', () => {
+    expect(calculateWoodshopRefund(40, [...server, { ...server[2], id: 'w', itemType: 'woodshop' }])).toBe(10)
+    expect(calculateWoodshopRefund(40, server)).toBe(0)
+  })
+
+  it('rolls back: a refused chop puts the tree back on its tile', () => {
+    expect(applyOps(server, rollback(ops, 'c'))).toEqual(server)
+    expect(choppedDecks(rollback(ops, 'c')).size).toBe(0)
   })
 })

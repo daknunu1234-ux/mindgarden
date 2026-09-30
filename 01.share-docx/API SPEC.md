@@ -113,6 +113,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
+| Decks | `chopDeck` | Action/POST | The farm's 🪓 Chop: same uproot as `deleteDeck`, answers `{ id, refund, totalCoins }` (no redirect, no revalidate) | Required |
 | Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
@@ -251,7 +252,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // data: { coinsAdded: number; totalCoins: number }
 // Errors: AUTH_FORBIDDEN (production build), VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
 ```
-- The Coin Shop's "Simulate Top-up (Dev Mode)": credits a package without payment via `dev_grant_coins` (service role). Refused when `NODE_ENV = production`; the layout only passes it to the shop outside production. Packages: 10 🪙 = 10.000 ₫, 20 = 18.000 ₫ (−10%), 50 = 40.000 ₫ (−20%), 100 (1 Tree Seed 🌱) = 68.000 ₫ (Best Value, −32%). Real payment webhooks come in a later milestone
+- The Coin Shop's "Simulate Top-up (Dev Mode)": credits a package without payment via `dev_grant_coins` (service role). Revalidates `/profile` only, not `/` (the shop pushes `totalCoins` into `CoinsProvider`, so the farm HUD updates without a page re-render). Refused when `NODE_ENV = production`; the layout only passes it to the shop outside production. Packages: 10 🪙 = 10.000 ₫, 20 = 18.000 ₫ (−10%), 50 = 40.000 ₫ (−20%), 100 (1 Tree Seed 🌱) = 68.000 ₫ (Best Value, −32%). Real payment webhooks come in a later milestone
 
 ### `createMindmapNode` (decks)
 ```typescript
@@ -453,7 +454,15 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - Chops through `uproot_deck()` (DATABASE.md "Farm Grid"): deletes the deck and, with a Woodshop on the farm, refunds `least(floor(statements × 0.25), 50)` 🪙 in the same transaction. Before migration `20260930000000` it falls back to one `DELETE FROM decks … RETURNING id` (no refund). `mindmap_nodes`, `knowledge_items`, `user_progress` and the tree's farm tile go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP is derived from progress, so it drops accordingly. 🪙 gold already earned is kept (`users.coins` is a stored balance)
 - Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
-- UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone and the owner's 🗑 badge in the farm plot popup
+- UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone (the farm uses `chopDeck` instead) and the owner's 🗑 badge in the farm plot popup
+
+### `chopDeck` (decks)
+```typescript
+// chopDeck({ deckId }) → { id, refund, totalCoins: number | null }   // totalCoins = the purse after the refund (null: no farm-grid migration, no refund)
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- The same `removeDeck` → `uproot_deck()` as `deleteDeck`, but returns instead of redirecting and never calls `revalidatePath` (in a Server Action that re-renders the whole farm page before answering). The farm has already removed the tree (with a puff), credited the refund (`calculateWoodshopRefund`, the same rule) and rolls back on error; it settles the purse on `totalCoins`
+- UI: `DeleteDeckDialog` with `onChop` (farm mode), composed in `app/_components/FarmWorld.tsx`: confirming hands `chopDeck` to the farm's chop and closes. `deleteDeck` stays for the deck page's Danger Zone, which has to leave the page it deletes
 
 ### `getFarmPlacements` / `placeFarmItem` / `moveFarmPlacement` / `removeFarmPlacement` (garden)
 ```typescript

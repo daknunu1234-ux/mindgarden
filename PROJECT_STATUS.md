@@ -230,6 +230,18 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   re-renders the whole home page (every query) before answering, and the client then ran
   `router.refresh()` for a second full render. Both are gone from the farm flows; the page is dynamic
   (router cache 0 s), so the next visit still loads fresh data.
+- **Chop, without the wait**: 🪓 Chop used to call `deleteDeck`, which revalidated three paths and redirected
+  to `/?refund=N`, rebuilding the whole home page. On the farm it now calls `chopDeck` (same uproot and
+  Woodshop refund, answers `{ id, refund, totalCoins }`, no redirect or revalidate): the tree vanishes in a
+  puff of dust, leaves and wood chips the moment you confirm, the refund is credited locally (same rule as
+  the database), and a refusal puts the tree back with a toast. The deck page's Danger Zone keeps
+  `deleteDeck` (it must leave the page it deletes). The dev Coin Shop no longer revalidates `/` either.
+- **Water and the popovers**: 💧 Water is a link to the drill (a practice round waters the tree, and the
+  farm reads it fresh on return); the drill route has a `loading.tsx`, so the tap answers at once. There
+  is no harvest action. Opening or closing a tree / item popover re-renders only the view's small parts,
+  never the memoized grid (its props are stable; a test pins the memos). Tree and item taps stop at their
+  button, and the popovers render in a portal outside the camera's element, so their clicks never pan the
+  camera or reach the grid's tile-picking handler.
 - **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
   latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
   the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
@@ -274,7 +286,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
+| (pending) | perf(garden): optimistic chop with refund credit, no page re-renders from farm actions |
+| `cf89bf0` | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
 | `38eac10` | feat(garden): move mode for farm trees and items |
 | `082d9cc` | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
 | `eb89c78` | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
@@ -296,5 +309,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 62 files, 557 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 63 files, 564 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

@@ -427,7 +427,7 @@ export async function removeDeck(
   supabase: Client,
   userId: string,
   { deckId }: DeleteDeckInput,
-): Promise<ActionResult<{ id: string; slug: string; refund: number }>> {
+): Promise<ActionResult<{ id: string; slug: string; refund: number; totalCoins: number | null }>> {
   const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
 
@@ -437,7 +437,7 @@ export async function removeDeck(
   const chopped = await supabase.rpc('uproot_deck', { p_deck_id: deckId })
   if (!chopped.error) {
     const row = Array.isArray(chopped.data) ? chopped.data[0] : chopped.data
-    return ok({ id: deckId, slug: owner.data.slug, refund: row?.refund ?? 0 })
+    return ok({ id: deckId, slug: owner.data.slug, refund: row?.refund ?? 0, totalCoins: row?.total_coins ?? null })
   }
   if (!['PGRST202', '42883'].includes(chopped.error.code)) {
     console.error('[decks] uproot_deck failed', chopped.error.code, chopped.error.message)
@@ -455,7 +455,8 @@ export async function removeDeck(
     console.error('[decks] removeDeck deleted no rows (missing "decks: delete own" policy?)', deckId)
     return fail('AUTH_FORBIDDEN', 'This tree could not be uprooted')
   }
-  return ok({ id: deckId, slug: owner.data.slug, refund: 0 })
+  // No purse figure on this path (the coins didn't change).
+  return ok({ id: deckId, slug: owner.data.slug, refund: 0, totalCoins: null })
 }
 
 // Root's deck, for owner checks on node edits.

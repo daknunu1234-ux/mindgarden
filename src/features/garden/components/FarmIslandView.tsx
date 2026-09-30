@@ -6,16 +6,17 @@ import { GameButton } from '@/shared/components/game'
 import { useCamera } from '@/shared/hooks/useCamera'
 import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/camera'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
+import type { ActionResult } from '@/shared/types/result'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
 import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
 import { getTreeStage } from '../hooks/useTreeStage'
-import { treeBuff } from '../lib/farmBuffs'
+import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
-import { checkMove, checkPlacement, firstFreeTile, type Placement } from '../lib/farmGrid'
-import { applyOps, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
+import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
+import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
@@ -24,6 +25,7 @@ import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
 import { FarmItemDialog } from './FarmItemDialog'
 import { FarmPlotDialog } from './FarmPlotDialog'
 import { FarmShopModal } from './FarmShopModal'
+import { ChopPuff } from './FarmTree'
 import { ItemDrawing } from './FarmStructures'
 import { TreeStageSvg } from './TreeStageSvg'
 
@@ -45,9 +47,15 @@ type FarmIslandViewProps = {
   leftEdge?: ReactNode
   // Read-only visitor mode: someone else's farm. No shop, no building, a banner with the way home.
   visitor?: { name: string; backHref: string } | null
-  // Owners: the tree popover's 🪓 Chop calls this (after closing the popover). Wired in app/.
-  onUproot?: (plot: FarmPlotView) => void
+  // Owners: the tree popover's 🪓 Chop calls this (after closing the popover) with `chop`: once the
+  // player confirms, the page calls chop(run) with the server call to make (decks' chopDeck). The farm
+  // removes the tree at once, credits the Woodshop refund, runs it in the background and rolls back
+  // on error. Wired in app/ (garden never imports decks).
+  onUproot?: (plot: FarmPlotView, chop: (run: ChopRun) => void) => void
 }
+
+// The server side of a chop, supplied by the page: resolves with the refund and the purse after it.
+export type ChopRun = () => Promise<ActionResult<{ refund: number; totalCoins: number | null }>>
 
 // What is being placed: one of your trees (free), a shop item (paid when put down), or something
 // already on the farm being moved (free; `tree` set when it's a tree).
@@ -100,7 +108,15 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
     for (const tree of [...plots, ...unplacedTrees]) byId.set(tree.id, tree)
     return [...byId.values()]
   }, [plots, unplacedTrees])
-  const { planted, unplanted } = useMemo(() => splitTrees(allTrees, farm), [allTrees, farm])
+  const { planted, unplanted } = useMemo(() => {
+    const gone = choppedDecks(opList)
+    return splitTrees(
+      allTrees.filter((tree) => !gone.has(tree.id)),
+      farm,
+    )
+  }, [allTrees, farm, opList])
+  // Chop effects (a puff of leaves and wood chips where a tree stood), cleared after they play.
+  const [puffs, setPuffs] = useState<{ key: string; x: number; y: number }[]>([])
   const plotsByDeck = useMemo(() => new Map(planted.map((p) => [p.id, p])), [planted])
   const thirsty = planted.filter((p) => p.needsWater === true && p.itemCount > 0).length
 
@@ -226,11 +242,38 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
     if (placement) pickUp(placement, `“${plot.title}” is back in the Shop's Trees tab`, '📦')
   }
 
+  // 🪓 Chop, confirmed: the tree vanishes in a puff at once, the Woodshop refund is credited
+  // (lib/farmBuffs, the same rule as uproot_deck), and the server call runs in the background.
+  const chop = (plot: FarmPlotView, run: ChopRun) => {
+    const key = `op${nextKey.current++}`
+    const tile = farm.find((p) => p.itemType === 'tree' && p.deckId === plot.id)
+    const refund = calculateWoodshopRefund(plot.itemCount, farm)
+    const purseBefore = coins
+    editOps((list) => [...list, { key, kind: 'chop', deckId: plot.id }])
+    if (refund > 0 && purseBefore !== null) setCoins(purseBefore + refund)
+    if (tile) {
+      const c = footprintCenter(tile)
+      const puff = { key, x: c.x + FARM_WORLD.origin.x, y: c.y + FARM_WORLD.origin.y }
+      setPuffs((list) => [...list, puff])
+      window.setTimeout(() => setPuffs((list) => list.filter((p) => p.key !== key)), 900)
+    }
+    toast({ message: `“${plot.title}” was chopped${refund > 0 ? ` · 🪚 Woodshop refund +${refund} 🪙` : ''}`, icon: '🪓', tone: 'farewell' })
+    void run().then((res) => {
+      if (!res.success) {
+        editOps((list) => rollback(list, key))
+        if (refund > 0 && purseBefore !== null) setCoins(purseBefore)
+        failed(res.error.message)
+        return
+      }
+      if (res.data.totalCoins !== null) setCoins(res.data.totalCoins)
+    })
+  }
+
   // Stable handlers for the (memoized) grid: they read the latest state through a ref, so camera
   // drags and zooms never re-render the grid's 256 tiles.
-  const latest = useRef({ build, place })
+  const latest = useRef({ build, place, chop })
   useLayoutEffect(() => {
-    latest.current = { build, place }
+    latest.current = { build, place, chop }
   })
   const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
   const onBuildCancel = useCallback(() => setBuild(null), [])
@@ -283,6 +326,10 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               onOpenPlot={setSelectedPlot}
               onOpenItem={setSelectedItem}
             />
+
+            {puffs.map((p) => (
+              <ChopPuff key={p.key} x={p.x} y={p.y} />
+            ))}
 
             {farm.length === 0 && !build && (
               <div
@@ -416,7 +463,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           ((plot) => {
             // One popup at a time: close the tree card, then hand over to the chop dialog.
             setSelectedPlot(null)
-            onUproot(plot)
+            onUproot(plot, (run) => latest.current.chop(plot, run))
           })
         }
       />

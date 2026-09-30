@@ -10,6 +10,8 @@ export type FarmOp =
   | { key: string; kind: 'add'; placement: Placement }
   | { key: string; kind: 'move'; id: string; to: { x: number; y: number } }
   | { key: string; kind: 'remove'; id: string }
+  // A tree chopped down (its deck deleted): its tile goes, and it doesn't return to the Shop.
+  | { key: string; kind: 'chop'; deckId: string }
 
 // Id of a placement the server hasn't confirmed yet (nothing can be moved or picked up until it is).
 export const PENDING_PREFIX = 'pending-'
@@ -21,7 +23,8 @@ export function applyOps(placements: readonly Placement[], ops: readonly FarmOp[
   for (const op of ops) {
     if (op.kind === 'add') farm = [...farm.filter((p) => p.id !== op.placement.id), op.placement]
     else if (op.kind === 'move') farm = withMoved(farm, op.id, op.to)
-    else farm = farm.filter((p) => p.id !== op.id)
+    else if (op.kind === 'remove') farm = farm.filter((p) => p.id !== op.id)
+    else farm = farm.filter((p) => !(p.itemType === 'tree' && p.deckId === op.deckId))
   }
   return farm
 }
@@ -32,6 +35,9 @@ export const confirmAdd = (ops: readonly FarmOp[], key: string, realId: string):
 
 // Server refused: drop the op (and with it the change).
 export const rollback = (ops: readonly FarmOp[], key: string): FarmOp[] => ops.filter((op) => op.key !== key)
+
+// Trees chopped on this visit: gone from the farm and from the Shop's Trees tab.
+export const choppedDecks = (ops: readonly FarmOp[]): Set<string> => new Set(ops.flatMap((op) => (op.kind === 'chop' ? [op.deckId] : [])))
 
 type TreeLike = { id: string; isOwner: boolean; placementId?: string | null; buff?: number }
 

@@ -370,7 +370,11 @@ const FarmItem = memo(function FarmItem({
       )}
       <button
         type="button"
-        onClick={() => onOpen(placement)}
+        onClick={(e) => {
+          // The item's click only: it never reaches the grid's tile-picking handler.
+          e.stopPropagation()
+          onOpen(placement)
+        }}
         aria-label={entry?.name ?? 'Farm item'}
         className="absolute rounded-3xl transition-colors hover:bg-white/10 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
         style={{ left: ground.x - box.w / 2, top: ground.y - box.h + (big ? TILE_H / 2 : 8), width: box.w, height: box.h, zIndex: z + 1 }}

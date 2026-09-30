@@ -412,3 +412,16 @@
   }
   .mg-tree-sway, .mg-float { transform: translate3d(0, 0, 0); }
 }
+
+/* 🪓 Chop: a dust cloud swells and fades where the tree stood (with .mg-burst chips). */
+@keyframes mg-puff {
+  0% { transform: translate(-50%, -75%) scale(0.3); opacity: 0.95; }
+  60% { opacity: 0.8; }
+  100% { transform: translate(-50%, -85%) scale(1.25); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-puff { animation: mg-puff 0.8s ease-out both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-puff { display: none; }
+}

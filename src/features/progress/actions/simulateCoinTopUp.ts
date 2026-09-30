@@ -27,7 +27,8 @@ export async function simulateCoinTopUp(input: unknown): Promise<ActionResult<{ 
   const granted = await grantDevCoins(user.id, pack.coins)
   if (!granted.success) return granted
 
-  revalidatePath('/')
+  // Not revalidatePath('/'): on the farm it would re-render the whole page before answering; the
+  // Coin Shop pushes totalCoins into CoinsProvider, so the HUD updates at once.
   revalidatePath('/profile')
   return ok({ coinsAdded: pack.coins, totalCoins: granted.data })
 }

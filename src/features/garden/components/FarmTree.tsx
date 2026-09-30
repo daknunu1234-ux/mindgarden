@@ -61,7 +61,11 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
   return (
     <button
       type="button"
-      onClick={() => onOpen(plot)}
+      onClick={(e) => {
+        // The tree's click only: it never reaches the grid's tile-picking handler.
+        e.stopPropagation()
+        onOpen(plot)
+      }}
       aria-label={label}
       className="group absolute rounded-[40%] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
       style={{ ...hitbox, zIndex: Math.round(geometry.y) }}
@@ -131,6 +135,43 @@ function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: numb
   )
 }
 
+// 🪓 Chop effect where a tree stood: a dust cloud swells and fades while leaves and wood chips burst
+// out (CSS `.mg-puff` / `.mg-burst`, transform and opacity only; removed by the farm after 0.9 s).
+const CHIPS = [
+  [-46, -70, '#6ee77a'],
+  [-20, -96, '#9a5b2c'],
+  [8, -104, '#4ade80'],
+  [36, -84, '#c98a4b'],
+  [52, -52, '#86efac'],
+  [-54, -34, '#b7792f'],
+  [22, -40, '#16a34a'],
+] as const
+
+export function ChopPuff({ x, y }: { x: number; y: number }) {
+  return (
+    <div aria-hidden className="pointer-events-none absolute" style={{ left: x, top: y, zIndex: LABEL_LAYER + 50_000 }}>
+      <span className="mg-puff absolute size-28 -translate-x-1/2 -translate-y-3/4 rounded-full bg-[radial-gradient(closest-side,rgba(255,250,235,0.95),rgba(236,224,200,0.7)_55%,rgba(236,224,200,0)_100%)]" />
+      {CHIPS.map(([dx, dy, color], i) => (
+        <span
+          key={i}
+          className="mg-burst absolute -translate-x-1/2 -translate-y-8 rounded-[40%]"
+          style={
+            {
+              width: i % 2 ? 7 : 9,
+              height: i % 2 ? 5 : 9,
+              background: color,
+              '--mg-dx': `${dx}px`,
+              '--mg-dy': `${dy}px`,
+              '--mg-spin': `${120 + i * 40}deg`,
+              '--mg-dur': '0.85s',
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  )
+}
+
 // Everything that labels a plot: title sign, mastery badge, 💧 / ✨ bubbles. Rendered in one layer
 // above every tree, so a big crown in front can never hide (or block clicks on) a neighbour's sign.
 // Decorative for assistive tech (the plot button's label says it all); clicks open the plot.
@@ -138,7 +179,10 @@ export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; 
   const { sign, badge, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, getTreeSizeTier(plot.itemCount).scale)
   const thirsty = plot.needsWater === true && plot.itemCount > 0
   const mighty = plot.masteryPercent >= 100
-  const open = () => onOpen(plot)
+  const open = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation()
+    onOpen(plot)
+  }
   const at = (p: { x: number; y: number }): CSSProperties => ({ left: p.x, top: p.y })
 
   return (
@@ -171,7 +215,7 @@ export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; 
 }
 
 // Round wooden badge with a mastery ring (green → gold from the golden-bloom threshold).
-function MasteryBadge({ percent, style, onClick }: { percent: number; style: CSSProperties; onClick: () => void }) {
+function MasteryBadge({ percent, style, onClick }: { percent: number; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
   const pct = Math.min(100, Math.max(0, Math.round(percent)))
   const golden = pct >= GOLDEN_BLOOM_PERCENT
   const ring = golden ? '#f6b928' : '#4fd86b'
@@ -196,7 +240,7 @@ function MasteryBadge({ percent, style, onClick }: { percent: number; style: CSS
 
 // A chunky wooden sign on a post: the growth stage's emoji and the title on a glossy plank (gold
 // trim once fully mastered), stake into the soil, soft ground shadow. Wiggles on hover.
-function PlotSign({ title, emoji, mighty, style, onClick }: { title: string; emoji: string; mighty: boolean; style: CSSProperties; onClick: () => void }) {
+function PlotSign({ title, emoji, mighty, style, onClick }: { title: string; emoji: string; mighty: boolean; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
   return (
     <span onClick={onClick} className="group/sign pointer-events-auto absolute flex -translate-x-1/2 cursor-pointer flex-col items-center" style={style}>
       <span
