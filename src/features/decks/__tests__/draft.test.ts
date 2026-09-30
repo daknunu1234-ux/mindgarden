@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { countDeckTree } from '../lib/deckTree'
-import { applyDeckOps, confirmItems, dropOp, isPendingItemId, PENDING_ITEM_PREFIX, type DeckOp } from '../lib/draft'
+import {
+  applyDeckOps,
+  confirmItems,
+  confirmNode,
+  dropOp,
+  isPendingItemId,
+  isPendingNodeId,
+  PENDING_ITEM_PREFIX,
+  PENDING_NODE_PREFIX,
+  rebaseOps,
+  settleOp,
+  type DeckOp,
+} from '../lib/draft'
 import type { DeckDetail, DeckEditor } from '../types'
 
 const detail: DeckDetail = {
@@ -107,5 +119,96 @@ describe('removing a statement', () => {
     ]
     expect(applyDeckOps(detail, editor, ops).editor?.nodes[1].items).toEqual([])
     expect(applyDeckOps(detail, editor, dropOp(ops, 'r')).editor?.nodes[1].items.map((i) => i.id)).toEqual(['i9'])
+  })
+})
+
+describe('adding roots and sub-roots', () => {
+  const temp = `${PENDING_NODE_PREFIX}n`
+
+  it('shows a new top-level root at the end of the mindmap and the editor list, pending', () => {
+    const view = applyDeckOps(detail, editor, [{ key: 'n', kind: 'addNode', tempId: temp, parentId: null, title: 'Năng lượng' }])
+    expect(view.detail.tree.map((n) => [n.id, n.title, n.sortOrder])).toEqual([
+      ['r1', 'Tế bào', 0],
+      [temp, 'Năng lượng', 1],
+    ])
+    expect(view.editor?.nodes.at(-1)).toEqual({ id: temp, title: 'Năng lượng', depth: 0, items: [] })
+    expect(view.pendingIds.has(temp)).toBe(true)
+    expect(countDeckTree(view.detail.tree).nodeCount).toBe(3)
+  })
+
+  it('puts a sub-root after its parent’s whole branch in the editor list, one level deeper', () => {
+    const view = applyDeckOps(detail, editor, [{ key: 'n', kind: 'addNode', tempId: temp, parentId: 'r1', title: 'Lục lạp' }])
+    expect(view.detail.tree[0].children.map((c) => c.id)).toEqual(['r2', temp])
+    expect(view.editor?.nodes.map((n) => [n.id, n.depth])).toEqual([
+      ['r1', 0],
+      ['r2', 1],
+      [temp, 1],
+    ])
+  })
+
+  it('lets statements and sub-roots be typed under a root that is still saving, then moves them to its real id', () => {
+    const ops: DeckOp[] = [
+      { key: 'n', kind: 'addNode', tempId: temp, parentId: null, title: 'Năng lượng' },
+      { key: 'i', kind: 'addItems', nodeId: temp, items: [{ tempId: `${PENDING_ITEM_PREFIX}i`, statement: 'ATP là năng lượng.' }] },
+      { key: 'c', kind: 'addNode', tempId: `${PENDING_NODE_PREFIX}c`, parentId: temp, title: 'ATP' },
+      { key: 'r', kind: 'renameNode', nodeId: temp, title: 'Năng lượng tế bào' },
+    ]
+    const pending = applyDeckOps(detail, editor, ops)
+    expect(pending.detail.tree[1]).toMatchObject({ id: temp, title: 'Năng lượng tế bào', items: [{ id: `${PENDING_ITEM_PREFIX}i`, prompt: 'Năng lượng' }] })
+    expect(pending.detail.tree[1].children.map((c) => c.id)).toEqual([`${PENDING_NODE_PREFIX}c`])
+
+    const confirmed = confirmNode(ops, 'n', 'r9')
+    expect(confirmed.map((op) => ('nodeId' in op ? op.nodeId : 'parentId' in op ? op.parentId : null))).toEqual([null, 'r9', 'r9', 'r9'])
+    const view = applyDeckOps(detail, editor, confirmed)
+    expect(view.detail.tree[1].id).toBe('r9')
+    expect(view.detail.tree[1].children[0].id).toBe(`${PENDING_NODE_PREFIX}c`)
+    expect(view.pendingIds.has('r9')).toBe(false)
+    expect(view.editor?.nodes.find((n) => n.id === 'r9')?.items.map((i) => i.id)).toEqual([`${PENDING_ITEM_PREFIX}i`])
+  })
+
+  it('rolls a refused root back, with whatever was typed under it', () => {
+    const ops: DeckOp[] = [
+      { key: 'n', kind: 'addNode', tempId: temp, parentId: null, title: 'X' },
+      { key: 'i', kind: 'addItems', nodeId: temp, items: [{ tempId: `${PENDING_ITEM_PREFIX}i`, statement: 'Y là Z.' }] },
+    ]
+    const view = applyDeckOps(detail, editor, dropOp(ops, 'n'))
+    expect(view.detail.tree).toEqual(detail.tree)
+    expect(view.editor?.nodes).toEqual(editor.nodes)
+  })
+
+  it('is idempotent once fresh server data already holds the node', () => {
+    const withNode: DeckDetail = { ...detail, tree: [...detail.tree, { id: 'r9', title: 'Năng lượng', sortOrder: 1, items: [], children: [] }] }
+    const ops = confirmNode([{ key: 'n', kind: 'addNode', tempId: temp, parentId: null, title: 'Năng lượng' }], 'n', 'r9')
+    expect(applyDeckOps(withNode, null, ops).detail.tree).toHaveLength(2)
+  })
+
+  it('tells pending root ids apart', () => {
+    expect(isPendingNodeId(temp)).toBe(true)
+    expect(isPendingNodeId('r1')).toBe(false)
+    expect(isPendingItemId(temp)).toBe(false)
+  })
+})
+
+describe('renaming a root', () => {
+  it('renames it in the mindmap tree and the editor list at once', () => {
+    const view = applyDeckOps(detail, editor, [{ key: 'r', kind: 'renameNode', nodeId: 'r2', title: 'Ti thể' }])
+    expect(view.detail.tree[0].children[0].title).toBe('Ti thể')
+    expect(view.editor?.nodes[1].title).toBe('Ti thể')
+    expect(detail.tree[0].children[0].title).toBe('Ty thể')
+  })
+})
+
+describe('rebasing onto fresh server data', () => {
+  it('keeps only the ops still waiting for the server', () => {
+    const ops: DeckOp[] = [
+      { key: 's', kind: 'species', treeType: 'maple' },
+      { key: 'r', kind: 'renameNode', nodeId: 'r1', title: 'A' },
+      { key: 'd', kind: 'removeItem', itemId: 'i1' },
+      { key: 'n', kind: 'addNode', tempId: `${PENDING_NODE_PREFIX}n`, parentId: null, title: 'B' },
+      { key: 'i', kind: 'addItems', nodeId: 'r1', items: [{ tempId: 't', statement: 'C là D.' }] },
+    ]
+    const settled = confirmItems(confirmNode(settleOp(settleOp(ops, 's'), 'd'), 'n', 'r9'), 'i', [{ id: 'i7', statement: 'C là D.', drillable: true }])
+    expect(rebaseOps(settled).map((op) => op.key)).toEqual(['r'])
+    expect(rebaseOps(ops).map((op) => op.key)).toEqual(['s', 'r', 'd', 'n', 'i'])
   })
 })

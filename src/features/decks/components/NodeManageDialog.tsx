@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useTransition, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, type FormEvent } from 'react'
 import { GitBranch, PencilLine, ScrollText, Trash2 } from 'lucide-react'
 import {
   GameButton,
@@ -18,8 +17,6 @@ import {
   HoverActions,
 } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
-import { createMindmapNode } from '../actions/createMindmapNode'
-import { updateMindmapNode } from '../actions/updateMindmapNode'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { useDeckDraftActions } from './DeckDraft'
 import { DeleteRootDialog, DeleteStatementDialog, type StatementToDelete } from './DeleteDialogs'
@@ -46,8 +43,9 @@ type NodeManageDialogProps = {
 type Notice = { tone: 'gold' | 'amber'; text: string } | null
 
 // Owner tools for one root, opened from the mindmap, as a tabbed wooden drawer: Statements
-// (add / bulk add / delete), Branches (add a sub-branch), Root (rename / delete the whole branch). Every change
-// refreshes the page data in place, so the canvas keeps its zoom and pan.
+// (add / bulk add / delete), Branches (add a sub-branch), Root (rename / delete the whole branch).
+// Adds, renames and statement deletes go through the deck draft (instant); deleting the whole root
+// refreshes the page data in place. Either way the canvas keeps its zoom and pan.
 function NodeManageDialog({ deckId, node, onOpenChange }: NodeManageDialogProps) {
   return (
     <GameDialog open={node !== null} onOpenChange={onOpenChange}>
@@ -64,9 +62,7 @@ function NodeManageDialog({ deckId, node, onOpenChange }: NodeManageDialogProps)
 }
 
 function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNode; onClose: () => void }) {
-  const router = useRouter()
-  const { addStatement: addToDraft, isPending: isSaving } = useDeckDraftActions()
-  const [isPending, startTransition] = useTransition()
+  const { addStatement: addToDraft, addNode, renameNode, isPending: isSaving } = useDeckDraftActions()
   const [title, setTitle] = useState(node.title)
   const [branch, setBranch] = useState('')
   const [statement, setStatement] = useState('')
@@ -76,29 +72,20 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
   const [editing, setEditing] = useState<StatementToEdit | null>(null)
   const [deletingRoot, setDeletingRoot] = useState(false)
 
-  // Run an action, show its result, refresh the page data in place.
-  const run = (action: () => Promise<{ success: boolean; error?: { message: string } }>, done: string, after?: () => void) => {
-    setNotice(null)
-    startTransition(async () => {
-      const res = await action()
-      if (!res.success) {
-        setNotice({ tone: 'amber', text: `${res.error?.message ?? 'Something went wrong'}.` })
-        return
-      }
-      setNotice({ tone: 'gold', text: done })
-      after?.()
-      router.refresh()
-    })
-  }
-
+  // Optimistic (deck draft), like the canvas: the new name / sub-branch shows at once; a refusal rolls
+  // back with a toast.
   const rename = (e: FormEvent) => {
     e.preventDefault()
-    if (title.trim() === node.title) return
-    run(() => updateMindmapNode({ nodeId: node.id, title }), 'Renamed ✨')
+    if (!title.trim() || title.trim() === node.title) return
+    renameNode(node.id, title)
+    setNotice({ tone: 'gold', text: 'Renamed ✨' })
   }
   const addBranch = (e: FormEvent) => {
     e.preventDefault()
-    run(() => createMindmapNode({ deckId, title: branch, parentId: node.id }), 'Sub-branch added 🌿', () => setBranch(''))
+    if (!branch.trim()) return
+    addNode(node.id, branch)
+    setBranch('')
+    setNotice({ tone: 'gold', text: 'Sub-branch added 🌿' })
   }
   // Optimistic (deck draft): the statement joins the list, the mindmap and the counts at once and the
   // input clears; the server's verdict follows (an error puts the text back).
@@ -192,7 +179,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
             <GameLabel htmlFor="manage-branch">Add a sub-branch</GameLabel>
             <div className="flex gap-2">
               <GameInput id="manage-branch" required maxLength={150} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="Nhân tế bào" />
-              <GameButton type="submit" tone="leaf" disabled={isPending || !branch.trim()}>
+              <GameButton type="submit" tone="leaf" disabled={!branch.trim()}>
                 Add
               </GameButton>
             </div>
@@ -209,7 +196,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
             <GameLabel htmlFor="manage-title">Root name</GameLabel>
             <div className="flex gap-2">
               <GameInput id="manage-title" required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} />
-              <GameButton type="submit" tone="sun" disabled={isPending || title.trim() === node.title || !title.trim()}>
+              <GameButton type="submit" tone="sun" disabled={title.trim() === node.title || !title.trim()}>
                 Rename
               </GameButton>
             </div>
@@ -268,45 +255,4 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
   )
 }
 
-// Top-level root, from the mindmap toolbar.
-function AddRootDialog({ deckId, open, onOpenChange }: { deckId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const router = useRouter()
-  const [title, setTitle] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    startTransition(async () => {
-      const res = await createMindmapNode({ deckId, title, parentId: null })
-      if (!res.success) return setError(res.error.message)
-      setTitle('')
-      onOpenChange(false)
-      router.refresh()
-    })
-  }
-
-  return (
-    <GameDialog open={open} onOpenChange={onOpenChange}>
-      <GameDialogContent title="🌱 Add a root" ribbon="leaf" description="A new top-level concept under your tree.">
-        <form onSubmit={submit} className="space-y-4">
-          <GameLabel htmlFor="add-root-title" className="sr-only">
-            Root name
-          </GameLabel>
-          <GameInput id="add-root-title" required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ty thể" autoFocus />
-          {error && (
-            <p role="alert" className="text-sm font-medium text-amber-800">
-              {error}.
-            </p>
-          )}
-          <GameButton type="submit" tone="leaf" size="lg" className="w-full" disabled={isPending || !title.trim()}>
-            {isPending ? 'Planting…' : 'Plant root'}
-          </GameButton>
-        </form>
-      </GameDialogContent>
-    </GameDialog>
-  )
-}
-
-export { AddRootDialog, NodeManageDialog }
+export { NodeManageDialog }

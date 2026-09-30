@@ -62,15 +62,33 @@ export function zoomAt(
   )
 }
 
-// Scroll that centres a world point in the viewport (clamped to the scrollable area).
-export function centreOn(point: { x: number; y: number }, view: Size, world: Size, zoom: number): Scroll {
+// Scroll that puts a world point under a viewport point (clamped to the scrollable area).
+export function placeAt(point: { x: number; y: number }, anchor: { x: number; y: number }, view: Size, world: Size, zoom: number): Scroll {
   return clampScroll(
     {
-      left: point.x * zoom + centreOffset(view.w, world.w, zoom) - view.w / 2,
-      top: point.y * zoom + centreOffset(view.h, world.h, zoom) - view.h / 2,
+      left: point.x * zoom + centreOffset(view.w, world.w, zoom) - anchor.x,
+      top: point.y * zoom + centreOffset(view.h, world.h, zoom) - anchor.y,
     },
     view,
     world,
     zoom,
   )
+}
+
+// Scroll that centres a world point in the viewport (clamped to the scrollable area).
+export function centreOn(point: { x: number; y: number }, view: Size, world: Size, zoom: number): Scroll {
+  return placeAt(point, { x: view.w / 2, y: view.h / 2 }, view, world, zoom)
+}
+
+export type Rect = { x: number; y: number; w: number; h: number }
+
+// Scroll that brings a world rect into view (centred on it), or null when it is already fully
+// visible with `margin` screen pixels to spare (then the camera stays put).
+export function revealScroll(rect: Rect, scroll: Scroll, view: Size, world: Size, zoom: number, margin = 24): Scroll | null {
+  const topLeft = worldAt(scroll, { x: 0, y: 0 }, view, world, zoom)
+  const bottomRight = worldAt(scroll, { x: view.w, y: view.h }, view, world, zoom)
+  const m = margin / zoom
+  const inside =
+    rect.x >= topLeft.x + m && rect.y >= topLeft.y + m && rect.x + rect.w <= bottomRight.x - m && rect.y + rect.h <= bottomRight.y - m
+  return inside ? null : centreOn({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, view, world, zoom)
 }

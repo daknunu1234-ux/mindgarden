@@ -26,4 +26,22 @@ export type MindmapOwnerTools = {
   onDeleteRoot: (rootId: string) => void
 }
 
+// Owner-only fast entry on the canvas (quick-add inputs, inline rename). The page wires these to
+// decks' optimistic deck draft: each shows at once and saves in the background. addRoot / addBranch
+// return the new node's id right away (a temporary one until saved), so the keyboard flow can nest
+// statements and sub-roots under it immediately.
+export type MindmapAuthoring = {
+  addRoot: (title: string) => string
+  addBranch: (parentId: string, title: string) => string
+  addStatement: (nodeId: string, text: string) => void
+  renameRoot: (nodeId: string, title: string) => void
+  // Still saving: no edit / delete / manage / practice on it yet.
+  isPending: (id: string) => boolean
+  // A temporary id → the real one once saved (the canvas keeps an open input on its root).
+  resolveId: (id: string) => string
+}
+
+// Owner-only micro-badge on a statement card: still saving (⏳), or saved but not drillable yet (💧).
+export type StatementStatus = 'saving' | 'not-drillable'
+
 export type ItemLevels = Readonly<Record<string, number>>

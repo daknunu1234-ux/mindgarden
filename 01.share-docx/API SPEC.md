@@ -259,6 +259,8 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // sort_order = number of existing siblings (appends)
 // data: { id: string; title: string } · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (parent not in deck)
 ```
+- No `revalidatePath` and no `router.refresh()`: the deck page calls it through the deck draft (`useDeckDraft` `addNode`) from the mindmap's fast entry (＋ Root in the canvas corner, ＋🌿 on a root's hover tools, Enter / Tab / Shift+Tab while typing) and the ⚙️ Manage dialog. The root shows at once under a temp id; statements and sub-roots typed under it are sent once it has its real id. Writes from the page go one at a time in the order typed, so `sort_order` follows typing order. A refusal removes the root (and anything typed under it) with a toast
+- `updateMindmapNode` is used the same way (`renameNode`: inline rename on the canvas, the Manage dialog)
 
 ### `createKnowledgeItem` (decks)
 ```typescript
@@ -441,7 +443,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - `deleteKnowledgeItem` no longer revalidates: the deck page removes the statement at once (deck draft `removeItem`) and puts it back with a toast if this fails; its confirmation closes immediately
 - Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The other deletes revalidate `/deck/<slug>`
-- **Edit** (✏️): `EditStatementDialog` (textarea, live 5–500 counter, Save / Cancel) and `EditRootDialog` (rename via `updateMindmapNode`). The owner's ✏️ Edit / 🗑️ Delete sit in a **hover-to-reveal** group (`shared/components/game` `HoverActions`: hidden until hover or keyboard focus, always shown on touch screens) on mindmap root pills and statement cards, Tree Workshop rows, the root drawer's statements and the manage dialog's statements
+- **Edit** (✏️): `EditStatementDialog` (textarea, live 5–500 counter, Save / Cancel) and `EditRootDialog` (rename via `updateMindmapNode`; on the mindmap canvas the owner renames in place instead, optimistically). The owner's ✏️ Edit / 🗑️ Delete sit in a **hover-to-reveal** group (`shared/components/game` `HoverActions`: hidden until hover or keyboard focus, always shown on touch screens) on mindmap root pills and statement cards, Tree Workshop rows, the root drawer's statements and the manage dialog's statements
 - UI (owner only, never rendered for visitors or contestants): 🗑️ on each statement and "🗑️ Delete Root" in the Tree Workshop list, the root drawer and the ✏️ manage dialog, each behind a confirmation ("Delete Statement"; "Delete Root Branch" with the number of statements and sub-roots it removes). A deleted root open in the drawer / manage dialog closes on the refresh
 - ⚠️ Mind Tournament totals: a contestant's stored `current_points` / `max_points` are recomputed on their next answer, so the boards show the old totals for them until then
 

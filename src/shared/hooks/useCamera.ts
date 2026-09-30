@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from 'react'
-import { centreOn, clampZoom, fitZoom, ZOOM_STEP, zoomAt, type Scroll, type Size } from '@/shared/lib/camera'
+import { centreOn, clampZoom, fitZoom, placeAt, revealScroll, ZOOM_STEP, zoomAt, type Rect, type Scroll, type Size } from '@/shared/lib/camera'
 
 const DRAG_THRESHOLD = 6
 
@@ -164,12 +164,45 @@ export function useCamera(
     }
   }
 
+  // Glide (instant under reduced motion) to a scroll position at the current zoom.
+  const glide = useCallback(
+    (to: Scroll) => {
+      const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      scrollRef.current?.scrollTo({ left: to.left, top: to.top, behavior: reduced ? 'auto' : 'smooth' })
+    },
+    [scrollRef],
+  )
+
+  // Put a world point under a viewport point (default: the centre), keeping the zoom.
+  const panTo = useCallback(
+    (point: { x: number; y: number }, anchor?: { x: number; y: number }) => {
+      const { zoom: z, view: v, world: w } = live.current
+      if (v.w === 0) return
+      glide(placeAt(point, anchor ?? { x: v.w / 2, y: v.h / 2 }, v, w, z))
+    },
+    [glide],
+  )
+
+  // Bring a world rect into view if any of it is off screen; otherwise leave the camera alone.
+  const reveal = useCallback(
+    (rect: Rect) => {
+      const el = scrollRef.current
+      const { zoom: z, view: v, world: w } = live.current
+      if (!el || v.w === 0) return
+      const to = revealScroll(rect, { left: el.scrollLeft, top: el.scrollTop }, v, w, z)
+      if (to) glide(to)
+    },
+    [glide, scrollRef],
+  )
+
   return {
     zoom,
     view,
     zoomIn: () => zoomTo(live.current.zoom * ZOOM_STEP),
     zoomOut: () => zoomTo(live.current.zoom / ZOOM_STEP),
     resetView,
+    panTo,
+    reveal,
     handlers: {
       onPointerDown,
       onPointerMove,

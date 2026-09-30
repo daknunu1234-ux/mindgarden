@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronsDownUp, ChevronsUpDown, Crosshair, Plus, ZoomIn, ZoomOut } from 'lucide-react'
 import { GameButton } from '@/shared/components/game'
 import { useCamera } from '@/shared/hooks/useCamera'
@@ -8,14 +8,27 @@ import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/came
 import { getTreeSkin, MIGHTY_GOLD } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { collapsibleNodeIds, indexNodes } from '../hooks/collapse'
-import { ancestorKeys, branchNodeIds, CROWN_Y, descendantKeys, layoutMindmap, nodeKey, type MindmapCard } from '../hooks/mindmapLayout'
+import {
+  ancestorKeys,
+  branchNodeIds,
+  CROWN_Y,
+  descendantKeys,
+  DRAFT_KEY,
+  layoutMindmap,
+  nodeKey,
+  type MindmapCard,
+  type MindmapDraftSlot,
+} from '../hooks/mindmapLayout'
 import { branchItemIds, displayMastery } from '../hooks/nodeMastery'
+import { nextQuickSlot, parentIndex, quickAddPrompt, resolveSlot, type QuickAddKey } from '../hooks/quickAdd'
 import { conduitPath, groundPath, rootStroke, sceneGeometry, type SurfaceBox } from '../hooks/scene'
-import type { ItemLevels, MindmapOwnerTools, MindmapPractice, RootNodeView } from '../types'
-import { NodePill, StatementCard } from './MindmapCards'
+import type { ItemLevels, MindmapAuthoring, MindmapOwnerTools, MindmapPractice, RootNodeView, StatementStatus } from '../types'
+import { NodePill, QuickAddCard, RootSwitcher, StatementCard, type RootChip } from './MindmapCards'
 import { NodeInspector } from './NodeInspector'
 
 const GRASS = '#65a30d'
+// Where a root lands when you jump to it: horizontally centred, this far below the canvas top.
+const JUMP_TOP = 64
 
 type RootMapProps = {
   nodes: RootNodeView[]
@@ -25,12 +38,15 @@ type RootMapProps = {
   // Drawn above the ground with its trunk base on the root conduit (the page passes the tree).
   surface?: SurfaceBox & { content: ReactNode }
   emptyLabel?: string
-  // Deck owners: manage a root (rename, add, remove) and add a top-level root. The page wires
-  // these to the decks feature; the mindmap itself never calls actions.
+  // Deck owners: the full manage dialog for a root (bulk add, lists). The page wires it to the decks
+  // feature; the mindmap itself never calls actions.
   onManage?: (nodeId: string) => void
-  onAddRoot?: () => void
   // Deck owners: 🗑️ delete a statement / 'Delete Root' in the root drawer (the page confirms).
   ownerTools?: MindmapOwnerTools
+  // Deck owners: fast entry on the canvas (quick-add inputs, inline rename, the floating ＋ Root).
+  authoring?: MindmapAuthoring
+  // Deck owners: ⏳ saving / 💧 not drillable micro-badges on statement cards.
+  itemStatus?: Readonly<Record<string, StatementStatus>>
   // Practice shortcuts ("Drill Root" / "Compete Root") open the page's launch pop-up. null = strict
   // read-only visitor mode: no practice at all (visitors clone, or join a hosted Mind Tournament).
   practice?: MindmapPractice | null
@@ -43,19 +59,51 @@ type RootMapProps = {
 // trunk → category pills in a row → statements and sub-branches stacked in columns, joined by
 // Bezier roots. Pills collapse their branch; everything at 5/5 glows gold. Layout is pure
 // (hooks/mindmapLayout.ts); the camera (drag, pinch, Ctrl/⌘ + wheel, fit) is shared with the farm.
-function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAddRoot, ownerTools, practice = null, statements }: RootMapProps) {
+// A root switcher above the canvas glides the camera to any top-level root. Owners type straight
+// onto the canvas: ＋ Root (always in the corner), ＋📜 / ＋🌿 on a root's hover tools, then
+// Enter / Tab / Shift+Tab to keep going (hooks/quickAdd.ts), ✏️ to rename in place.
+function RootMap({
+  nodes,
+  levels,
+  treeType,
+  surface,
+  emptyLabel,
+  onManage,
+  ownerTools,
+  authoring,
+  itemStatus,
+  practice = null,
+  statements,
+}: RootMapProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [activeKey, setActiveKey] = useState<string | null>(null)
   // Root shown in the inspector drawer (its branch is expanded and lit on the canvas).
   const [inspectedId, setInspectedId] = useState<string | null>(null)
+  // The owner's open quick-add input, and the root being renamed in place.
+  const [draft, setDraft] = useState<MindmapDraftSlot | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  // The root last jumped to from the switcher (highlighted there).
+  const [jumpedId, setJumpedId] = useState<string | null>(null)
+  // Camera moves waiting for the next layout (a jump after expanding, the input after it moves).
+  const pendingJump = useRef<string | null>(null)
+  const pendingReveal = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const skin = getTreeSkin(treeType)
 
   // Mastery always comes from the full tree; only the layout sees collapsed branches.
   const byId = useMemo(() => indexNodes(nodes), [nodes])
+  const parents = useMemo(() => parentIndex(nodes), [nodes])
   const collapsible = useMemo(() => collapsibleNodeIds(nodes), [nodes])
-  const layout = useMemo(() => layoutMindmap(nodes, collapsed), [nodes, collapsed])
+  // The open input follows its root from a temp id to the real one when the save confirms; an input
+  // under a node that has gone (deleted, or its save refused) simply isn't drawn.
+  const liveDraft = useMemo(() => {
+    if (!draft) return null
+    const slot = authoring ? resolveSlot(draft, authoring.resolveId) : draft
+    return slot.kind === 'root' || byId.has(slot.kind === 'branch' ? slot.parentId : slot.nodeId) ? slot : null
+  }, [draft, authoring, byId])
+  const renaming = renamingId && authoring ? authoring.resolveId(renamingId) : renamingId
+  const layout = useMemo(() => layoutMindmap(nodes, collapsed, liveDraft), [nodes, collapsed, liveDraft])
   const scene = useMemo(() => sceneGeometry(layout, surface ?? null), [layout, surface])
   // An inspected node that was deleted (after a refresh) simply closes the drawer.
   const inspected = inspectedId ? (byId.get(inspectedId) ?? null) : null
@@ -68,6 +116,16 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
     }
     return keys
   }, [layout, activeKey, inspected])
+
+  // Show a node's whole path: it and every root above it expanded.
+  const expandTo = useCallback(
+    (id: string) => {
+      const path = new Set<string>()
+      for (let at: string | null | undefined = id; at; at = parents.get(at)) path.add(at)
+      setCollapsed((prev) => new Set([...prev].filter((c) => !path.has(c))))
+    },
+    [parents],
+  )
 
   // Inspect: expand the whole branch, light it, open the drawer. Camera untouched.
   const inspect = useCallback(
@@ -83,6 +141,7 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
 
   const masteryOf = useCallback(
     (card: MindmapCard): number | null => {
+      if (card.kind === 'draft') return null
       if (card.itemId) return levels[card.itemId] ?? 0
       const node = byId.get(card.nodeId)
       return node ? displayMastery(node, levels) : null
@@ -98,9 +157,59 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
     [scene.focus.x, scene.focus.y, scene.focus.w, scene.focus.h],
   )
   const camera = useCamera(scrollRef, world, focus, fit)
-  const { zoom, view } = camera
+  const { zoom, view, panTo, reveal } = camera
   const content = contentSize(view, world, zoom)
   const offset = { x: centreOffset(view.w, world.w, zoom), y: centreOffset(view.h, world.h, zoom) }
+  const { groundY, offsetX, trunkX } = scene
+
+  // After the layout settles: glide to the root picked in the switcher, or keep the quick-add input
+  // on screen as it moves (only when it would be off screen).
+  useEffect(() => {
+    const jump = pendingJump.current
+    if (jump) {
+      pendingJump.current = null
+      const card = layout.cards.find((c) => c.key === nodeKey(jump))
+      if (card) panTo({ x: offsetX + card.x + card.w / 2, y: groundY + card.y }, { x: view.w / 2, y: JUMP_TOP })
+    }
+    if (pendingReveal.current) {
+      pendingReveal.current = false
+      const card = layout.cards.find((c) => c.key === DRAFT_KEY)
+      if (card) reveal({ x: offsetX + card.x, y: groundY + card.y, w: card.w, h: card.h + 40 })
+    }
+  }, [layout, offsetX, groundY, view.w, panTo, reveal])
+
+  const jumpTo = useCallback(
+    (id: string) => {
+      pendingJump.current = id
+      setJumpedId(id)
+      expandTo(id)
+    },
+    [expandTo],
+  )
+
+  // Open (or move) the quick-add input; its target is expanded so the input shows.
+  const openDraft = useCallback(
+    (slot: MindmapDraftSlot | null) => {
+      setDraft(slot)
+      if (!slot) return
+      pendingReveal.current = true
+      if (slot.kind !== 'root') expandTo(slot.kind === 'branch' ? slot.parentId : slot.nodeId)
+    },
+    [expandTo],
+  )
+
+  // A quick-add key: save what was typed (optimistic, via the page), then move the input on.
+  const onQuickKey = (key: QuickAddKey, text: string) => {
+    if (!liveDraft || !authoring) return
+    const typed = text.trim()
+    let created: string | null = null
+    if (typed) {
+      if (liveDraft.kind === 'root') created = authoring.addRoot(typed)
+      else if (liveDraft.kind === 'branch') created = authoring.addBranch(liveDraft.parentId, typed)
+      else authoring.addStatement(liveDraft.nodeId, typed)
+    }
+    openDraft(nextQuickSlot(liveDraft, key, typed.length > 0, created, parents))
+  }
 
   const toggle = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -113,13 +222,21 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
   const allCollapsed = collapsible.length > 0 && collapsible.every((id) => collapsed.has(id))
 
   const id = (name: string) => `${uid}-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-  const { groundY, offsetX, trunkX } = scene
   const colors = { bark: skin.bark, glow: skin.glow, gold: MIGHTY_GOLD }
   const cardByKey = new Map(layout.cards.map((c) => [c.key, c]))
+  const draftCard = cardByKey.get(DRAFT_KEY)
+  const draftPrompt = liveDraft ? quickAddPrompt(liveDraft, (nodeId) => byId.get(nodeId)?.title) : null
+  const chips: RootChip[] = nodes.map((n) => ({
+    id: n.id,
+    title: n.title,
+    statementCount: branchItemIds(n).length,
+    mastery: displayMastery(n, levels),
+    pending: authoring?.isPending(n.id) ?? false,
+  }))
 
   return (
-    <div className="space-y-3">
-      <div role="toolbar" aria-label="Mindmap view" className="flex flex-wrap items-center gap-2">
+    <div className="space-y-2">
+      <div role="toolbar" aria-label="Mindmap view" className="flex flex-wrap items-center gap-1.5">
         <GameButton tone="cream" size="icon-sm" onClick={camera.zoomOut} disabled={zoom <= MIN_ZOOM + 1e-3} aria-label="Zoom out">
           <ZoomOut className="size-4" strokeWidth={2.5} />
         </GameButton>
@@ -143,13 +260,10 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
             {allCollapsed ? 'Expand all' : 'Collapse all'}
           </GameButton>
         )}
-        {onAddRoot && (
-          <GameButton tone="leaf" size="sm" onClick={onAddRoot}>
-            <Plus className="size-4" strokeWidth={3} /> Add root
-          </GameButton>
-        )}
         <span className="ml-auto hidden font-game text-xs font-bold text-emerald-900/55 sm:inline">Drag to move · Ctrl + scroll or pinch to zoom</span>
       </div>
+
+      <RootSwitcher roots={chips} activeId={jumpedId} onJump={jumpTo} />
 
       {/* Canvas in a chunky wooden frame. */}
       <div className="relative h-[72vh] max-h-[860px] min-h-[460px] overflow-hidden rounded-[24px] border-[5px] border-amber-800 bg-[#f1e4cc] shadow-[inset_0_0_0_2px_rgba(255,255,255,0.3),0_6px_0_#451a03,0_16px_30px_rgba(69,26,3,0.25)]">
@@ -225,6 +339,12 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                 <g transform={`translate(${offsetX} ${groundY})`}>
                   {layout.edges.map((edge) => {
                     const card = cardByKey.get(edge.to)
+                    // The quick-add input hangs on a dashed line until it becomes a real card.
+                    if (card?.kind === 'draft') {
+                      return (
+                        <path key={edge.to} d={edge.path} fill="none" stroke={skin.bark} strokeWidth={2} strokeDasharray="5 5" strokeLinecap="round" opacity={0.6} />
+                      )
+                    }
                     const s = rootStroke(card ? masteryOf(card) : null, colors, lit.has(edge.to))
                     return (
                       <path
@@ -232,7 +352,7 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                         d={edge.path}
                         fill="none"
                         stroke={`url(#${id(`edge-${edge.to}`)})`}
-                        strokeWidth={card?.kind === 'statement' ? s.width - 0.5 : s.width + 0.5}
+                        strokeWidth={card?.kind === 'statement' ? s.width - 0.75 : s.width}
                         strokeLinecap="round"
                         opacity={s.opacity}
                         filter={s.glow === 'none' ? undefined : `url(#${id(`glow-${s.glow}`)})`}
@@ -244,7 +364,7 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                 </g>
 
                 {/* Main conduit from the trunk through the ground into the crown. */}
-                {nodes.length > 0 && (
+                {(nodes.length > 0 || draftCard) && (
                   <>
                     <path d={conduitPath(trunkX, groundY, CROWN_Y)} fill={`url(#${id('conduit')})`} />
                     <circle cx={trunkX} cy={groundY + CROWN_Y} r={5} fill={skin.barkDeep} />
@@ -264,18 +384,27 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                 </div>
               )}
 
-              {nodes.length === 0 && emptyLabel && (
-                <p className="absolute w-80 -translate-x-1/2 text-center text-sm text-amber-900/70" style={{ left: trunkX, top: groundY + 48 }}>
-                  {emptyLabel}
-                </p>
+              {nodes.length === 0 && !draftCard && emptyLabel && (
+                <div className="absolute flex w-80 -translate-x-1/2 flex-col items-center gap-3 text-center" style={{ left: trunkX, top: groundY + 48 }}>
+                  <p className="text-sm text-amber-900/70">{emptyLabel}</p>
+                  {authoring && (
+                    <GameButton tone="leaf" size="sm" onClick={() => openDraft({ kind: 'root' })}>
+                      <Plus className="size-4" strokeWidth={3} /> Plant the first root
+                    </GameButton>
+                  )}
+                </div>
               )}
 
               {layout.cards.map((card) => {
+                if (card.kind === 'draft') return null
                 const full = byId.get(card.nodeId)
+                const status = card.itemId ? itemStatus?.[card.itemId] : undefined
+                const statementTools = ownerTools && card.itemId && status !== 'saving'
+                const pending = authoring?.isPending(card.nodeId) ?? false
                 return (
                   <div
                     key={card.key}
-                    className={cn('mg-pop absolute transition-[left,top] duration-300 ease-out', lit.has(card.key) && 'z-10')}
+                    className={cn('mg-pop absolute transition-[left,top] duration-300 ease-out', (lit.has(card.key) || renaming === card.nodeId) && 'z-10')}
                     style={{ left: offsetX + card.x, top: groundY + card.y, width: card.w, height: card.h }}
                     onMouseEnter={() => setActiveKey(card.key)}
                     onMouseLeave={() => setActiveKey((k) => (k === card.key ? null : k))}
@@ -287,13 +416,14 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                         card={card}
                         level={masteryOf(card) ?? 0}
                         statement={card.itemId ? statements?.[card.itemId] : undefined}
+                        status={status}
                         onEdit={
-                          ownerTools && card.itemId
+                          statementTools
                             ? () => ownerTools.onEditStatement({ id: card.itemId!, text: statements?.[card.itemId!] ?? card.title })
                             : undefined
                         }
                         onDelete={
-                          ownerTools && card.itemId
+                          statementTools
                             ? () => ownerTools.onDeleteStatement({ id: card.itemId!, text: statements?.[card.itemId!] ?? card.title })
                             : undefined
                         }
@@ -307,8 +437,23 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                         statementCount={full ? branchItemIds(full).length : 0}
                         onInspect={() => inspect(card.nodeId)}
                         onManage={onManage ? () => onManage(card.nodeId) : undefined}
-                        onEdit={ownerTools ? () => ownerTools.onEditRoot({ id: card.nodeId, title: card.title }) : undefined}
+                        // Owners rename in place when they can type on the canvas, else in a dialog.
+                        onEdit={
+                          authoring
+                            ? () => setRenamingId(card.nodeId)
+                            : ownerTools
+                              ? () => ownerTools.onEditRoot({ id: card.nodeId, title: card.title })
+                              : undefined
+                        }
                         onDelete={ownerTools ? () => ownerTools.onDeleteRoot(card.nodeId) : undefined}
+                        onAddStatement={authoring ? () => openDraft({ kind: 'statement', nodeId: card.nodeId }) : undefined}
+                        onAddBranch={authoring ? () => openDraft({ kind: 'branch', parentId: card.nodeId }) : undefined}
+                        renaming={renaming === card.nodeId}
+                        onRename={(title) => {
+                          setRenamingId(null)
+                          if (title) authoring?.renameRoot(card.nodeId, title)
+                        }}
+                        pending={pending}
                         // Rounds start from top-level roots only (never from a statement card).
                         onPractice={practice && card.kind === 'category' ? () => practice.onPractice({ rootId: card.nodeId }) : undefined}
                         practiceMode={practice?.mode}
@@ -318,9 +463,43 @@ function RootMap({ nodes, levels, treeType, surface, emptyLabel, onManage, onAdd
                   </div>
                 )
               })}
+
+              {/* Rendered apart from the cards so it stays the same element (and keeps focus) as it moves. */}
+              {draftCard?.draft && draftPrompt && (
+                <div
+                  key={DRAFT_KEY}
+                  className="absolute z-20 transition-[left,top] duration-200 ease-out"
+                  style={{ left: offsetX + draftCard.x, top: groundY + draftCard.y, width: draftCard.w, height: draftCard.h }}
+                >
+                  <QuickAddCard
+                    slot={draftCard.draft}
+                    placeholder={draftPrompt.placeholder}
+                    label={draftPrompt.label}
+                    onKey={onQuickKey}
+                    onClose={() => setDraft(null)}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Always in reach, whatever the pan or zoom: the keyboard hint while typing, and ＋ Root. */}
+        {liveDraft && (
+          <p
+            aria-hidden
+            className="pointer-events-none absolute bottom-3 left-3 hidden rounded-full bg-slate-900/75 px-3 py-1 font-game text-[11px] font-bold text-white sm:block"
+          >
+            ↵ next · Tab nest · ⇧Tab up · Esc done
+          </p>
+        )}
+        {authoring && (
+          <div className="absolute right-3 bottom-3 z-30">
+            <GameButton tone="leaf" size="sm" onClick={() => openDraft({ kind: 'root' })} title="Add a top-level root">
+              <Plus className="size-4" strokeWidth={3} /> Root
+            </GameButton>
+          </div>
+        )}
       </div>
 
       <NodeInspector

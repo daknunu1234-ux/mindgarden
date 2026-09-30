@@ -59,6 +59,27 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   behind a confirmation dialog that says what goes.
 - **Edit**: `updateKnowledgeItem` rewrites a statement's text; trap rules and every player's progress
   (personal and tournament) are kept.
+- **Fast entry on the mindmap** (deck page, owner only): type roots, sub-roots and statements straight
+  onto the canvas, no dialogs.
+  - **＋ Root** floats in the canvas's bottom-right corner (outside the camera, so it's always in reach
+    whatever the pan or zoom); an empty tree shows "Plant the first root".
+  - Each root's hover tools add **＋📜 statement** and **＋🌿 sub-root**: an input opens in place, at the
+    size of the card it becomes, on a dashed root line (the pure layout reserves its slot, so it never
+    covers a card), and the camera glides to it if it's off screen.
+  - **Keyboard flow** (`mindmap/hooks/quickAdd.ts`, tested): **Enter** saves and opens the next sibling
+    (empty Enter closes), **Tab** nests (statements under the root just typed; from a statement line, a
+    sub-root under the same root), **Shift+Tab** goes up a level, **Esc** closes. Keys wait while an IME
+    composes (Vietnamese Telex / VNI).
+  - ✏️ (or double-click) **renames a root in place**; statements still edit in their dialog.
+  - Everything is optimistic through the deck draft: a root shows at once under a temp id, statements
+    and sub-roots can be typed under it straight away, and they're sent once it has its real id. Writes
+    go one at a time in typing order, so sibling order is kept.
+- **Root switcher**: chips above the canvas (mastery dot, title, statement count) jump to any top-level
+  root: it expands and the camera glides to it (`useCamera` `panTo`, instant under reduced motion).
+- **Compact mindmap**: smaller cards (roots 236 × 38, sub-roots 204 × 32, statements 200 × 54), tighter
+  gaps, 11–13 px type, and micro-badges: `📜 N` statements on a pill (opens the inspector), an icon-only
+  💧 / ⚔️ practice button, 5 mastery pips + `n/5` on statements, and the owner's ⏳ saving / 💧 not
+  drillable badge. The bezier root lines are unchanged.
 - **Hover-to-reveal owner tools**: ✏️ Edit / 🗑️ Delete (and ⚙️ Manage on roots) stay hidden until a card,
   pill or row is hovered or keyboard-focused (`shared/components/game` `HoverActions`), and are always
   visible on touch screens. Visitors and contestants never see them.
@@ -261,6 +282,12 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   inside the action). It now shows "Uprooting…" at once, awaits `chopDeck` (one RPC, no revalidations),
   and `router.replace`s to the farm, whose loading screen appears straight away; `deleteDeck` is gone.
   Root-branch deletes still wait for the server and refresh (they reshape the tree).
+- **Roots, also instant**: adding a root used a dialog that waited on `createMindmapNode` and
+  `router.refresh()`; the Manage dialog's sub-branch and rename forms did the same. Now the deck draft has
+  `addNode` / `renameNode` ops (`decks/lib/draft.ts`, tested): the root shows at 0 ms with a temp id, and
+  `confirmNode` moves everything typed under it onto its real id. When another edit refreshes the page,
+  settled ops drop and ops still in flight carry over onto the fresh data (`rebaseOps`), so nothing typed
+  blinks out. `AddRootDialog` is gone (＋ Root on the canvas replaces it).
 - **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
   latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
   the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
@@ -305,7 +332,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | perf(decks): instant statement deletes and a lighter tree uproot |
+| (pending) | feat(mindmap): fast-entry authoring on the canvas, root switcher and a compact layout |
+| `91af687` | perf(decks): instant statement deletes and a lighter tree uproot |
 | `44d3381` | perf(decks): optimistic species changes and statement adds on the deck page |
 | `5ce4ce4` | perf(garden): optimistic chop with refund credit, no page re-renders from farm actions |
 | `cf89bf0` | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
@@ -330,5 +358,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 64 files, 566 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 65 files, 593 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).
