@@ -52,7 +52,7 @@ function PlantedTreeList({ trees }: PlantedTreeListProps) {
                       </Chip>
                     )}
                     {!tree.isPublic && <Chip>🔒 Private</Chip>}
-                    {tree.mightyRoots > 0 && <Chip gold>💎 {plural(tree.mightyRoots, 'Mighty Root', 'Mighty Roots')}</Chip>}
+                    {tree.mightyRoots > 0 && <Chip gold>🌟 {plural(tree.mightyRoots, 'Mighty Root', 'Mighty Roots')}</Chip>}
                   </div>
                   <div className="mt-2 flex items-center gap-3">
                     <GameProgressBar

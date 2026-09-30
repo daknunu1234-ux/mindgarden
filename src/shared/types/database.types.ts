@@ -36,6 +36,8 @@ export type Database = {
           full_name: string | null
           // Migration 20260928001000: the public name the player chose (2–30 chars); null = pseudonym.
           display_name: string | null
+          // Migration 20260930000000: fraction of a coin carried between buffed payouts (0 ≤ x < 1).
+          coin_carry: number
           avatar_url: string | null
           streak_count: number
           last_active_at: string | null
@@ -317,6 +319,55 @@ export type Database = {
           },
         ]
       }
+      // Migration 20260930000000_farm_grid.sql. Players read their farm (+ visitors: items and public
+      // trees) and delete their own placements; purchase_and_place_item() is the only writer.
+      garden_placements: {
+        Row: {
+          id: string
+          user_id: string
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          deck_id: string | null
+          grid_x: number
+          grid_y: number
+          width: number
+          height: number
+          variant: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          deck_id?: string | null
+          grid_x: number
+          grid_y: number
+          width?: number
+          height?: number
+          variant?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          deck_id?: string | null
+          grid_x?: number
+          grid_y?: number
+          width?: number
+          height?: number
+          variant?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'garden_placements_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       // Migration 20260928000800_tree_visits.sql. Players read their own rows; record_tree_visit() writes.
       tree_visits: {
         Row: {
@@ -476,6 +527,16 @@ export type Database = {
       get_display_names: {
         Args: { p_user_ids: string[] }
         Returns: { user_id: string; display_name: string }[]
+      }
+      // Migration 20260930000000: buy (or plant, free) and place one farm item; price + size from the catalogue.
+      purchase_and_place_item: {
+        Args: { p_item_type: string; p_x: number; p_y: number; p_deck_id?: string | null; p_variant?: string | null }
+        Returns: { placement_id: string; remaining_coins: number; cost: number }[]
+      }
+      // Migration 20260930000000: chop (delete) a tree, with the Woodshop refund.
+      uproot_deck: {
+        Args: { p_deck_id: string }
+        Returns: { deck_id: string; refund: number; total_coins: number }[]
       }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {

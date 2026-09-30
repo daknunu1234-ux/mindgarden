@@ -27,16 +27,20 @@ export type FarmPlotView = {
   // The player's local day of the latest practice when it is today (drives the watering splash).
   wateredDay: string | null
   isOwner: boolean
+  // Its tile on the farm grid (null = not planted yet: waiting in the Shop's Trees tab).
+  placementId?: string | null
+  // Coin multiplier from the farm (stream ×1.2, Farmer's House ×1.5, both ×1.8); 1 without buffs.
+  buff?: number
+  // The owner hosts a Mind Tournament on it (visitors may compete).
+  isTournamentOpen?: boolean
 }
 
 // Farm HUD. level/streak/coins are null when signed out.
 export type FarmHudView = {
   level: { level: number; title: string; progress: number; xpIntoLevel: number; xpForNextLevel: number } | null
   streak: { current: number; practicedToday: boolean } | null
-  // 🪙 5 per mastery step earned in any deck.
+  // 🪙 the stored gold balance (the only currency).
   coins: number | null
   // When `coins` was read on the server (epoch ms); newer live balances from actions win.
   coinsAsOf?: number
-  // 💎 Mighty Roots on this island.
-  gems: number
 }

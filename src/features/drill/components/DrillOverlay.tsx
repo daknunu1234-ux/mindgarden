@@ -137,7 +137,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
           </div>
           {saving && stats.mastered > 0 && (
             <p className="mt-4 text-center font-game font-bold text-amber-900">
-              💎 {stats.mastered} reached Mighty Root!
+              🌟 {stats.mastered} reached Mighty Root!
             </p>
           )}
           {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} />}

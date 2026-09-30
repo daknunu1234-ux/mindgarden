@@ -71,6 +71,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
 | `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved in the Hall of Fame); your run is frozen |
 | `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
+| `TILE_UNAVAILABLE` | 409 | Farm grid: the spot is taken or off the 16 × 16 grid, or the tree is already planted (`placeFarmItem`) |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
 ---
@@ -108,6 +109,9 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
 | Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
 | Tournament | `getTournamentBoards` | Action | Hall of Fame + Active Learners boards, and your own standing | Optional |
+| Garden | `getFarmPlacements` | Action | A farm's placements: yours, or a neighbour's (items + public trees) | Optional |
+| Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
+| Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
 | Decks | `deleteDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress), then redirects to `/` | Required |
 | Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
@@ -441,23 +445,37 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `deleteDeck` (decks)
 ```typescript
-// deleteDeck({ deckId }) → on success: revalidatePath('/', '/deck/<slug>', '/profile') then redirect('/') (no return value)
+// deleteDeck({ deckId }) → on success: revalidatePath('/', '/deck/<slug>', '/profile') then redirect('/'), or '/?refund=N'
+//                          when a Woodshop paid N coins back (the farm shows "🪚 Woodshop refund: +N 🪙")
 //                        → on failure: { success: false, error }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner, or RLS deleted 0 rows), DECK_NOT_FOUND, INTERNAL_ERROR
 ```
-- One `DELETE FROM decks … RETURNING id`; `mindmap_nodes`, `knowledge_items` and `user_progress` go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP is derived from progress, so it drops accordingly. 🪙 gold already earned is kept (`users.coins` is a stored balance)
+- Chops through `uproot_deck()` (DATABASE.md "Farm Grid"): deletes the deck and, with a Woodshop on the farm, refunds `least(floor(statements × 0.25), 50)` 🪙 in the same transaction. Before migration `20260930000000` it falls back to one `DELETE FROM decks … RETURNING id` (no refund). `mindmap_nodes`, `knowledge_items`, `user_progress` and the tree's farm tile go with it via `ON DELETE CASCADE` (DATABASE.md). Gardener XP is derived from progress, so it drops accordingly. 🪙 gold already earned is kept (`users.coins` is a stored balance)
 - Success redirects instead of returning: `revalidatePath` would re-render the current route, and `/deck/<slug>` is gone. The client sees Next's redirect signal (`DeleteDeckDialog` shows the farewell toast, then rethrows it via `unstable_rethrow`)
 - UI: `DeleteDeckDialog` (type the tree's name to confirm, `matchesTreeName`), from the Tree Workshop's Danger Zone and the owner's 🗑 badge in the farm plot popup
+
+### `getFarmPlacements` / `placeFarmItem` / `removeFarmPlacement` (garden)
+```typescript
+// getFarmPlacements({ ownerId?: uuid }) → Placement[]   // { id, itemType, deckId, x, y, width, height, variant }
+//   yours without ownerId (signed out → []); a neighbour's: their items and PUBLIC trees only (RLS)
+// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'farmer_house' | 'woodshop' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
+//   → { placementId, remainingCoins, cost }   x, y = top tile, 0–15
+//   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS, TILE_UNAVAILABLE, DECK_NOT_FOUND, INTERNAL_ERROR
+// removeFarmPlacement({ placementId }) → { id }   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not yours), INTERNAL_ERROR
+```
+- `placeFarmItem` calls `purchase_and_place_item()`: the database charges its own catalogue price (no price or size is sent), refuses overlaps / off-grid tiles, and inserts in one transaction. Trees are free. `revalidatePath('/')`; the farm pushes `remainingCoins` into `CoinsProvider`
+- `removeFarmPlacement`: no refund. A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
+- UI (`garden`): the farm's 🏪 Shop (`FarmShopModal`, tabs 🌳 Trees · 🏗️ Structures · 🌊 Landscape · 🪵 Decorations · 🐮 Animals) → placement mode on `FarmIsometricGrid` (green / red ghost; click to place, tap twice on touch; Esc, right-click or Cancel leaves without paying)
 
 ### `getFarmHud` (progress)
 ```typescript
 // Input: none
 // data: { level: { level; title; xp; xpIntoLevel; xpForNextLevel; progress /* 0–1 */ };
 //         streak: { current; best; practicedToday; lastDay };
-//         coins: number } | null                                          // null when signed out
+//         coins: number; coinsAsOf: number } | null                      // null when signed out
 ```
 - XP = 10 × Σ `mastery_level` over all of the player's `user_progress` rows; level L → L + 1 costs 50 + 25 × (L − 1)
-- Coins = the stored 🪙 gold balance `users.coins` (starts at 300; +1 per item mastered for the first time; −100 per seed, −min(100 + statements, 150) per clone; 0 if the coins migration hasn't run). `coinsAsOf` = when it was read (epoch ms), so the HUD keeps the newer of this and a live value from an action. The HUD's 💎 gems are the Mighty Roots on the current island, computed by the page
+- Coins = the stored 🪙 gold balance `users.coins` (starts at 300; +1 per item mastered for the first time; −100 per seed, −min(100 + statements, 150) per clone; 0 if the coins migration hasn't run). `coinsAsOf` = when it was read (epoch ms), so the HUD keeps the newer of this and a live value from an action. Coins are the only currency: the HUD shows 🔥 streak and 🪙 coins (no gems)
 
 ### `getGardenStats` (progress)
 ```typescript

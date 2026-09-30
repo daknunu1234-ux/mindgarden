@@ -81,7 +81,7 @@ function InspectorBody({
               {node.items.length} {node.items.length === 1 ? 'statement' : 'statements'}
               {node.children.length > 0 && ` · ${node.children.length} sub-${node.children.length === 1 ? 'branch' : 'branches'}`}
               {mastery !== null && ` · ${masteryFraction(mastery)}`}
-              {mighty && ' · 💎 Mighty Root'}
+              {mighty && ' · 🌟 Mighty Root'}
             </SheetDescription>
           </div>
         </div>

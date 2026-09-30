@@ -427,9 +427,23 @@ export async function removeDeck(
   supabase: Client,
   userId: string,
   { deckId }: DeleteDeckInput,
-): Promise<ActionResult<{ id: string; slug: string }>> {
+): Promise<ActionResult<{ id: string; slug: string; refund: number }>> {
   const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
+
+  // Chop through uproot_deck() (migration 20260930000000): deletes the deck and pays the Woodshop
+  // refund (25% of its statements, at most 50 🪙) in one transaction. Before that migration the
+  // function doesn't exist: fall back to the plain delete below (no refund).
+  const chopped = await supabase.rpc('uproot_deck', { p_deck_id: deckId })
+  if (!chopped.error) {
+    const row = Array.isArray(chopped.data) ? chopped.data[0] : chopped.data
+    return ok({ id: deckId, slug: owner.data.slug, refund: row?.refund ?? 0 })
+  }
+  if (!['PGRST202', '42883'].includes(chopped.error.code)) {
+    console.error('[decks] uproot_deck failed', chopped.error.code, chopped.error.message)
+    return fail('INTERNAL_ERROR', 'Could not uproot this tree')
+  }
+  console.error('[decks] removeDeck: run supabase/migrations/20260930000000_farm_grid.sql (no Woodshop refund until then)')
 
   const { data, error } = await supabase.from('decks').delete().eq('id', deckId).select('id')
   if (error) {
@@ -441,7 +455,7 @@ export async function removeDeck(
     console.error('[decks] removeDeck deleted no rows (missing "decks: delete own" policy?)', deckId)
     return fail('AUTH_FORBIDDEN', 'This tree could not be uprooted')
   }
-  return ok({ id: deckId, slug: owner.data.slug })
+  return ok({ id: deckId, slug: owner.data.slug, refund: 0 })
 }
 
 // Root's deck, for owner checks on node edits.

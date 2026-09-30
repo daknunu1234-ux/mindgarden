@@ -6,8 +6,10 @@ import { getDecks, getNeighborGarden, getVisitedGardens, type Deck } from '@/fea
 import { FarmWorld } from './_components/FarmWorld'
 import {
   GardenGrid,
+  getFarmPlacements,
   groupVisitedGardens,
   publicName,
+  treeBuff,
   ViewToggle,
   VisitedGardensDrawer,
   type DeckCardView,
@@ -27,18 +29,55 @@ const hrefFor = (view: View, page = 1) => {
   return query ? `/?${query}` : '/'
 }
 
-// Joins decks with the player's progress. If progress fails to load, trees show 0% instead of failing the page.
+// Joins decks with the player's progress (50 decks per request). If progress fails to load, trees
+// show 0% instead of failing the page.
 async function loadProgress(decks: Deck[]): Promise<Map<string, DeckProgress>> {
-  if (decks.length === 0) return new Map()
-  const res = await getProgressByDecks({ deckIds: decks.map((d) => d.id) })
-  return new Map(res.success ? res.data.map((p) => [p.deckId, p]) : [])
+  const map = new Map<string, DeckProgress>()
+  for (let i = 0; i < decks.length; i += 50) {
+    const res = await getProgressByDecks({ deckIds: decks.slice(i, i + 50).map((d) => d.id) })
+    if (res.success) for (const p of res.data) map.set(p.deckId, p)
+  }
+  return map
 }
 
-// ?visit=<gardener id>: read-only visit to a neighbour's island (their shared trees only).
+// The farm shows every tree the gardener owns (not one page): up to FARM_DECK_PAGES × 50.
+const FARM_DECK_PAGES = 4
+async function loadAllOwnDecks(): Promise<Awaited<ReturnType<typeof getDecks>>> {
+  const first = await getDecks({ limit: 50, page: 1 })
+  if (!first.success) return first
+  const decks = [...first.data]
+  const pages = Math.min(FARM_DECK_PAGES, Math.ceil((first.meta?.total ?? 0) / 50))
+  for (let page = 2; page <= pages; page++) {
+    const next = await getDecks({ limit: 50, page })
+    if (next.success) decks.push(...next.data)
+  }
+  return { ...first, data: decks }
+}
+
+function toPlotView(d: Deck, p: DeckProgress | undefined, userId: string | null): FarmPlotView {
+  const isOwner = userId !== null && d.userId === userId
+  return {
+    id: d.id,
+    slug: d.slug,
+    title: d.title,
+    treeType: d.treeType,
+    masteryPercent: p?.masteryPercent ?? 0,
+    itemCount: p?.itemCount ?? 0,
+    masteredCount: p?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0,
+    mightyRoots: p?.mightyRoots ?? 0,
+    // Only the owner waters a tree (visitors are read-only), so only they get watering status.
+    needsWater: isOwner ? !(p?.practicedToday ?? false) : null,
+    wateredDay: isOwner && p?.practicedToday ? p.lastPracticedDay : null,
+    isOwner,
+    isTournamentOpen: d.isPublic && d.isTournamentOpen,
+  }
+}
+
+// ?visit=<gardener id>: read-only visit to a neighbour's farm (their shared trees only).
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
-  const { page, login, view: rawView, visit: rawVisit } = await searchParams
+  const { page, login, view: rawView, visit: rawVisit, refund: rawRefund } = await searchParams
   const view: View = rawView === 'grid' ? 'grid' : 'farm'
 
   const [userRes, hudRes, visitedRes] = await Promise.all([getCurrentUser(), getFarmHud(), getVisitedGardens()])
@@ -46,10 +85,19 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   // Visiting yourself is just your own garden.
   const visitOwnerId = view === 'farm' && typeof rawVisit === 'string' && UUID.test(rawVisit) && rawVisit !== userId ? rawVisit : null
 
-  // My garden: only my own trees (getDecks filters by the session user). Visiting: their shared trees.
-  const res = visitOwnerId ? await getNeighborGarden({ ownerId: visitOwnerId }) : await getDecks({ page: typeof page === 'string' ? page : undefined })
+  // Farm: every own tree (or the neighbour's shared ones) + the farm's placements. Grid: one page.
+  const res =
+    view === 'farm'
+      ? visitOwnerId
+        ? await getNeighborGarden({ ownerId: visitOwnerId, limit: 50 })
+        : await loadAllOwnDecks()
+      : await getDecks({ page: typeof page === 'string' ? page : undefined })
   const decks = res.success ? res.data : []
-  const progress = await loadProgress(decks)
+  const [progress, placementsRes] = await Promise.all([
+    loadProgress(decks),
+    view === 'farm' ? getFarmPlacements(visitOwnerId ? { ownerId: visitOwnerId } : {}) : null,
+  ])
+  const placements = placementsRes?.success ? placementsRes.data : []
   const currentPage = res.success ? (res.meta?.page ?? 1) : 1
   // Visited Gardens drawer: shared trees this player opened. A failed load shows an empty drawer.
   // Gardeners show by their chosen Garden Name, else their pseudonym.
@@ -68,24 +116,14 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     masteryPercent: progress.get(d.id)?.masteryPercent ?? 0,
   }))
 
-  const plots: FarmPlotView[] = decks.map((d) => {
-    const p = progress.get(d.id)
-    const isOwner = userId !== null && d.userId === userId
-    return {
-      id: d.id,
-      slug: d.slug,
-      title: d.title,
-      treeType: d.treeType,
-      masteryPercent: p?.masteryPercent ?? 0,
-      itemCount: p?.itemCount ?? 0,
-      masteredCount: p?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0,
-      mightyRoots: p?.mightyRoots ?? 0,
-      // Only the owner waters a tree (visitors are read-only), so only they get watering status.
-      needsWater: isOwner ? !(p?.practicedToday ?? false) : null,
-      wateredDay: isOwner && p?.practicedToday ? p.lastPracticedDay : null,
-      isOwner,
-    }
+  // Trees on the farm carry their tile and coin buff; own trees without a tile wait in the Shop.
+  const treeTiles = new Map(placements.filter((p) => p.itemType === 'tree' && p.deckId).map((p) => [p.deckId!, p]))
+  const allPlots = decks.map((d) => toPlotView(d, progress.get(d.id), userId))
+  const plots: FarmPlotView[] = allPlots.flatMap((plot) => {
+    const tile = treeTiles.get(plot.id)
+    return tile ? [{ ...plot, placementId: tile.id, buff: treeBuff(tile.x, tile.y, placements).multiplier }] : []
   })
+  const unplacedTrees = visitOwnerId ? [] : allPlots.filter((plot) => plot.isOwner && !treeTiles.has(plot.id))
 
   const hud = hudRes.success ? hudRes.data : null
   const hudView: FarmHudView = {
@@ -101,52 +139,43 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     streak: hud ? { current: hud.streak.current, practicedToday: hud.streak.practicedToday } : null,
     coins: hud ? hud.coins : null,
     coinsAsOf: hud?.coinsAsOf,
-    gems: plots.reduce((sum, p) => sum + p.mightyRoots, 0),
   }
 
   const total = res.success ? (res.meta?.total ?? 0) : 0
   const limit = res.success ? (res.meta?.limit ?? 20) : 20
-  const lastPage = Math.max(1, Math.ceil(total / limit))
 
   // Farm World: full-bleed game viewport under the site header; everything else floats in the HUD.
   if (view === 'farm' && res.success) {
-    const loginNotice = login === 'error' && (
-      <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 font-game text-sm font-semibold text-amber-900 shadow-[0_3px_0_rgba(180,83,9,0.4)]">
-        That sign-in link didn&apos;t work. Request a new one with Sign in.
-      </p>
-    )
-    const islands = lastPage > 1 && (
-      <nav aria-label="Islands" className="flex items-center gap-4">
-        <IslandStep href={currentPage > 1 ? hrefFor('farm', currentPage - 1) : null} label="Previous island" glyph="◀" />
-        <Ribbon tone="sky">
-          <span className="tabular-nums">
-            Island {currentPage} / {lastPage}
-          </span>
-        </Ribbon>
-        <IslandStep href={currentPage < lastPage ? hrefFor('farm', currentPage + 1) : null} label="Next island" glyph="▶" />
-      </nav>
+    const refund = typeof rawRefund === 'string' && /^\d{1,3}$/.test(rawRefund) ? Number(rawRefund) : 0
+    const notices = (
+      <>
+        {login === 'error' && (
+          <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 font-game text-sm font-semibold text-amber-900 shadow-[0_3px_0_rgba(180,83,9,0.4)]">
+            That sign-in link didn&apos;t work. Request a new one with Sign in.
+          </p>
+        )}
+        {refund > 0 && !visitOwnerId && (
+          <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 font-game text-sm font-semibold text-amber-900 shadow-[0_3px_0_rgba(180,83,9,0.4)]">
+            🪚 Woodshop refund: +{refund} 🪙 for the chopped tree
+          </p>
+        )}
+      </>
     )
     return (
       <main className="flex w-full flex-1 flex-col">
         <h1 className="sr-only">{visitName ? `${visitName}'s Garden` : 'Farm World'}</h1>
         <FarmWorld
-          // A fresh island (camera, popups) when switching between gardens.
+          // A fresh farm (camera, popups) when switching between gardens.
           key={visitOwnerId ?? userId ?? 'guest'}
           plots={plots}
+          placements={placements}
+          unplacedTrees={unplacedTrees}
           hud={hudView}
           signedIn={userId !== null}
           gridHref={hrefFor('grid', currentPage)}
           visitor={visitName ? { name: visitName, backHref: '/' } : null}
           leftEdge={<VisitedGardensDrawer gardens={visitedGardens} signedIn={userId !== null} visitingOwnerId={visitOwnerId} />}
-          topCenter={
-            !visitOwnerId &&
-            (loginNotice || islands) && (
-              <div className="flex flex-col items-center gap-1.5">
-                {loginNotice}
-                {islands}
-              </div>
-            )
-          }
+          topCenter={!visitOwnerId && (login === 'error' || refund > 0) && <div className="flex flex-col items-center gap-1.5">{notices}</div>}
         />
       </main>
     )
@@ -188,20 +217,6 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   )
 }
 
-function IslandStep({ href, label, glyph }: { href: string | null; label: string; glyph: string }) {
-  return href ? (
-    <GameButton asChild tone="cream" size="icon-sm">
-      <Link href={href} aria-label={label}>
-        {glyph}
-      </Link>
-    </GameButton>
-  ) : (
-    <GameButton tone="cream" size="icon-sm" disabled aria-label={label}>
-      {glyph}
-    </GameButton>
-  )
-}
-
 function Pagination({ view, page, limit, total }: { view: View; page: number; limit: number; total: number }) {
   const lastPage = Math.max(1, Math.ceil(total / limit))
   if (lastPage === 1) return null
@@ -211,7 +226,7 @@ function Pagination({ view, page, limit, total }: { view: View; page: number; li
       <PageLink href={hrefFor(view, page - 1)} enabled={page > 1} label="◀ Previous" />
       <Ribbon tone="leaf">
         <span className="tabular-nums">
-          {view === 'farm' ? 'Island' : 'Page'} {page} of {lastPage}
+          Page {page} of {lastPage}
         </span>
       </Ribbon>
       <PageLink href={hrefFor(view, page + 1)} enabled={page < lastPage} label="Next ▶" />

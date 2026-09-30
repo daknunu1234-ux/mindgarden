@@ -7,8 +7,9 @@ import { fail, type ActionResult } from '@/shared/types/result'
 import { DeleteDeckDto } from '../dto/DeleteDeckDto'
 import { removeDeck } from '../services/authoring'
 
-// Auth: Required (deck owner). Uproots a tree with all its roots, statements and players' progress
-// (database cascades), then redirects to the farm (`/`).
+// Auth: Required (deck owner). Uproots (chops) a tree with all its roots, statements, players' progress
+// and its farm tile (database cascades), then redirects to the farm (`/`), with `?refund=N` when a
+// Woodshop on the farm paid coins back.
 //
 // Success never returns: `redirect('/')` navigates in the same roundtrip. Returning instead would
 // make Next re-render the current route (revalidatePath does that), and on /deck/[slug] that is
@@ -29,5 +30,5 @@ export async function deleteDeck(input: unknown): Promise<ActionResult<never>> {
   revalidatePath('/')
   revalidatePath(`/deck/${res.data.slug}`)
   revalidatePath('/profile')
-  redirect('/')
+  redirect(res.data.refund > 0 ? `/?refund=${res.data.refund}` : '/')
 }

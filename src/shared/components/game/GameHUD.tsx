@@ -60,17 +60,16 @@ function LevelCrest({
   )
 }
 
-type PillTone = 'fire' | 'gold' | 'gem' | 'leaf'
+type PillTone = 'fire' | 'gold' | 'leaf'
 
 // Coloured medallion socket behind each icon.
 const MEDALLIONS: Record<PillTone, string> = {
   fire: 'from-[#fff1d6] to-[#ffc98a] border-[#c2410c] shadow-[inset_0_2px_0_rgba(255,255,255,0.8),0_4px_0_#9a3412]',
   gold: 'from-[#fffbe0] to-[#ffe28a] border-[#b45309] shadow-[inset_0_2px_0_rgba(255,255,255,0.8),0_4px_0_#8a4a0c]',
-  gem: 'from-[#effbff] to-[#a9e7fb] border-[#0369a1] shadow-[inset_0_2px_0_rgba(255,255,255,0.8),0_4px_0_#075985]',
   leaf: 'from-[#f2ffe8] to-[#b9f0a0] border-[#15803d] shadow-[inset_0_2px_0_rgba(255,255,255,0.8),0_4px_0_#166534]',
 }
 
-// Top-right: one floating stat pod (🔥 streak, 🪙 coins, 💎 Mighty Root gems). `icon` is a
+// Top-right: one floating stat pod (🔥 streak, 🪙 coins: the only currency). `icon` is a
 // GameIcon name, or any node (e.g. an emoji).
 function ResourcePill({
   icon,
@@ -124,7 +123,7 @@ function ResourcePill({
   )
 }
 
-const ICON_NAMES = new Set<string>(['flame', 'coin', 'gem', 'sprout', 'star', 'drop', 'trophy', 'seed'])
+const ICON_NAMES = new Set<string>(['flame', 'coin', 'sprout', 'star', 'drop', 'trophy', 'seed'])
 const isIconName = (s: string): s is GameIconName => ICON_NAMES.has(s)
 
 // Bottom-centre dock: a chunky wooden tray (with a ground shadow) holding big round action orbs.

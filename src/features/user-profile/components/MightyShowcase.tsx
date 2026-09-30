@@ -12,7 +12,7 @@ function MightyShowcase({ trees }: MightyShowcaseProps) {
   const earned = slots.filter((s) => s.kind === 'trophy').length
 
   return (
-    <GamePanel tone="wood" ribbon="gold" title="💎 Mighty Roots Showcase">
+    <GamePanel tone="wood" ribbon="gold" title="🌟 Mighty Roots Showcase">
       <p className="mb-5 text-center text-sm font-medium text-amber-100/85">
         {earned > 0
           ? `${plural(earned, 'tree has', 'trees have')} grown Mighty Roots. Master every statement of a root to add more.`
@@ -30,7 +30,7 @@ function MightyShowcase({ trees }: MightyShowcaseProps) {
                   <span aria-hidden className="mg-glow absolute inset-[18%] rounded-full bg-yellow-300/50 blur-xl" />
                   {slot.tree.illustration && <div className="relative size-full p-1">{slot.tree.illustration}</div>}
                   <span className="absolute top-1.5 right-1.5 rounded-full border-2 border-sky-700 bg-gradient-to-b from-cyan-200 to-sky-400 px-1.5 font-game text-xs font-extrabold text-sky-950 shadow-[0_2px_0_#075985]">
-                    💎 {slot.tree.mightyRoots}
+                    🌟 {slot.tree.mightyRoots}
                   </span>
                 </div>
                 <p className="mt-1.5 truncate px-1 text-center font-game text-sm font-bold text-amber-950 group-hover:underline">{slot.tree.title}</p>

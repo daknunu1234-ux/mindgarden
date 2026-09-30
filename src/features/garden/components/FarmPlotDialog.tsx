@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Droplets, Network, PencilLine, Trash2 } from 'lucide-react'
+import { Droplets, Network, PencilLine } from 'lucide-react'
 import { GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
 import { useTreeStage } from '../hooks/useTreeStage'
@@ -13,24 +13,29 @@ import { TreeStageSvg } from './TreeStageSvg'
 type FarmPlotDialogProps = {
   plot: FarmPlotView | null
   onOpenChange: (open: boolean) => void
-  // Owners only: ask to uproot (delete) this tree. The page wires it to the decks feature.
+  // Owners only: ask to chop (delete) this tree. The page wires it to the decks feature.
   onUproot?: (plot: FarmPlotView) => void
+  // Owners only: take the tree off the farm (back to the Shop's Trees tab, nothing deleted).
+  onRemoveFromFarm?: (plot: FarmPlotView) => void
 }
 
-// Plot popup: water (practise), inspect roots (mindmap), edit and uproot, all owner only. Visitors
-// (strict read-only mode) can explore the roots; practice points them to cloning the tree.
-function FarmPlotDialog({ plot, onOpenChange, onUproot }: FarmPlotDialogProps) {
+// Tree popover: 💧 water (practise), 🔍 roots (mindmap), edit, 📦 remove from the farm and 🪓 chop, all
+// owner only. Visitors (strict read-only mode) explore the roots, clone to practise, and ⚔️ compete
+// while the owner hosts a Mind Tournament.
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot: FarmPlotView) => void }) {
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm'> & { plot: FarmPlotView }
+
+function PlotDetails({ plot, onUproot, onRemoveFromFarm }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -54,8 +59,11 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
           <GrowthBar percent={plot.masteryPercent} />
           <p className="font-medium text-amber-900/75">
             {plot.itemCount} {plot.itemCount === 1 ? 'statement' : 'statements'}
-            {plot.mightyRoots > 0 && ` · 💎 ${plot.mightyRoots} Mighty ${plot.mightyRoots === 1 ? 'Root' : 'Roots'}`}
+            {plot.mightyRoots > 0 && ` · 🌟 ${plot.mightyRoots} Mighty ${plot.mightyRoots === 1 ? 'Root' : 'Roots'}`}
           </p>
+          {plot.isOwner && (plot.buff ?? 1) > 1 && (
+            <p className="font-semibold text-amber-800">🪙 ×{plot.buff} coins for statements mastered here</p>
+          )}
           {plot.needsWater === true && canWater && <p className="font-semibold text-sky-800">💧 Thirsty: practise today to water it.</p>}
           {plot.needsWater === false && <p className="font-semibold text-emerald-800">Watered today 🌿</p>}
         </div>
@@ -67,6 +75,11 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
             <GameButton tone="sky" size="lg" disabled title="Visitors can explore but not practise: clone this tree to your garden first">
               Clone to practice this tree 🌱
             </GameButton>
+            {plot.isTournamentOpen && (
+              <GameButton asChild tone="sun" size="lg">
+                <Link href={`/deck/${plot.slug}#tournament`}>⚔️ Compete in its Mind Tournament</Link>
+              </GameButton>
+            )}
             <GameButton asChild tone="leaf">
               <Link href={`/deck/${plot.slug}`}>🌱 Explore &amp; clone this tree</Link>
             </GameButton>
@@ -119,19 +132,21 @@ function PlotDetails({ plot, onUproot }: { plot: FarmPlotView; onUproot?: (plot:
               </Link>
             </GameButton>
           )}
-          {plot.isOwner && onUproot && (
-            <GameButton
-              type="button"
-              tone="danger"
-              size="icon"
-              onClick={() => onUproot(plot)}
-              aria-label={`Uproot ${plot.title}`}
-              title="Uproot this tree"
-            >
-              <Trash2 aria-hidden />
-            </GameButton>
-          )}
         </div>
+        {plot.isOwner && (onRemoveFromFarm || onUproot) && (
+          <div className="flex gap-3">
+            {onRemoveFromFarm && plot.placementId && (
+              <GameButton type="button" tone="cream" className="flex-1" onClick={() => onRemoveFromFarm(plot)} title="Back to the Shop's Trees tab: nothing is deleted">
+                📦 Remove from farm
+              </GameButton>
+            )}
+            {onUproot && (
+              <GameButton type="button" tone="danger" className="flex-1" onClick={() => onUproot(plot)} title="Delete this tree (a Woodshop refunds 25% of its statements)">
+                🪓 Chop
+              </GameButton>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

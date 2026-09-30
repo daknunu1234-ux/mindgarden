@@ -100,7 +100,8 @@ features/[feature]/
 | `progress` | `user_progress`, `practice_days`, `users.streak_count`, `users.last_active_at`, `users.coins` (mastery payouts, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
 | `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `tournament` | `deck_tournament_participants`, `deck_tournament_item_progress` | `submitTournamentAnswer` (service role writes via `record_tournament_answer`), `getTournamentBoards` | `shared`, `decks/server` |
-| `garden`, `mindmap` | none (UI only) | none | `shared` |
+| `garden` | `garden_placements` (the farm grid) | `getFarmPlacements`, `placeFarmItem`, `removeFarmPlacement` | `shared` |
+| `mindmap` | none (UI only) | none | `shared` |
 
 - **Direction**: `drill` → `progress/server` → `decks/server`; `drill` → `decks/server`; `drill` → `tournament/server` → `decks/server`; every feature → `shared`. Never the reverse, no cycles
 

@@ -19,4 +19,6 @@ export type ErrorCode =
   | 'TOURNAMENT_CLOSED'
   // Mind Tournament: this contestant already graduated (engraved in the Hall of Fame).
   | 'TOURNAMENT_GRADUATED'
+  // Farm grid: the spot is taken, off the grid, or the tree is already planted.
+  | 'TILE_UNAVAILABLE'
   | 'INTERNAL_ERROR'

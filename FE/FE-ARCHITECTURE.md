@@ -85,7 +85,7 @@ src/
 
 | Feature | Responsible for | Owns (components / hooks) | Does NOT | Input | Output / talks to |
 |---------|-----------------|---------------------------|----------|-------|-------------------|
-| `garden` | Farm Island world map (default `/`), classic grid (`/?view=grid`), single tree, stage math | `GardenGrid`, `TreeCard`, `TreeCanvas`, `useTreeStage` | Call actions, know about roots or drill | Deck + `masteryPercent` props | Renders only |
+| `garden` | Farm World (default `/`): 16 × 16 isometric grid, 🏪 Shop, placement mode; classic grid (`/?view=grid`); single tree, stage math | `FarmIslandView`, `FarmIsometricGrid`, `FarmShopModal`, `GardenGrid`, `TreeCard`, `useTreeStage` | Know about roots or drill | Trees (decks + progress) and placements from the page | Its own farm actions (`placeFarmItem`, `removeFarmPlacement`); deck pages via links |
 | `mindmap` | Mindmap layout (crown → categories → statements), collapse, 🔍 inspector drawer, owner ✏️ hooks (wired to decks in `app/`) | `RootMap`, `NodePill`, `StatementCard`, `layoutMindmap` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
 | `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |

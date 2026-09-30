@@ -45,7 +45,8 @@
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
-| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck` and `dev_grant_coins`; see *Gold coins* and *Seed economy* |
+| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck` and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
+| coin_carry | NUMERIC(6,3) | NOT NULL, DEFAULT 0, 0 ≤ x < 1 | Fraction of a coin carried between buffed mastery payouts (migration `20260930000000`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
 ### Decks & Mindmap Feature
@@ -158,6 +159,46 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 - `get_tournament_hall_of_fame(deck_id)` (📜 Hall of Fame): graduated, `ORDER BY days_count ASC, graduated_at ASC` (every graduate) → `rank, user_id, display_name, max_points, days_count, graduated_at`
 
 ⚠️ Known limits: visitors can read a shared tree's true statements (strict read-only mode, `getDeckReader`), so a contestant can look answers up; and a contestant who answers every statement five times in one sitting graduates in 1 day. The board measures days, not honesty or spacing.
+
+### Farm Grid Feature
+
+*Migration `20260930000000_farm_grid.sql`. Each gardener's farm is a 16 × 16 isometric grid; trees and everything bought in the 🏪 Shop stand on it. Owned by the `garden` feature.*
+
+**garden_placements** — *One item on a farm*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | UUID | PK, DEFAULT gen_random_uuid() | |
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | The farm's owner |
+| item_type | TEXT | NOT NULL, CHECK in (tree, fence, stream, farmer_house, woodshop, rockery, animal) | |
+| deck_id | UUID | FK → decks, ON DELETE CASCADE; set iff item_type = 'tree' (CHECK); partial UNIQUE | The tree's deck. Chopping (deleting) the deck removes its tile |
+| grid_x, grid_y | INT | NOT NULL, 0–15 | Top tile of the footprint |
+| width, height | INT | NOT NULL, DEFAULT 1, 1–2; CHECK x + width ≤ 16, y + height ≤ 16 | Footprint (2 × 2 for the Farmer's House and Woodshop) |
+| variant | TEXT | NULLABLE, ≤ 20 chars | Animals: 'cow' / 'pig' |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(user_id, grid_x, grid_y)* | — | UNIQUE `unique_farm_tile` | One item per top tile (overlaps of bigger footprints are refused by the function) |
+
+**Catalogue and rules** (the same numbers live in `features/garden/lib/farmCatalog.ts` / `farmBuffs.ts`; tests check the SQL):
+
+| Item | Size | Price | Effect |
+|------|------|-------|--------|
+| Tree (own deck) | 1 × 1 | free | Planting from the Shop's Trees tab; one tile per deck |
+| Farmer's House | 2 × 2 | 50 🪙 | Trees in its 4 × 4 area (its footprint + 1 tile all round): ×1.5 coins |
+| Woodshop | 2 × 2 | 50 🪙 | Chopping a tree refunds `least(floor(statements × 0.25), 50)` 🪙 |
+| Stream | 1 × 1 | 5 🪙 | Trees on a side tile (x ± 1 or y ± 1): ×1.2 coins; stacks with the house to ×1.8 |
+| Fence | 1 × 1 | 1 🪙 | Auto-connects to side fences (drawing only) |
+| Rockery | 1 × 1 | 2 🪙 | Decoration |
+| Cow / Pig | 1 × 1 | 5 🪙 | Wander / snuffle around their tile (CSS, off for reduced motion) |
+
+| Rule | Enforced by |
+|------|-------------|
+| Prices and sizes can't be chosen by the client | `public.purchase_and_place_item(item_type, x, y, deck_id?, variant?)` (`SECURITY DEFINER`, caller = `auth.uid()`) takes them from its own catalogue; there is no price or size parameter |
+| No free items | Players have **no** INSERT/UPDATE on `garden_placements` (SELECT and DELETE only); the function is the only writer. It charges `coins >= price` and inserts in one transaction (`INSUFFICIENT_COINS`) |
+| No overlaps, nothing off the grid, one tile per deck | Checked in the function under a lock on the owner's `users` row (`TILE_UNAVAILABLE`, `TREE_ALREADY_PLACED`); CHECKs + unique constraints as the last guard |
+| Buffs are real payouts | `public.farm_coin_multiplier(user, deck)` (service role) → `award_mastery_coin` pays `floor(1 × multiplier + users.coin_carry)` and keeps the fraction in `users.coin_carry` (0 ≤ x < 1), so ×1.2 isn't lost to rounding. Still once per item ever |
+| Chopping never profits | `public.uproot_deck(deck_id)` (owner = `auth.uid()`) deletes the deck and, with a Woodshop placed, refunds at most 50 🪙 (half a seed). Picking a tree up (back to the Shop) is **not** chopping and pays nothing, so place/remove can't be looped for coins |
+| Visitors see only what is shared | RLS "read own or public": your farm in full; someone else's items and their **public** trees only. Delete: own rows |
+
+Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 per row, up to 49); newer trees wait in the Shop's Trees tab until planted.
 
 ### Progress & Gamification Feature
 
@@ -300,6 +341,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 | tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
+| garden_placements | Owner; others: items + public trees | ✗ direct; only via `purchase_and_place_item()` | ✗ | Owner |
 | deck_tournament_participants | Owner (boards through the two board functions) | ✗ (service role: `record_tournament_answer`) | ✗ (same) | ✗ (cascades only) |
 | deck_tournament_item_progress | Owner (through the participant) | ✗ (service role) | ✗ (service role) | ✗ (cascades only) |
 
@@ -387,6 +429,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 8 | `20260928000700_clone_deck.sql` | `clone_deck()`: charge min(100 + statements, 150) 🪙 and deep-copy another gardener's public tree (roots + statements, no progress) into a private deck of the caller. Needs file 7 |
   | 9 | `20260928000800_tree_visits.sql` | `tree_visits` + RLS (read own) + `record_tree_visit()`, the only writer (another gardener's public tree only). Needs file 7 |
   | 11 | `20260928001000_display_names.sql` | `users.display_name` (public Garden Name, 2–30, CHECK), its column grant, `get_display_names()`, and both tournament board functions re-created to return `display_name` instead of `full_name` |
+  | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
@@ -397,9 +440,10 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
+- **File 12** can run any time after file 11. Until it runs, the farm is empty (the log names the migration), the Shop can't place anything, chopping falls back to the plain delete (no refund) and coins pay ×1
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260928001000`
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260930000000`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing

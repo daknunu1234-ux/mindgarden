@@ -5,7 +5,7 @@ import { cn } from '@/shared/utils/cn'
 // specular on the upper-left (light comes from the top-left, like the rest of the game).
 // Pure SVG with no ids, so any number can sit on a page and render on the server.
 
-export type GameIconName = 'flame' | 'coin' | 'gem' | 'sprout' | 'star' | 'drop' | 'trophy' | 'seed'
+export type GameIconName = 'flame' | 'coin' | 'sprout' | 'star' | 'drop' | 'trophy' | 'seed'
 
 const OUTLINE = { stroke: '#3b1d0b', strokeWidth: 2.4, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const }
 
@@ -25,15 +25,6 @@ const ICONS: Record<GameIconName, ReactNode> = {
       <ellipse cx="16" cy="15.5" rx="8" ry="7.6" fill="#f59e0b" />
       <path d="M13.5 11.5 h5 M16 11.5 v8 M13.5 19.5 h5" stroke="#fff4c2" strokeWidth="2.4" strokeLinecap="round" />
       <ellipse cx="10.5" cy="10" rx="2.8" ry="1.6" fill="#fff" opacity="0.8" transform="rotate(-35 10.5 10)" />
-    </>
-  ),
-  gem: (
-    <>
-      <path d="M9 5 H23 L29 12 L16 28 L3 12 Z" fill="#22b8e8" {...OUTLINE} />
-      <path d="M3 12 H29 M9 5 L13 12 L16 28 L19 12 L23 5" stroke="#0b6f96" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
-      <path d="M13 12 L16 28 L3 12 Z" fill="#67e0ff" opacity="0.9" />
-      <path d="M19 12 L29 12 L16 28 Z" fill="#0e8fc0" opacity="0.85" />
-      <path d="M10 7 L12 10.5" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" opacity="0.9" />
     </>
   ),
   sprout: (

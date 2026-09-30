@@ -24,11 +24,31 @@ type DeckRow = { id: string; user_id: string; slug: string; tree_type: string }
 // Minimal in-memory stand-in for the two queries removeDeck makes on `decks`:
 //   select(...).eq('id', x).maybeSingle()   and   delete().eq('id', x).select('id')
 // `refuseDelete` mimics RLS silently filtering the DELETE (0 rows, no error).
-function fakeSupabase({ userId, decks, refuseDelete = false }: { userId: string | null; decks: DeckRow[]; refuseDelete?: boolean }) {
+// `uproot`: the uproot_deck() RPC (migration 20260930000000). 'missing' = before that migration, so
+// removeDeck falls back to the plain delete; { refund } = the RPC chops the deck and pays the refund.
+function fakeSupabase({
+  userId,
+  decks,
+  refuseDelete = false,
+  uproot = 'missing',
+}: {
+  userId: string | null
+  decks: DeckRow[]
+  refuseDelete?: boolean
+  uproot?: 'missing' | { refund: number }
+}) {
   const rows = [...decks]
   const deleted: string[] = []
   const client = {
     auth: { getUser: async () => ({ data: { user: userId ? { id: userId } : null } }) },
+    rpc: async (fn: string, args: { p_deck_id: string }) => {
+      if (fn !== 'uproot_deck') throw new Error(`unexpected rpc ${fn}`)
+      if (uproot === 'missing') return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.uproot_deck' } }
+      const index = rows.findIndex((r) => r.id === args.p_deck_id)
+      const [row] = rows.splice(index, 1)
+      deleted.push(row.id)
+      return { data: [{ deck_id: row.id, refund: uproot.refund, total_coins: 100 + uproot.refund }], error: null }
+    },
     from(table: string) {
       if (table !== 'decks') throw new Error(`unexpected table ${table}`)
       let deleting = false
@@ -67,6 +87,23 @@ beforeEach(() => {
 })
 
 describe('deleteDeck', () => {
+  it('chops through uproot_deck and tells the farm about a Woodshop refund', async () => {
+    const db = fakeSupabase({ userId: OWNER, decks: [oakDeck], uproot: { refund: 12 } })
+
+    await expect(deleteDeck({ deckId: DECK })).rejects.toThrow('NEXT_REDIRECT')
+
+    expect(db.deleted).toEqual([DECK])
+    expect(redirect).toHaveBeenCalledWith('/?refund=12')
+  })
+
+  it('redirects to the plain farm when there is no refund (no Woodshop)', async () => {
+    fakeSupabase({ userId: OWNER, decks: [oakDeck], uproot: { refund: 0 } })
+
+    await expect(deleteDeck({ deckId: DECK })).rejects.toThrow('NEXT_REDIRECT')
+
+    expect(redirect).toHaveBeenCalledWith('/')
+  })
+
   it('lets the owner uproot the tree, refreshes the pages and redirects to the farm', async () => {
     const db = fakeSupabase({ userId: OWNER, decks: [oakDeck] })
 

@@ -26,7 +26,7 @@ function LevelBadge({ level }: { level: FarmHudView['level'] }) {
   return <LevelCrest level={level.level} title={level.title} xpIntoLevel={level.xpIntoLevel} xpForNextLevel={level.xpForNextLevel} />
 }
 
-// Top-right: streak flame, gold coins, gems.
+// Top-right: streak flame and gold coins (coins are the only currency).
 function Counters({ hud }: { hud: FarmHudView }) {
   const streak = hud.streak
   // The newer of the server's balance and the latest one an action reported this visit.
@@ -57,7 +57,6 @@ function Counters({ hud }: { hud: FarmHudView }) {
         onAdd={signedIn ? openShop : undefined}
         addLabel="Open the Coin Shop"
       />
-      <ResourcePill icon="gem" tone="gem" value={hud.gems} label="Gems" hint="One gem per Mighty Root (all statements at 5/5) on this island" />
     </div>
   )
 }
@@ -91,31 +90,19 @@ function ZoomControls({ zoom, onZoomIn, onZoomOut, onReset, canZoomIn, canZoomOu
   )
 }
 
-// Burlap sack with a sprout peeking out.
-function SeedSackIcon() {
-  return (
-    <svg aria-hidden viewBox="0 0 40 40" className="size-10 overflow-visible sm:size-11">
-      <path d="M 20 6 q 2 -5 7 -5 q -2 5 -7 5 z" fill="#16a34a" />
-      <path d="M 20 6 q -2 -4 -6 -4 q 1 4 6 4 z" fill="#22c55e" />
-      <path d="M 12 12 q 8 -6 16 0 l -1 3 q -7 -3 -14 0 z" fill="#a16207" />
-      <path d="M 11 14 q 9 -4 18 0 q 5 8 3 18 q -12 5 -24 0 q -2 -10 3 -18 z" fill="#f5deb3" stroke="#a16207" strokeWidth="1.5" />
-      <path d="M 13 14.5 q 7 3 14 0" stroke="#78350f" strokeWidth="2" fill="none" />
-      <text x="20" y="29" fontSize="9" textAnchor="middle" fontWeight="800" fill="#78350f">
-        SEED
-      </text>
-    </svg>
-  )
-}
-
 type FarmDockProps = {
   gridHref: string
   onQuests: () => void
   // Thirsty trees today (red badge on Daily Quests).
   quests: number
+  onShop: () => void
+  // Own trees waiting in the Shop's Trees tab (badge on the Shop).
+  unplaced: number
 }
 
-// Bottom-centre dock: Daily Quests · Seed Sack (hero) · switch to the grid view.
-function FarmDock({ gridHref, onQuests, quests }: FarmDockProps) {
+// Bottom-centre dock: Daily Quests · 🏪 Shop (hero: trees to plant, structures, landscape,
+// decorations, animals) · switch to the grid view.
+function FarmDock({ gridHref, onQuests, quests, onShop, unplaced }: FarmDockProps) {
   return (
     <ActionDock label="Farm actions">
       <button type="button" onClick={onQuests} className={DOCK_BUTTON} aria-label={`Daily Quests${quests > 0 ? `: ${quests} thirsty` : ''}`}>
@@ -124,12 +111,14 @@ function FarmDock({ gridHref, onQuests, quests }: FarmDockProps) {
         </DockOrb>
         Quests
       </button>
-      <Link href="/deck/new" className={cn(DOCK_BUTTON, '-mt-6')} aria-label="Seed Sack: plant a new tree">
-        <DockOrb tone="sun" big>
-          <SeedSackIcon />
+      <button type="button" onClick={onShop} className={cn(DOCK_BUTTON, '-mt-6')} aria-label={`Shop${unplaced > 0 ? `: ${unplaced} ${unplaced === 1 ? 'tree' : 'trees'} to plant` : ''}`}>
+        <DockOrb tone="sun" big badge={unplaced > 0 ? unplaced : undefined}>
+          <span aria-hidden className="text-[34px] leading-none sm:text-[38px]">
+            🏪
+          </span>
         </DockOrb>
-        Plant
-      </Link>
+        Shop
+      </button>
       <Link href={gridHref} className={DOCK_BUTTON} aria-label="Switch to the classic grid view">
         <DockOrb tone="leaf">
           <LayoutGrid className="size-6 text-white drop-shadow" strokeWidth={2.5} />

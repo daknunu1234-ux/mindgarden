@@ -12,7 +12,7 @@ function GardenStatsGrid({ stats }: GardenStatsGridProps) {
   const tiles = [
     { label: 'Trees planted', value: String(stats.treeCount), icon: '🌳', gold: false },
     { label: 'Knowledge items', value: String(stats.itemCount), icon: '📜', gold: false },
-    { label: 'Mighty Roots', value: String(stats.mightyRootCount), icon: '💎', gold: stats.mightyRootCount > 0 },
+    { label: 'Mighty Roots', value: String(stats.mightyRootCount), icon: '🌟', gold: stats.mightyRootCount > 0 },
     { label: 'Garden mastery', value: `${stats.masteryPercent}%`, icon: '🌿', gold: golden },
     {
       label: 'Current streak',
