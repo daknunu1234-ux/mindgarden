@@ -1,5 +1,5 @@
-// Optimistic deck edits for the deck page (pure, unit-tested): a new species, new roots, renamed roots
-// or new statements show the moment the owner makes them, laid as ops over the data the server last
+// Optimistic deck edits for the deck page (pure, unit-tested): a new species, new roots, renamed roots,
+// new or edited statements show the moment the owner makes them, laid as ops over the data the server last
 // sent (the deck, its tree for the mindmap and the owner's editor list); the server action runs in the
 // background. A confirmed add learns its real ids and drillable flags; a refusal drops the op, which
 // rolls the page back. When fresh server data arrives, settled ops are dropped (they are in it by
@@ -21,6 +21,8 @@ export type DeckOp =
   | { key: string; kind: 'addNode'; tempId: string; parentId: string | null; title: string; confirmedId?: string }
   // A root renamed in place.
   | { key: string; kind: 'renameNode'; nodeId: string; title: string; settled?: boolean }
+  // A statement's text edited in place; `drillable` comes back with the server's answer.
+  | { key: string; kind: 'editItem'; itemId: string; statement: string; drillable?: boolean; settled?: boolean }
 
 // Ids the server hasn't confirmed yet (they can't be edited, deleted or drilled until then).
 export const PENDING_ITEM_PREFIX = 'pending-item-'
@@ -110,6 +112,13 @@ export function applyDeckOps(detail: DeckDetail, editor: DeckEditor | null, ops:
         tree = renameInTree(tree, op.nodeId, op.title)
         nodes = nodes?.map((n) => (n.id === op.nodeId ? { ...n, title: op.title } : n)) ?? null
         break
+      case 'editItem':
+        nodes =
+          nodes?.map((n) => ({
+            ...n,
+            items: n.items.map((i) => (i.id === op.itemId ? { ...i, statement: op.statement, drillable: op.drillable ?? i.drillable } : i)),
+          })) ?? null
+        break
       case 'addItems': {
         const items = opItems(op)
         for (const item of items) if (item.pending) pendingIds.add(item.id)
@@ -156,6 +165,10 @@ export function confirmNode(ops: readonly DeckOp[], key: string, id: string): De
 // Server accepted a change that has nothing to learn from its answer (species, rename, delete).
 export const settleOp = (ops: readonly DeckOp[], key: string): DeckOp[] =>
   ops.map((op) => (op.key === key && (op.kind === 'species' || op.kind === 'renameNode' || op.kind === 'removeItem') ? { ...op, settled: true } : op))
+
+// Server saved an edited statement: its cleaned text and whether the trap engine can quiz it now.
+export const confirmEdit = (ops: readonly DeckOp[], key: string, saved: { statement: string; drillable: boolean }): DeckOp[] =>
+  ops.map((op) => (op.key === key && op.kind === 'editItem' ? { ...op, ...saved, settled: true } : op))
 
 // Server refused: drop the op (and with it the change).
 export const dropOp = (ops: readonly DeckOp[], key: string): DeckOp[] => ops.filter((op) => op.key !== key)

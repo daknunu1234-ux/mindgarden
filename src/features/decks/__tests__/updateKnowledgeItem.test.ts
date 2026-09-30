@@ -63,13 +63,13 @@ function fakeSupabase(viewer: string | null, { itemDeck = DECK } = {}) {
 beforeEach(() => vi.clearAllMocks())
 
 describe('updateKnowledgeItem', () => {
-  it("updates the owner's statement text (cleaned) and revalidates the deck page", async () => {
+  it("updates the owner's statement text (cleaned) without re-rendering the deck page", async () => {
     const { item, updates } = fakeSupabase(OWNER)
     const res = await updateKnowledgeItem({ deckId: DECK, itemId: ITEM, text: '  Ty thể   tổng hợp ATP.  ' })
     expect(res).toEqual({ success: true, data: { id: ITEM, statement: 'Ty thể tổng hợp ATP.', drillable: true } })
     expect(updates).toEqual([{ correct_stmt: 'Ty thể tổng hợp ATP.' }])
     expect(item.correct_stmt).toBe('Ty thể tổng hợp ATP.')
-    expect(revalidatePath).toHaveBeenCalledWith('/deck/sinh-hoc')
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('rejects non-owners (AUTH_FORBIDDEN) without changing anything', async () => {

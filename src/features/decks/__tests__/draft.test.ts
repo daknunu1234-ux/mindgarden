@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { countDeckTree } from '../lib/deckTree'
 import {
   applyDeckOps,
+  confirmEdit,
   confirmItems,
   confirmNode,
   dropOp,
@@ -210,5 +211,16 @@ describe('rebasing onto fresh server data', () => {
     const settled = confirmItems(confirmNode(settleOp(settleOp(ops, 's'), 'd'), 'n', 'r9'), 'i', [{ id: 'i7', statement: 'C là D.', drillable: true }])
     expect(rebaseOps(settled).map((op) => op.key)).toEqual(['r'])
     expect(rebaseOps(ops).map((op) => op.key)).toEqual(['s', 'r', 'd', 'n', 'i'])
+  })
+})
+
+describe('editing a statement in place', () => {
+  it('shows the new text at once, then the server’s cleaned text and drillable flag; a refusal restores it', () => {
+    const ops: DeckOp[] = [{ key: 'e', kind: 'editItem', itemId: 'i1', statement: 'Tế bào là đơn vị  cơ bản.' }]
+    expect(applyDeckOps(detail, editor, ops).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị  cơ bản.', drillable: true })
+    const saved = confirmEdit(ops, 'e', { statement: 'Tế bào là đơn vị cơ bản.', drillable: false })
+    expect(applyDeckOps(detail, editor, saved).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị cơ bản.', drillable: false })
+    expect(rebaseOps(saved)).toEqual([])
+    expect(applyDeckOps(detail, editor, dropOp(ops, 'e')).editor?.nodes[0].items).toEqual(editor.nodes[0].items)
   })
 })

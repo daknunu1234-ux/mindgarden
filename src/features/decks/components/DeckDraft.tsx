@@ -8,9 +8,11 @@ import { createKnowledgeItems, type BulkImportResult } from '../actions/createKn
 import { createMindmapNode } from '../actions/createMindmapNode'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { updateDeck } from '../actions/updateDeck'
+import { updateKnowledgeItem } from '../actions/updateKnowledgeItem'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import {
   applyDeckOps,
+  confirmEdit,
   confirmItems,
   confirmNode,
   dropOp,
@@ -41,12 +43,15 @@ export type DeckDraftActions = {
   // sub-roots can be typed under it straight away; createMindmapNode in the background, rolled back
   // with a toast on error (with anything typed under it).
   addNode: (parentId: string | null, title: string) => string
+  // Show a statement's new text at once; updateKnowledgeItem in the background (it brings back the
+  // cleaned text and the drillable flag), rolled back with a toast on error.
+  editStatement: (itemId: string, text: string) => void
   // Rename a root at once; updateMindmapNode in the background, rolled back with a toast on error.
   renameNode: (nodeId: string, title: string) => void
   // A statement or root still waiting for its server id (no edit / delete / drill until it has one).
   isPending: (id: string) => boolean
   // A root typed on this visit: its real id once saved (any other id as is). Temp ids stop resolving
-  // on the page the moment the save confirms, so anything holding one (an open quick-add input) maps it here.
+  // on the page the moment the save confirms, so anything holding one (an open inline input, a selected root) maps it here.
   resolveId: (id: string) => string
 }
 
@@ -54,8 +59,8 @@ const DeckDraftContext = createContext<DeckDraftActions | null>(null)
 
 export const DeckDraftProvider = DeckDraftContext.Provider
 
-// The Tree Workshop's forms (species, statements, bulk import, the mindmap's Manage dialog) and the
-// mindmap's quick-add inputs call these. They live on the deck page (DeckScene provides them).
+// The Tree Workshop (species, its outline editor, bulk import) and the mindmap's Manage dialog call
+// these. They live on the deck page (DeckScene provides them).
 export function useDeckDraftActions(): DeckDraftActions {
   const actions = useContext(DeckDraftContext)
   if (!actions) throw new Error('useDeckDraftActions: render inside <DeckDraftProvider> (the deck page provides it)')
@@ -63,7 +68,7 @@ export function useDeckDraftActions(): DeckDraftActions {
 }
 
 // Owner edits on the deck page, optimistic (lib/draft.ts): a species change, new roots and statements,
-// a renamed root or a deleted statement show at 0 ms across the whole page (tree sprite, species
+// an edited statement, a renamed root or a deleted statement show at 0 ms across the whole page (tree sprite, species
 // ribbon, counts, size tier, mindmap, Workshop list) and sync in the background, with no page
 // refresh; a refusal rolls back with a toast. Writes go to the server one at a time, in the order
 // they were made, so siblings keep their order and a statement typed under a root that is still
@@ -196,6 +201,16 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
           if (res?.success) return edit((l) => settleOp(l, key))
           edit((l) => dropOp(l, key))
           if (res) failed(`Could not rename the root to “${clean}”: ${res.error.message}`)
+        })
+      },
+      editStatement: (itemId, text) => {
+        const clean = text.trim()
+        const key = nextOpKey()
+        edit((l) => [...l, { key, kind: 'editItem', itemId, statement: clean }])
+        void serial(() => updateKnowledgeItem({ deckId: detail.deck.id, itemId, text: clean })).then((res) => {
+          if (res.success) return edit((l) => confirmEdit(l, key, { statement: res.data.statement, drillable: res.data.drillable }))
+          edit((l) => dropOp(l, key))
+          failed(`Could not save “${clean}”: ${res.error.message}`)
         })
       },
       isPending: (id) => current.current.pendingIds.has(resolve(id)),

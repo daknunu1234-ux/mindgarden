@@ -13,6 +13,9 @@ type BulkStatementImporterProps = {
   // The root's current statements: pasted duplicates of them are flagged and skipped.
   existing: readonly string[]
   className?: string
+  // Start open (the Tree Workshop opens it from a root's 📋 tool); onCancel runs when Cancel closes it.
+  defaultOpen?: boolean
+  onCancel?: () => void
 }
 
 const PLACEHOLDER =
@@ -29,10 +32,10 @@ const PROBLEM_LABEL: Record<NonNullable<BulkPreviewItem['problem']>, string> = {
 // root at once (deck draft) and the importer closes; the server's tally (created / not drillable /
 // skipped) arrives as a notice, and a refusal removes them again. Owner-only (Tree Workshop list and
 // the root's manage dialog).
-function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className }: BulkStatementImporterProps) {
+function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className, defaultOpen = false, onCancel }: BulkStatementImporterProps) {
   const { addStatements } = useDeckDraftActions()
   const textareaId = useId()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [text, setText] = useState('')
   const [notice, setNotice] = useState<{ tone: 'gold' | 'amber'; text: string } | null>(null)
 
@@ -142,7 +145,15 @@ function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className 
             <GameButton type="button" tone="leaf" size="sm" onClick={importAll} disabled={importable.length === 0 || tooMany}>
               {`Import All (${importable.length})`}
             </GameButton>
-            <GameButton type="button" tone="cream" size="sm" onClick={close}>
+            <GameButton
+              type="button"
+              tone="cream"
+              size="sm"
+              onClick={() => {
+                close()
+                onCancel?.()
+              }}
+            >
               Cancel
             </GameButton>
           </div>

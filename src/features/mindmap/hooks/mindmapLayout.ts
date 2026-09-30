@@ -3,33 +3,23 @@ import type { RootNodeView } from '../types'
 // Mindmap layout (pure, unit-tested). The crown sits under the tree trunk; level-1 roots
 // (categories) spread in a row beneath it; each category's statements and sub-branches stack in
 // a column below it, indented by depth. Columns are as wide as their widest card and never share
-// x-ranges, so cards cannot overlap however many nodes or items exist. Compact on purpose: small
-// cards, tight gaps and micro-badges, so a big tree still reads at a glance.
+// x-ranges, so cards cannot overlap however many nodes or items exist.
 
-export const CROWN_Y = 34
+export const CROWN_Y = 40
 export const CARD = {
-  // Pills hold: mastery ring, title, statement-count micro-badge, collapse chip; top-level roots
-  // also hold the 💧 / ⚔️ practice button. Owner tools float above on hover.
-  category: { w: 236, h: 38 },
-  branch: { w: 204, h: 32 },
-  statement: { w: 200, h: 54 },
+  // Pills hold: mastery ring, title, 🔍 inspect (with count), ✏️ manage (owners), collapse chip;
+  // top-level roots also hold the 💧 Drill / ⚔️ Compete button.
+  category: { w: 304, h: 52 },
+  branch: { w: 244, h: 46 },
+  statement: { w: 216, h: 84 },
 } as const
-const INDENT = 22
-const GAP_Y = 8
-const COL_GAP = 28
-const TOP = CROWN_Y + 48
+const INDENT = 30
+const GAP_Y = 14
+const COL_GAP = 40
+const TOP = CROWN_Y + 64
 const PAD = 16
 
-// Where the owner's quick-add input sits: a new top-level root (a column at the end of the row), a
-// sub-root at the end of a branch, or a statement after a root's statements (before its sub-roots).
-export type MindmapDraftSlot = { kind: 'root' } | { kind: 'branch'; parentId: string } | { kind: 'statement'; nodeId: string }
-
-// The quick-add input takes the size of what it will become.
-const DRAFT_SIZE = { root: CARD.category, branch: CARD.branch, statement: CARD.statement } as const
-
-export const DRAFT_KEY = 'draft'
-
-export type MindmapCardKind = keyof typeof CARD | 'draft'
+export type MindmapCardKind = keyof typeof CARD
 
 export type MindmapCard = {
   key: string
@@ -49,8 +39,6 @@ export type MindmapCard = {
   // Category / branch cards: has anything to collapse, and how many cards are hidden now.
   collapsible: boolean
   hiddenCount: number
-  // Draft cards only: what the quick-add input creates.
-  draft?: MindmapDraftSlot
 }
 
 // from = null: the edge starts at the crown.
@@ -88,37 +76,9 @@ export function statementTitle(prompt: string | undefined, nodeTitle: string, or
   return p && p.toLocaleLowerCase() !== nodeTitle.trim().toLocaleLowerCase() ? p : `Statement ${ordinal}`
 }
 
-// `draft`: the owner's open quick-add input, laid out like the card it will become (with its root
-// line), so typing never covers another card. A slot under a collapsed or unknown node is left out.
-export function layoutMindmap(
-  roots: RootNodeView[],
-  collapsed: ReadonlySet<string> = new Set(),
-  draft: MindmapDraftSlot | null = null,
-): MindmapLayout {
+export function layoutMindmap(roots: RootNodeView[], collapsed: ReadonlySet<string> = new Set()): MindmapLayout {
   const cards: MindmapCard[] = []
   let colX = PAD
-
-  // Pushes the draft card; returns the height it takes.
-  const draftCard = (slot: MindmapDraftSlot, parentKey: string | null, depth: number, x: number, y: number): number => {
-    const size = DRAFT_SIZE[slot.kind]
-    cards.push({
-      key: DRAFT_KEY,
-      kind: 'draft',
-      nodeId: slot.kind === 'root' ? '' : slot.kind === 'branch' ? slot.parentId : slot.nodeId,
-      itemId: null,
-      parentKey,
-      depth,
-      x,
-      y,
-      ...size,
-      title: '',
-      ordinal: null,
-      collapsible: false,
-      hiddenCount: 0,
-      draft: slot,
-    })
-    return size.h
-  }
 
   const nodeCard = (node: RootNodeView, kind: 'category' | 'branch', parentKey: string | null, depth: number, x: number, y: number) => {
     const isCollapsed = collapsed.has(node.id)
@@ -163,24 +123,20 @@ export function layoutMindmap(
       })
       cursor += CARD.statement.h + GAP_Y
     })
-    if (draft?.kind === 'statement' && draft.nodeId === node.id) cursor += draftCard(draft, parent.key, depth, x, cursor) + GAP_Y
     for (const child of node.children) {
       const card = nodeCard(child, 'branch', parent.key, depth, x, cursor)
       cursor = place(child, card, depth + 1, colLeft, cursor + CARD.branch.h + GAP_Y)
     }
-    if (draft?.kind === 'branch' && draft.parentId === node.id) cursor += draftCard(draft, parent.key, depth, x, cursor) + GAP_Y
     return cursor
   }
 
   for (const root of roots) {
     const category = nodeCard(root, 'category', null, 0, colX, TOP)
     const first = cards.length - 1
-    place(root, category, 1, colX, TOP + CARD.category.h + GAP_Y + 4)
+    place(root, category, 1, colX, TOP + CARD.category.h + GAP_Y + 6)
     const right = Math.max(...cards.slice(first).map((c) => c.x + c.w))
     colX = right + COL_GAP
   }
-  // A new top-level root: its own column at the end of the row (the crown stays over the real roots).
-  if (draft?.kind === 'root') draftCard(draft, null, 0, colX, TOP)
 
   const categories = cards.filter((c) => c.kind === 'category')
   const centres = categories.map((c) => c.x + c.w / 2)

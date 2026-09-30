@@ -1,60 +1,50 @@
 'use client'
 
-import { useState, useTransition, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
-import { GAME_FIELD, GameButton, GameInput, GameLabel, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Plus, X } from 'lucide-react'
+import { GameButton, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { toTreeTypeId } from '@/shared/lib/treeSkins'
+import { useToast } from '@/shared/stores/ToastProvider'
 import { cn } from '@/shared/utils/cn'
-import { createMindmapNode } from '../actions/createMindmapNode'
 import { flatBranchImpact } from '../lib/branch'
+import {
+  nestEditorNodes,
+  nextOutlineSlot,
+  outlineKey,
+  OUTLINE_LIMITS,
+  outlineParents,
+  resolveOutlineSlot,
+  rootSummaries,
+  topRootOf,
+  type OutlineKey,
+  type OutlineNode,
+  type OutlineSlot,
+} from '../lib/outline'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { useDeckDraftActions } from './DeckDraft'
 import { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './DeleteDialogs'
-import { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './EditDialogs'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
-import type { DeckEditor as DeckEditorData, EditorNode } from '../types'
+import type { DeckEditor as DeckEditorData, EditorItem } from '../types'
 
 const DRILL_TIP =
   'Not drillable yet. Add another statement about a sibling concept in this root (e.g. "Ribosome tổng hợp protein."), or use a word the engine can flip, like tăng/giảm, trước/sau, là or is.'
 
 type DeckEditorProps = { editor: DeckEditorData }
 
-// Owner-only: add roots (optionally under another root) and plain-text statements.
-// Trap rules are never shown; items get { negate: true } on the server.
-function DeckEditor({ editor }: DeckEditorProps) {
-  // Hover tools on each root row and statement: ✏️ Edit / 🗑️ Delete (a root takes its whole branch).
-  const [editingStatement, setEditingStatement] = useState<StatementToEdit | null>(null)
-  const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
-  const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
-  const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
-  const rootNode = deletingRootId ? editor.nodes.find((n) => n.id === deletingRootId) : undefined
-  const impact = deletingRootId ? flatBranchImpact(editor.nodes, deletingRootId) : null
-  const rootToDelete: RootToDelete | null = rootNode && impact ? { id: rootNode.id, title: rootNode.title, ...impact } : null
+// What is being edited in place: a root's title or a statement's text.
+type Editing = { kind: 'node' | 'item'; id: string } | null
 
+// Owner-only Tree Workshop: the species, then the roots as a compact connected outline. A selector
+// switches between top-level roots; ＋ Add Root stays pinned at the bottom of the area while it's on
+// screen. Everything is typed inline (no dialogs): hover a root for ＋📜 / ＋🌿, ✏️ or double-click to
+// edit, then Enter (next sibling), Tab (child), Shift+Tab (up a level), Esc (close). Every change goes
+// through the deck draft, so it shows at 0 ms and saves in the background. Only deletes confirm.
+// Trap rules are never shown; statements get { negate: true } on the server.
+function DeckEditor({ editor }: DeckEditorProps) {
   return (
     <div className="space-y-5">
       <SpeciesForm treeType={editor.treeType} />
-      <AddRootForm deckId={editor.deckId} nodes={editor.nodes} />
-      {editor.nodes.length > 0 && (
-        <ul className="space-y-4">
-          {editor.nodes.map((node) => (
-            <li key={node.id} style={{ marginLeft: `${Math.min(node.depth, 4) * 1.25}rem` }}>
-              <NodeEditor
-                deckId={editor.deckId}
-                node={node}
-                onEditStatement={setEditingStatement}
-                onDeleteStatement={setDeletingStatement}
-                onEditRoot={() => setEditingRoot({ id: node.id, title: node.title })}
-                onDeleteRoot={() => setDeletingRootId(node.id)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-      <EditStatementDialog deckId={editor.deckId} statement={editingStatement} onClose={() => setEditingStatement(null)} />
-      <EditRootDialog root={editingRoot} onClose={() => setEditingRoot(null)} />
-      <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
-      <DeleteRootDialog deckId={editor.deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
+      <RootsOutline editor={editor} />
     </div>
   )
 }
@@ -71,152 +61,429 @@ function SpeciesForm({ treeType }: { treeType: string }) {
   )
 }
 
-function AddRootForm({ deckId, nodes }: { deckId: string; nodes: EditorNode[] }) {
-  const router = useRouter()
-  const [title, setTitle] = useState('')
-  const [parentId, setParentId] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+function RootsOutline({ editor }: { editor: DeckEditorData }) {
+  const { addNode, addStatement, renameNode, editStatement, isPending, resolveId } = useDeckDraftActions()
+  const { toast } = useToast()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [rawSlot, setSlot] = useState<OutlineSlot | null>(null)
+  const [editing, setEditing] = useState<Editing>(null)
+  const [bulkFor, setBulkFor] = useState<string | null>(null)
+  const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
+  const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
-    startTransition(async () => {
-      const res = await createMindmapNode({ deckId, title, parentId: parentId || null })
-      if (!res.success) return setError(res.error.message)
-      setTitle('')
-      router.refresh()
+  const outline = useMemo(() => nestEditorNodes(editor.nodes), [editor.nodes])
+  const roots = useMemo(() => rootSummaries(editor.nodes), [editor.nodes])
+  const parents = useMemo(() => outlineParents(editor.nodes), [editor.nodes])
+  const known = (id: string) => parents.has(id)
+
+  // Ids typed on this visit move from temp to real when saved; the selection and the open input follow.
+  const selected = (selectedId && outline.find((r) => r.id === resolveId(selectedId))) || outline[0] || null
+  const slot = rawSlot ? resolveOutlineSlot(rawSlot, resolveId) : null
+  const liveSlot = slot && (slot.kind === 'root' || known(slot.kind === 'branch' ? slot.parentId : slot.nodeId)) ? slot : null
+  const editingId = editing ? (editing.kind === 'node' ? resolveId(editing.id) : editing.id) : null
+
+  const rootNode = deletingRootId ? editor.nodes.find((n) => n.id === deletingRootId) : undefined
+  const impact = deletingRootId ? flatBranchImpact(editor.nodes, deletingRootId) : null
+  const rootToDelete: RootToDelete | null = rootNode && impact ? { id: rootNode.id, title: rootNode.title, ...impact } : null
+
+  // Open an input (closing any edit), keeping the selector on the root it types into.
+  const open = (next: OutlineSlot | null) => {
+    setEditing(null)
+    setSlot(next)
+    if (next && next.kind !== 'root') {
+      const top = topRootOf(next.kind === 'branch' ? next.parentId : next.nodeId, parents)
+      if (top) setSelectedId(top)
+    }
+  }
+
+  const saveStatement = (nodeId: string, text: string) =>
+    void addStatement(nodeId, text).then((res) => {
+      if (!res.success) toast({ message: `Could not add “${text}”: ${res.message}.`, icon: '⚠️', tone: 'farewell' })
     })
+
+  // A fast-entry key on the inline input: save what was typed, then move the input on.
+  const onSlotKey = (key: OutlineKey, text: string) => {
+    if (!liveSlot) return
+    const typed = text.trim()
+    let created: string | null = null
+    if (typed) {
+      if (liveSlot.kind === 'root') created = addNode(null, typed)
+      else if (liveSlot.kind === 'branch') created = addNode(liveSlot.parentId, typed)
+      else saveStatement(liveSlot.nodeId, typed)
+    }
+    // A new top-level root that is being nested into becomes the one shown.
+    if (liveSlot.kind === 'root' && created && key === 'tab') setSelectedId(created)
+    const next = nextOutlineSlot(liveSlot, key, typed.length > 0, created, parents)
+    setSlot(next)
+  }
+
+  // Inline edits: Enter / leaving the field saves, Esc cancels; Tab on a root saves and opens a
+  // statement input under it.
+  const onEditKey = (key: OutlineKey | 'escape' | 'blur', text: string) => {
+    if (!editing) return
+    const typed = text.trim()
+    if (key !== 'escape' && typed) {
+      if (editing.kind === 'node') {
+        const title = editor.nodes.find((n) => n.id === editingId)?.title
+        if (typed !== title) renameNode(editing.id, typed)
+      } else {
+        const current = editor.nodes.flatMap((n) => n.items).find((i) => i.id === editing.id)?.statement
+        if (typed !== current) editStatement(editing.id, typed)
+      }
+    }
+    setEditing(null)
+    if (key === 'tab' && editing.kind === 'node' && editingId) setSlot({ kind: 'statement', nodeId: editingId })
+  }
+
+  const branchProps: BranchProps = {
+    deckId: editor.deckId,
+    slot: liveSlot,
+    editingId,
+    bulkFor,
+    isPending,
+    onOpen: open,
+    onSlotKey,
+    onCloseSlot: () => setSlot(null),
+    onEdit: (kind, id) => {
+      setSlot(null)
+      setEditing({ kind, id })
+    },
+    onEditKey,
+    onBulk: (id) => setBulkFor((current) => (current === id ? null : id)),
+    onDeleteStatement: setDeletingStatement,
+    onDeleteRoot: setDeletingRootId,
   }
 
   return (
-    <form onSubmit={submit}>
-    <GameSlab className="p-4 text-amber-950">
-      <GameLabel htmlFor="root-title">Add a root</GameLabel>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <GameInput id="root-title" required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ty thể" className="flex-1" />
-        {nodes.length > 0 && (
-          <select aria-label="Grow under" value={parentId} onChange={(e) => setParentId(e.target.value)} className={cn(GAME_FIELD, 'h-11 sm:w-48')}>
-            <option value="">Top level</option>
-            {nodes.map((n) => (
-              <option key={n.id} value={n.id}>
-                {'  '.repeat(n.depth)}Under: {n.title}
-              </option>
-            ))}
-          </select>
+    <section aria-labelledby="outline-heading" className="rounded-[20px] border-[3px] border-[#dcb98c] bg-[#fffaf0] p-3 text-amber-950 shadow-[inset_0_2px_0_#fff,0_4px_0_#c89b64] sm:p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 id="outline-heading" className="font-game text-base font-extrabold">
+          🌱 Roots &amp; statements
+        </h3>
+        <p className="hidden text-[11px] font-semibold text-amber-900/55 sm:block">↵ next · Tab child · ⇧Tab up · Esc close · double-click to edit</p>
+      </div>
+
+      {/* Root selector: one chip per top-level root; a new root is typed in the last chip. */}
+      <nav aria-label="Top-level roots" className="mt-2">
+        <ul className="flex flex-wrap gap-1.5">
+          {roots.map((r) => {
+            const active = selected?.id === r.id
+            const pending = isPending(r.id)
+            return (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(r.id)}
+                  aria-current={active ? 'true' : undefined}
+                  title={`${r.title}: ${r.statementCount} ${r.statementCount === 1 ? 'statement' : 'statements'}, ${r.subRootCount} ${r.subRootCount === 1 ? 'sub-root' : 'sub-roots'}`}
+                  className={cn(
+                    'flex h-7 max-w-52 items-center gap-1.5 rounded-full border-2 px-2.5 text-xs font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none',
+                    active ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-amber-800/20 bg-white hover:bg-amber-50',
+                    pending && 'border-dashed',
+                  )}
+                >
+                  <span className="truncate">{r.title}</span>
+                  <span
+                    className={cn('shrink-0 rounded-full px-1.5 text-[10px] leading-4 tabular-nums', active ? 'bg-white/25' : 'bg-amber-100 text-amber-900')}
+                  >
+                    {r.statementCount}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+          {liveSlot?.kind === 'root' && (
+            <li className="min-w-48 flex-1 sm:max-w-72">
+              <InlineInput
+                placeholder="New root…"
+                label="New top-level root"
+                maxLength={OUTLINE_LIMITS.node}
+                icon="🌱"
+                onKey={onSlotKey}
+                onClose={() => setSlot(null)}
+              />
+            </li>
+          )}
+        </ul>
+      </nav>
+
+      <div className="mt-3 min-h-16">
+        {selected ? (
+          <OutlineBranch node={selected} top {...branchProps} />
+        ) : (
+          liveSlot?.kind !== 'root' && (
+            <p className="py-4 text-center text-sm text-amber-900/65">No roots yet. Add the first concept this tree will grow 🌱</p>
+          )
         )}
-        <GameButton type="submit" tone="leaf" disabled={isPending}>
-          {isPending ? 'Adding…' : 'Add root'}
+      </div>
+
+      {/* Pinned to the bottom of the screen while this area is in view: no scrolling back up to add a root. */}
+      <div className="pointer-events-none sticky bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] z-10 mt-3 flex justify-end">
+        <GameButton tone="leaf" size="sm" className="pointer-events-auto" onClick={() => open({ kind: 'root' })}>
+          <Plus className="size-4" strokeWidth={3} /> Add Root
         </GameButton>
       </div>
-      {error && (
-        <p role="alert" className="mt-2 text-sm font-medium text-amber-800">
-          {error}.
-        </p>
-      )}
-    </GameSlab>
-    </form>
+
+      <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
+      <DeleteRootDialog deckId={editor.deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
+    </section>
   )
 }
 
-type NodeEditorProps = {
+type BranchProps = {
   deckId: string
-  node: EditorNode
-  onEditStatement: (statement: StatementToEdit) => void
+  slot: OutlineSlot | null
+  editingId: string | null
+  bulkFor: string | null
+  isPending: (id: string) => boolean
+  onOpen: (slot: OutlineSlot) => void
+  onSlotKey: (key: OutlineKey, text: string) => void
+  onCloseSlot: () => void
+  onEdit: (kind: 'node' | 'item', id: string) => void
+  onEditKey: (key: OutlineKey | 'escape' | 'blur', text: string) => void
+  onBulk: (nodeId: string) => void
   onDeleteStatement: (statement: StatementToDelete) => void
-  onEditRoot: () => void
-  onDeleteRoot: () => void
+  onDeleteRoot: (id: string) => void
 }
 
-function NodeEditor({ deckId, node, onEditStatement, onDeleteStatement, onEditRoot, onDeleteRoot }: NodeEditorProps) {
-  const { addStatement, isPending } = useDeckDraftActions()
-  const [statement, setStatement] = useState('')
-  const [notice, setNotice] = useState<{ tone: 'amber' | 'gold'; text: string } | null>(null)
-  const inputId = `statement-${node.id}`
+// Connector lines: a vertical rail down the left of every child list, and an elbow into each row
+// (the last child's rail stops at its elbow).
+const CHILD = cn(
+  'relative pl-4',
+  'before:absolute before:top-0 before:left-0 before:h-full before:border-l-2 before:border-amber-800/25',
+  'after:absolute after:top-3 after:left-0 after:w-3 after:border-t-2 after:border-amber-800/25',
+  'last:before:h-3',
+)
 
-  // The statement shows in the list at once and the input clears for the next one; the server's
-  // verdict (drillable, or an error that puts the text back) arrives a moment later.
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const text = statement
-    if (!text.trim()) return
-    setNotice(null)
-    setStatement('')
-    void addStatement(node.id, text).then((res) => {
-      if (!res.success) {
-        setStatement((typed) => typed || text)
-        setNotice({ tone: 'amber', text: `${res.message}. The statement was not saved.` })
-        return
-      }
-      setNotice(res.drillable ? { tone: 'gold', text: 'Added. Ready to drill ✨' } : { tone: 'amber', text: DRILL_TIP })
-    })
+// One root or sub-root: its row, then its statements, the statement input, its sub-roots and the
+// sub-root input, joined by connector lines.
+function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: OutlineNode; top?: boolean }) {
+  const { slot, editingId, bulkFor, isPending, onOpen, onSlotKey, onCloseSlot, onEdit, onEditKey, onBulk, onDeleteRoot } = props
+  const pending = isPending(node.id)
+  const statementSlot = slot?.kind === 'statement' && slot.nodeId === node.id
+  const branchSlot = slot?.kind === 'branch' && slot.parentId === node.id
+  const hasChildren = node.items.length + node.children.length > 0 || statementSlot || branchSlot || bulkFor === node.id
+
+  return (
+    <div>
+      <div className="group relative flex min-h-6 items-center gap-1.5 rounded-md pr-1 hover:bg-amber-100/60">
+        {editingId === node.id ? (
+          <InlineInput
+            initial={node.title}
+            label={`Rename ${node.title}`}
+            maxLength={OUTLINE_LIMITS.node}
+            icon={top ? '🌱' : '🌿'}
+            onKey={onEditKey}
+            onClose={(text) => onEditKey('escape', text)}
+            onBlurSave={(text) => onEditKey('blur', text)}
+          />
+        ) : (
+          <>
+            <span aria-hidden className="text-xs">
+              {top ? '🌱' : '🌿'}
+            </span>
+            <span
+              className={cn('min-w-0 truncate font-semibold', top ? 'font-game text-sm font-extrabold' : 'text-[13px]', pending && 'text-amber-900/60')}
+              onDoubleClick={() => onEdit('node', node.id)}
+              title={`${node.title} (double-click to rename)`}
+            >
+              {node.title}
+            </span>
+            {pending && (
+              <span aria-label="Saving" title="Saving…" className="text-[10px]">
+                ⏳
+              </span>
+            )}
+            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] leading-4 font-semibold text-amber-900 tabular-nums" title="Statements in this root">
+              {node.items.length}
+            </span>
+            <HoverActions label={`Tools for ${node.title}`} className="ml-auto shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
+              <HoverActionButton icon="＋📜" label={`Add a statement under ${node.title}`} onClick={() => onOpen({ kind: 'statement', nodeId: node.id })} />
+              <HoverActionButton icon="＋🌿" label={`Add a sub-root under ${node.title}`} onClick={() => onOpen({ kind: 'branch', parentId: node.id })} />
+              <HoverActionButton icon="✏️" label={`Rename ${node.title}`} tone="edit" onClick={() => onEdit('node', node.id)} />
+              {!pending && (
+                <>
+                  <HoverActionButton icon="📋" label={`Bulk add statements to ${node.title} from notes`} onClick={() => onBulk(node.id)} />
+                  <HoverActionButton icon="🗑️" label={`Delete ${node.title} with its sub-roots and statements`} tone="delete" onClick={() => onDeleteRoot(node.id)} />
+                </>
+              )}
+            </HoverActions>
+          </>
+        )}
+      </div>
+
+      {hasChildren && (
+        <ul className="ml-1.5">
+          {node.items.map((item) => (
+            <li key={item.id} className={CHILD}>
+              <StatementRow item={item} editing={editingId === item.id} {...props} />
+            </li>
+          ))}
+          {statementSlot && (
+            <li className={CHILD}>
+              <InlineInput
+                placeholder="New statement…"
+                label={`New statement under ${node.title}`}
+                maxLength={OUTLINE_LIMITS.statement}
+                icon="📜"
+                onKey={onSlotKey}
+                onClose={onCloseSlot}
+              />
+            </li>
+          )}
+          {bulkFor === node.id && !pending && (
+            <li className={CHILD}>
+              <BulkStatementImporter
+                deckId={props.deckId}
+                rootId={node.id}
+                rootTitle={node.title}
+                existing={node.items.map((i) => i.statement)}
+                defaultOpen
+                onCancel={() => onBulk(node.id)}
+                className="py-1"
+              />
+            </li>
+          )}
+          {node.children.map((child) => (
+            <li key={child.id} className={CHILD}>
+              <OutlineBranch node={child} {...props} />
+            </li>
+          ))}
+          {branchSlot && (
+            <li className={CHILD}>
+              <InlineInput
+                placeholder="New sub-root…"
+                label={`New sub-root under ${node.title}`}
+                maxLength={OUTLINE_LIMITS.node}
+                icon="🌿"
+                onKey={onSlotKey}
+                onClose={onCloseSlot}
+              />
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function StatementRow({ item, editing, isPending, onEdit, onEditKey, onDeleteStatement }: BranchProps & { item: EditorItem; editing: boolean }) {
+  const pending = isPending(item.id)
+  if (editing) {
+    return (
+      <InlineInput
+        initial={item.statement}
+        label="Edit statement"
+        maxLength={OUTLINE_LIMITS.statement}
+        icon="📜"
+        onKey={onEditKey}
+        onClose={(text) => onEditKey('escape', text)}
+        onBlurSave={(text) => onEditKey('blur', text)}
+      />
+    )
+  }
+  return (
+    <div className="group flex min-h-6 items-start gap-1.5 rounded-md py-0.5 pr-1 hover:bg-amber-100/60">
+      <span
+        aria-label={pending ? 'Saving' : item.drillable ? 'Ready to drill' : 'Not drillable yet'}
+        title={pending ? 'Saving…' : item.drillable ? 'Ready to drill' : DRILL_TIP}
+        className="pt-px text-[10px] leading-4"
+      >
+        {pending ? '⏳' : item.drillable ? '✅' : '💧'}
+      </span>
+      <span
+        className={cn('min-w-0 flex-1 text-xs leading-4 whitespace-pre-wrap', pending && 'text-amber-900/60')}
+        onDoubleClick={() => !pending && onEdit('item', item.id)}
+      >
+        {item.statement}
+      </span>
+      {/* Still saving: no edit / delete until it has its server id. */}
+      {!pending && (
+        <HoverActions label="Statement tools" className="shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
+          <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEdit('item', item.id)} />
+          <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
+        </HoverActions>
+      )}
+    </div>
+  )
+}
+
+type InlineInputProps = {
+  initial?: string
+  placeholder?: string
+  label: string
+  maxLength: number
+  icon: string
+  onKey: (key: OutlineKey, text: string) => void
+  // Esc or ✕ (with the text as it stands).
+  onClose: (text: string) => void
+  // Edits save when the field loses focus; new-item inputs keep their text instead.
+  onBlurSave?: (text: string) => void
+}
+
+// The one inline field for adding and editing: compact, focused on arrival, IME-safe keys.
+function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey, onClose, onBlurSave }: InlineInputProps) {
+  const [value, setValue] = useState(initial)
+  const ref = useRef<HTMLInputElement>(null)
+  // A key or ✕ already finished this edit: the blur that follows must not save it again.
+  const finished = useRef(false)
+  useEffect(() => {
+    ref.current?.focus()
+    if (initial) ref.current?.select()
+  }, [initial])
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      finished.current = true
+      onClose(value)
+      return
+    }
+    const key = outlineKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })
+    if (!key) return
+    e.preventDefault()
+    if (onBlurSave) finished.current = true
+    onKey(key, value)
+    setValue('')
   }
 
   return (
-    <GameSlab tone="leaf" className="p-4 text-emerald-950">
-      {/* Hover (or focus / touch) reveals the root's ✏️ Edit and 🗑️ Delete. */}
-      <div className="group flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <p className="font-game text-lg font-bold">🌱 {node.title}</p>
-        <HoverActions label={`Tools for root ${node.title}`}>
-          <HoverActionButton icon="✏️" text="Edit" label={`Edit root ${node.title}`} tone="edit" onClick={onEditRoot} />
-          <HoverActionButton icon="🗑️" text="Delete" label={`Delete root ${node.title}`} tone="delete" onClick={onDeleteRoot} />
-        </HoverActions>
-      </div>
-
-      {node.items.length > 0 && (
-        <ul className="mt-2 space-y-1 text-sm">
-          {node.items.map((item) => (
-            <li key={item.id} className="group flex items-start gap-2 rounded-lg px-1 py-0.5 hover:bg-white/50">
-              <span aria-hidden className="pt-0.5">
-                {isPending(item.id) ? '⏳' : item.drillable ? '✅' : '💧'}
-              </span>
-              <span className="min-w-0 flex-1 whitespace-pre-wrap">
-                {item.statement}
-                {!item.drillable && <span className="sr-only"> (not drillable yet)</span>}
-              </span>
-              {/* Still saving: no edit / delete until it has its server id. */}
-              {!isPending(item.id) && (
-                <HoverActions label="Statement tools" className="shrink-0">
-                  <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEditStatement({ id: item.id, text: item.statement })} />
-                  <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
-                </HoverActions>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <form onSubmit={submit} className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <GameLabel htmlFor={inputId} className="sr-only">
-          New statement for {node.title}
-        </GameLabel>
-        <GameInput
-          id={inputId}
-          required
-          maxLength={500}
-          value={statement}
-          onChange={(e) => setStatement(e.target.value)}
-          placeholder="Write a true statement, e.g. Khi nhiệt độ tăng, áp suất khí lớn hơn."
-          className="flex-1"
-        />
-        <GameButton type="submit" tone="cream">
-          Add statement
-        </GameButton>
-      </form>
-      {notice && (
-        <p role="status" className={notice.tone === 'gold' ? 'mt-2 text-sm font-semibold text-amber-800' : 'mt-2 text-sm text-amber-900'}>
-          {notice.text}
-        </p>
-      )}
-      {/* Many at once: paste notes, one statement per bullet / line. */}
-      <BulkStatementImporter
-        deckId={deckId}
-        rootId={node.id}
-        rootTitle={node.title}
-        existing={node.items.map((i) => i.statement)}
-        className="mt-3"
+    <div className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md border-2 border-dashed border-emerald-500 bg-emerald-50 pr-0.5 pl-1.5 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]">
+      <span aria-hidden className="text-[11px]">
+        {icon}
+      </span>
+      <input
+        ref={ref}
+        value={value}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        aria-label={label}
+        aria-keyshortcuts="Enter Tab Shift+Tab Escape"
+        enterKeyHint="next"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={() => {
+          if (onBlurSave && !finished.current) {
+            finished.current = true
+            onBlurSave(value)
+          }
+        }}
+        className="min-w-0 flex-1 bg-transparent text-xs font-medium text-emerald-950 outline-none placeholder:text-emerald-800/50"
       />
-    </GameSlab>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          finished.current = true
+          onClose(value)
+        }}
+        aria-label="Close"
+        title="Close (Esc)"
+        className="flex size-5 shrink-0 items-center justify-center rounded text-emerald-900/60 hover:bg-emerald-200 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
+      >
+        <X className="size-3" strokeWidth={3} />
+      </button>
+    </div>
   )
 }
 

@@ -211,10 +211,10 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
             {tree.length === 0
               ? 'Every concept you add becomes a root under this tree.'
               : visitor
-                ? 'Tap a root’s 📜 count to read its statements. This tree is read-only: clone it to your garden to practise it.'
+                ? 'Tap 🔍 on a root to read its statements. This tree is read-only: clone it to your garden to practise it.'
                 : editor
-                  ? 'Hover a root for ＋📜 statement or ＋🌿 sub-root and type right on the map: Enter adds the next, Tab nests, Shift+Tab goes up. Chips above jump to any root.'
-                  : 'Tap a root’s 📜 count to see its statements and practise that branch. Roots glow brighter as you master them.'}
+                  ? 'Tap 🔍 to inspect a root, ✏️ to rename it or add and remove statements. Roots glow brighter as they are mastered.'
+                  : 'Tap 🔍 on a root to see its statements and practise that branch. Roots glow brighter as you master them.'}
           </p>
           <DeckRootsPanel
             deckId={deck.id}
@@ -239,7 +239,7 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
                 />
               ),
             }}
-            emptyLabel={editor ? 'No roots yet. Plant the first concept below, or tap ＋ Root any time 🌱' : 'No roots yet. This tree is waiting for its first concept 🌱'}
+            emptyLabel={editor ? 'No roots yet. Use ＋ Add root above to plant the first concept 🌱' : 'No roots yet. This tree is waiting for its first concept 🌱'}
           />
         </section>
 
@@ -300,7 +300,7 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
           <section aria-labelledby="grow-heading" className="mt-12">
             <GamePanel tone="wood" ribbon="gold" title={<span id="grow-heading">🛠️ Tree Workshop</span>}>
               <p className="mb-5 text-center text-sm text-amber-100/85">
-                Change the tree species, or work through every root as a list. Everything here can also be done on the mindmap above.
+                Change the tree species, then grow your roots right here: pick a root, type statements and sub-roots inline, Enter for the next, Tab to nest.
               </p>
               <div className="mb-5">
                 <DeckShareToggle deckId={deck.id} slug={deck.slug} isPublic={deck.isPublic} />

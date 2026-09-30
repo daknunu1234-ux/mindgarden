@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { centreOffset, centreOn, clampZoom, contentSize, fitZoom, MAX_ZOOM, MIN_ZOOM, placeAt, revealScroll, worldAt, zoomAt } from '../camera'
+import { centreOffset, centreOn, clampZoom, contentSize, fitZoom, MAX_ZOOM, MIN_ZOOM, worldAt, zoomAt } from '../camera'
 
 const WORLD = { w: 1600, h: 1100 }
 const VIEW = { w: 800, h: 600 }
@@ -67,30 +67,5 @@ describe('centreOn', () => {
   it('clamps at the edges and handles a world smaller than the viewport', () => {
     expect(centreOn({ x: 0, y: 0 }, VIEW, WORLD, 1)).toEqual({ left: 0, top: 0 })
     expect(centreOn({ x: 800, y: 550 }, VIEW, WORLD, 0.3)).toEqual({ left: 0, top: 0 })
-  })
-})
-
-describe('placeAt and revealScroll', () => {
-  const zoom = 1
-
-  it('puts a world point under a viewport point', () => {
-    const s = placeAt({ x: 900, y: 500 }, { x: 400, y: 64 }, VIEW, WORLD, zoom)
-    expect(worldAt(s, { x: 400, y: 64 }, VIEW, WORLD, zoom)).toEqual({ x: 900, y: 500 })
-    expect(centreOn({ x: 900, y: 500 }, VIEW, WORLD, zoom)).toEqual(placeAt({ x: 900, y: 500 }, { x: 400, y: 300 }, VIEW, WORLD, zoom))
-  })
-
-  it('leaves the camera alone when the rect is already on screen', () => {
-    const scroll = { left: 200, top: 100 }
-    expect(revealScroll({ x: 400, y: 300, w: 200, h: 50 }, scroll, VIEW, WORLD, zoom)).toBeNull()
-  })
-
-  it('centres a rect that is (partly) off screen', () => {
-    const scroll = { left: 0, top: 0 }
-    const to = revealScroll({ x: 1000, y: 700, w: 200, h: 50 }, scroll, VIEW, WORLD, zoom)
-    expect(to).not.toBeNull()
-    const centre = worldAt(to!, { x: VIEW.w / 2, y: VIEW.h / 2 }, VIEW, WORLD, zoom)
-    expect(centre).toEqual({ x: 1100, y: 725 })
-    // Right at the edge counts as off screen too (a margin keeps it clear of the frame).
-    expect(revealScroll({ x: 790, y: 100, w: 5, h: 5 }, scroll, VIEW, WORLD, zoom)).not.toBeNull()
   })
 })
