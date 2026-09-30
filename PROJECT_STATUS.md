@@ -123,12 +123,20 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   - Farmer's House: a cottage with an oversized terracotta hip roof, a rounded brick chimney puffing
     smoke, and glowing windows and door.
   - Woodshop: a plank shed with an oversized cartoon saw blade and round-ended logs.
-  - Stream: turquoise water with a white foam edge and rising bubbles.
+  - Stream: **auto-tiled** like fences (`streamLinks` / `streamVariant` in `lib/farmGrid.ts`): a lone
+    pond, a straight canal (N–S or E–W), a bend, a T-junction or a 4-way cross. Each tile is a rounded pool
+    plus an arm to every linked neighbour, meeting it at the same width on the shared edge
+    (`lib/streamTiles.ts`, tested), so adjacent streams merge into one waterway: sandy bank, white foam,
+    turquoise water and a bright shine, each drawn for the whole network at once so only its outer edge
+    has a border. Bubbles and glints on every tile, pebbles by lone ponds. Buffs are unchanged: a tree
+    beside any tile of a river gets ×1.2 (tested).
   - Fence: thick capped posts with outlined rails that auto-join.
   - Rockery: mossy boulders with tiny flowers.
   - Cow and pig: plump SVG animals that wander and squash as they idle.
-  - Trees: stand on a terracotta soil pad, carry a sign with their stage emoji (gold trim at 100%),
-    and get bees from stage 3.
+  - Trees: grow from a raised tilled garden bed that fills the whole 1 × 1 tile (no round soil discs),
+    with furrows running across it. Neighbouring trees' beds join into one plot: the outline, front faces
+    and furrow ends only appear on sides with no tree beside them (`TreePlots`). The tree, its stage-emoji
+    sign (gold trim at 100%) and its bees (from stage 3) stay anchored on the tile centre.
 - **Placement feedback**: the item floats over a free footprint with a glowing green outline, or throbs
   comic red with "✖ Blocked!". Placing a stream or Farmer's House previews its aura and pulses in the
   "+20% 🪙" / "+50% 🪙" tags it would add. Placed buffs show as floating glossy tags over each tree.
@@ -177,7 +185,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
+| (pending) | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
+| `d91e334` | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
 | `ccda259` | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
 | `4b1ffea` | feat(garden): isometric farm grid with shop, placements, buffs and woodshop refund; gems removed; this file created |
 | `44c14d9` | feat(decks): edit statements and roots with owner-only hover tools |
@@ -194,5 +203,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 58 files, 519 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 59 files, 525 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

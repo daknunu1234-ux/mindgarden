@@ -51,26 +51,50 @@ export function checkPlacement(placements: readonly Placement[], spot: Footprint
 // Painter's order: things further back (smaller bottom-tile x + y) are drawn first.
 export const depthOf = ({ x, y, width, height }: Footprint): number => x + width - 1 + (y + height - 1)
 
-// Which neighbours of a fence are fences too: its rails join them. north = y − 1, east = x + 1,
-// south = y + 1, west = x − 1.
-export function fenceLinks(placements: readonly Placement[], fence: { x: number; y: number }): { north: boolean; east: boolean; south: boolean; west: boolean } {
-  const isFence = (x: number, y: number) => placements.some((p) => p.itemType === 'fence' && p.x === x && p.y === y)
+// Which of a tile's four side neighbours hold the same kind of thing (auto-tiling for fences,
+// streams and tree plots). north = y − 1, east = x + 1, south = y + 1, west = x − 1.
+export type Links = { north: boolean; east: boolean; south: boolean; west: boolean }
+
+export function neighbourLinks(placements: readonly Placement[], itemType: FarmItemType, tile: { x: number; y: number }): Links {
+  const has = (x: number, y: number) => placements.some((p) => p.itemType === itemType && p.x === x && p.y === y)
   return {
-    north: isFence(fence.x, fence.y - 1),
-    east: isFence(fence.x + 1, fence.y),
-    south: isFence(fence.x, fence.y + 1),
-    west: isFence(fence.x - 1, fence.y),
+    north: has(tile.x, tile.y - 1),
+    east: has(tile.x + 1, tile.y),
+    south: has(tile.x, tile.y + 1),
+    west: has(tile.x - 1, tile.y),
   }
 }
 
-// Fence tile shape for drawing: a lone post, a straight run, a corner, a T or a cross.
-export function fenceVariant(links: { north: boolean; east: boolean; south: boolean; west: boolean }): 'post' | 'straight' | 'corner' | 'tee' | 'cross' {
+// A fence's rails join the fences beside it.
+export const fenceLinks = (placements: readonly Placement[], fence: { x: number; y: number }): Links => neighbourLinks(placements, 'fence', fence)
+
+// A stream's channels join the streams beside it, so a run of them is one waterway.
+export const streamLinks = (placements: readonly Placement[], stream: { x: number; y: number }): Links => neighbourLinks(placements, 'stream', stream)
+
+type Shape = 'straight' | 'corner' | 'tee' | 'cross'
+
+// Tile shape from its links: nothing joined, a straight run, a corner, a T or a cross. A single
+// link counts as straight (a channel ending in the tile).
+function linkShape(links: Links): 'none' | Shape {
   const count = [links.north, links.east, links.south, links.west].filter(Boolean).length
-  if (count === 0) return 'post'
+  if (count === 0) return 'none'
   if (count === 4) return 'cross'
   if (count === 3) return 'tee'
   if (count === 1 || (links.north && links.south) || (links.east && links.west)) return 'straight'
   return 'corner'
+}
+
+// Fence tile shape for drawing: a lone post, a straight run, a corner, a T or a cross.
+export function fenceVariant(links: Links): 'post' | Shape {
+  const shape = linkShape(links)
+  return shape === 'none' ? 'post' : shape
+}
+
+// Stream tile shape: a lone pond, a straight canal (N–S or E–W, or a channel's end), a bend, a
+// T-junction or a 4-way cross.
+export function streamVariant(links: Links): 'pond' | Shape {
+  const shape = linkShape(links)
+  return shape === 'none' ? 'pond' : shape
 }
 
 // First free tile for a 1 × 1 item, scanning from the middle outwards (the ghost's starting spot).

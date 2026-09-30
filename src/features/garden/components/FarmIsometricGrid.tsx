@@ -5,13 +5,35 @@ import { cn } from '@/shared/utils/cn'
 import { beachPalms, FARM_WORLD } from '../lib/diorama'
 import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
 import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
-import { checkPlacement, depthOf, fenceLinks, footprintCenter, screenToTile, TILE_H, type Footprint, type Placement } from '../lib/farmGrid'
+import {
+  checkPlacement,
+  depthOf,
+  fenceLinks,
+  footprintCenter,
+  neighbourLinks,
+  screenToTile,
+  streamLinks,
+  TILE_H,
+  type Footprint,
+  type Placement,
+} from '../lib/farmGrid'
 import { plotSprite } from '../lib/plotSprite'
 import { getTreeSizeTier } from '@/shared/lib/treeSkins'
 import { getTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
 import { IslandBase, OceanLayer, Palm, WorldClouds } from './FarmDiorama'
-import { AnimalSprite, BuffAura, FarmerHouse, FenceSprite, GhostFootprint, RockerySprite, StreamTile, TreePad, WoodshopSprite } from './FarmStructures'
+import {
+  AnimalSprite,
+  BuffAura,
+  FarmerHouse,
+  FenceSprite,
+  GhostFootprint,
+  RockerySprite,
+  StreamNetwork,
+  TreePlots,
+  WoodshopSprite,
+  type LinkedTile,
+} from './FarmStructures'
 import { LABEL_LAYER, PlotButton, PlotLabels } from './FarmTree'
 
 export { FARM_WORLD }
@@ -77,6 +99,9 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
     const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
     return plot ? [{ placement: p, plot }] : []
   })
+  // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
+  const treeBeds: LinkedTile[] = trees.map(({ placement: p }) => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(placements, 'tree', p) }))
+  const streams: LinkedTile[] = placements.filter((p) => p.itemType === 'stream').map((p) => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(placements, p) }))
   const standing = placements.filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
   const animated = new Set(
     trees
@@ -118,14 +143,8 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
       <svg aria-hidden width={FARM_WORLD.w} height={FARM_WORLD.h} className="absolute inset-0 overflow-visible">
         <OceanLayer world={FARM_WORLD} origin={origin} />
         <IslandBase origin={origin} seed={seed} />
-        {trees.map(({ placement }) => (
-          <TreePad key={placement.id} footprint={placement} origin={origin} />
-        ))}
-        {placements
-          .filter((p) => p.itemType === 'stream')
-          .map((p) => (
-            <StreamTile key={p.id} footprint={p} origin={origin} />
-          ))}
+        <TreePlots trees={treeBeds} origin={origin} />
+        <StreamNetwork streams={streams} origin={origin} />
         {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
         {ghost && <GhostFootprint footprint={ghost} origin={origin} valid={ghostOk} />}
       </svg>

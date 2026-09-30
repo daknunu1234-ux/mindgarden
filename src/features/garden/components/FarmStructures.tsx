@@ -1,11 +1,12 @@
 // Chunky, toy-like miniatures for the farm grid, drawn in SVG like 3D casual-game collectibles:
 // thick rounded outlines, lit left faces and shaded right faces (sun at the upper left), glossy
-// highlights and soft contact shadows. Flat ground things (stream, tree pad, placement ghost, buff
-// auras) go in the ground SVG; standing things are drawn in an SVG whose (0, 0) is their ground
+// highlights and soft contact shadows. Flat ground things (auto-tiled streams, tree garden beds,
+// placement ghost, buff auras) go in the ground SVG; standing things are drawn in an SVG whose (0, 0) is their ground
 // point. Pure markup, no hooks; animations are the `.mg-*` classes in globals.css.
 import type { CSSProperties, ReactNode } from 'react'
 import type { CatalogItem } from '../lib/farmCatalog'
-import { GRID_SIZE, TILE_H, TILE_W, tileToScreen, type Footprint } from '../lib/farmGrid'
+import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
+import { STREAM_LAYERS, streamShapes, type StreamLayer } from '../lib/streamTiles'
 
 type Pt = { x: number; y: number }
 type Vars = CSSProperties & Record<`--mg-${string}`, string>
@@ -33,72 +34,132 @@ const centreOf = (f: Footprint, origin: Pt): Pt => {
 
 // ── Ground layer ─────────────────────────────────────────────────────────────
 
-// A stream tile: crystalline turquoise water with white foam edges, rising bubbles and glints.
-export function StreamTile({ footprint, origin }: { footprint: Footprint; origin: Pt }) {
-  const c = centreOf(footprint, origin)
-  const seed = footprint.x * 7 + footprint.y * 3
+// A tile of the grid plus which of its four sides join the same kind of tile (auto-tiling).
+export type LinkedTile = { key: string; x: number; y: number; links: Links }
+
+const NO_LINKS: Links = { north: false, east: false, south: false, west: false }
+
+const STREAM_FILLS: Record<StreamLayer, string> = { bank: '#e9c77f', foam: '#ffffff', water: '#1fc3dc', shine: '#8ff7f2' }
+
+// Streams, auto-tiled into one waterway: every tile is a rounded pool plus an arm towards each
+// linked neighbour (lib/streamTiles.ts, tested), so channels meet exactly at shared edges. Each layer
+// (ink outline, sandy bank, white foam, turquoise water, bright shine) is drawn for all tiles at once:
+// fills cover the seams between shapes, so only the waterway's outer edge gets a border. Glints,
+// bubbles on every tile and pebbles by lone ponds.
+export function StreamNetwork({ streams, origin }: { streams: readonly LinkedTile[]; origin: Pt }) {
+  const shapes = (layer: StreamLayer) =>
+    streams.flatMap((s) => streamShapes(s, s.links, layer).map((shape, i) => ({ key: `${s.key}-${i}`, points: pts(shape, origin) })))
+  const bank = shapes('bank')
   return (
-    <g>
-      <polygon points={footprintPoints(footprint, origin)} fill="#12a6c6" stroke="#0a6f8a" strokeWidth={3} strokeLinejoin="round" />
-      {/* Inner bright water, inset so the darker rim reads as depth. */}
-      <polygon
-        points={p([c.x, c.y - 21], [c.x + 42, c.y], [c.x, c.y + 21], [c.x - 42, c.y])}
-        fill="#35dfe8"
-        stroke="#ffffff"
-        strokeWidth={5}
-        strokeLinejoin="round"
-        opacity={0.95}
-      />
-      <polygon points={p([c.x, c.y - 13], [c.x + 26, c.y], [c.x, c.y + 13], [c.x - 26, c.y])} fill="#7ff5f0" opacity={0.7} />
-      <path d={`M ${c.x - 20} ${c.y - 3} q 10 -6 20 0 t 20 0`} stroke="#ffffff" strokeWidth={2.6} fill="none" strokeLinecap="round" className="mg-twinkle" />
-      {[
-        [-10, 6, 3.2],
-        [8, 2, 2.4],
-        [16, 8, 2],
-      ].map(([dx, dy, r], i) => (
-        <circle
-          key={i}
-          cx={c.x + dx}
-          cy={c.y + dy}
-          r={r}
-          fill="#ffffff"
-          opacity={0.9}
-          className="mg-bubble"
-          style={{ '--mg-delay': `${-((seed + i * 0.8) % 2.4)}s` } as Vars}
-        />
+    <g strokeLinejoin="round">
+      {bank.map((s) => (
+        <polygon key={`o${s.key}`} points={s.points} fill={INK} stroke={INK} strokeWidth={5} />
       ))}
-      {/* Two pebbles on the bank. */}
-      <ellipse cx={c.x - 38} cy={c.y + 4} rx={6} ry={4} fill="#c9c4d6" stroke={INK} strokeWidth={1.6} />
-      <ellipse cx={c.x + 34} cy={c.y + 8} rx={5} ry={3.4} fill="#b9b4c6" stroke={INK} strokeWidth={1.6} />
+      {STREAM_LAYERS.map((layer) => (
+        <g key={layer} opacity={layer === 'shine' ? 0.75 : 1}>
+          {(layer === 'bank' ? bank : shapes(layer)).map((s) => (
+            <polygon key={s.key} points={s.points} fill={STREAM_FILLS[layer]} />
+          ))}
+        </g>
+      ))}
+      {streams.map((s) => {
+        const c = centreOf({ x: s.x, y: s.y, width: 1, height: 1 }, origin)
+        const pond = streamVariant(s.links) === 'pond'
+        const seed = s.x * 7 + s.y * 3
+        return (
+          <g key={s.key}>
+            <path d={`M ${c.x - 16} ${c.y - 2} q 8 -5 16 0 t 16 0`} stroke="#ffffff" strokeWidth={2.4} fill="none" strokeLinecap="round" className="mg-twinkle" style={{ animationDelay: `${-(seed % 4)}s` }} />
+            {[
+              [-9, 5, 3],
+              [9, 3, 2.2],
+            ].map(([dx, dy, r], i) => (
+              <circle key={i} cx={c.x + dx} cy={c.y + dy} r={r} fill="#ffffff" opacity={0.9} className="mg-bubble" style={{ '--mg-delay': `${-((seed + i * 0.8) % 2.4)}s` } as Vars} />
+            ))}
+            {pond && (
+              <>
+                <ellipse cx={c.x - 40} cy={c.y + 3} rx={6} ry={4} fill="#c9c4d6" stroke={INK} strokeWidth={1.6} />
+                <ellipse cx={c.x + 38} cy={c.y + 7} rx={5} ry={3.4} fill="#b9b4c6" stroke={INK} strokeWidth={1.6} />
+              </>
+            )}
+          </g>
+        )
+      })}
     </g>
   )
 }
 
-// The raised soil bed a knowledge tree grows from (terracotta mound with a lit top and sprigs).
-export function TreePad({ footprint, origin }: { footprint: Footprint; origin: Pt }) {
-  const c = centreOf(footprint, origin)
+// One stream tile on its own (the Shop's pedestal, the placement ghost): a lone pond at (0, 0).
+export function StreamTile({ footprint, origin, links = NO_LINKS }: { footprint: Footprint; origin: Pt; links?: Links }) {
+  return <StreamNetwork streams={[{ key: 'one', x: footprint.x, y: footprint.y, links }]} origin={origin} />
+}
+
+// Raised tilled garden beds under the trees: every tree tile is filled edge to edge with soil, lifted
+// a little, with furrows running across it. Neighbouring trees' beds join into one plot: the
+// outline (ink under all fills), the front faces and the furrow ends only show on sides with no
+// tree beside them.
+const BED_LIFT = 6
+export function TreePlots({ trees, origin }: { trees: readonly LinkedTile[]; origin: Pt }) {
+  const corner = (x: number, y: number, lift = BED_LIFT): Pt => {
+    const s = tileToScreen(x, y)
+    return { x: s.x + origin.x, y: s.y + origin.y - lift }
+  }
+  const top = (t: LinkedTile) => [corner(t.x, t.y), corner(t.x + 1, t.y), corner(t.x + 1, t.y + 1), corner(t.x, t.y + 1)]
   return (
-    <g>
-      <ellipse cx={c.x + 3} cy={c.y + 5} rx={46} ry={22} fill="#1f7a34" opacity={0.3} />
-      <ellipse cx={c.x} cy={c.y + 2} rx={40} ry={19} fill="#a24f24" stroke={INK} strokeWidth={3} />
-      <ellipse cx={c.x} cy={c.y - 1} rx={36} ry={16} fill="#d9733a" />
-      <ellipse cx={c.x - 6} cy={c.y - 4} rx={22} ry={8} fill="#f0955a" opacity={0.8} />
-      {[
-        [-30, -2],
-        [28, 4],
-        [-12, 12],
-      ].map(([dx, dy], i) => (
-        <path
-          key={i}
-          d={`M ${c.x + dx - 4} ${c.y + dy} l 2 -7 M ${c.x + dx} ${c.y + dy} l 0 -9 M ${c.x + dx + 4} ${c.y + dy} l -2 -7`}
-          stroke="#2e9e3a"
-          strokeWidth={2.6}
-          strokeLinecap="round"
-        />
+    <g strokeLinejoin="round" strokeLinecap="round">
+      {/* Front faces of the raised bed: the south (left-front) and east (right-front) sides. */}
+      {trees.map((t) => (
+        <g key={`f${t.key}`}>
+          {!t.links.south && (
+            <polygon points={pts([corner(t.x, t.y + 1), corner(t.x + 1, t.y + 1), corner(t.x + 1, t.y + 1, 0), corner(t.x, t.y + 1, 0)])} fill="#8f4520" stroke={INK} strokeWidth={2.5} />
+          )}
+          {!t.links.east && (
+            <polygon points={pts([corner(t.x + 1, t.y + 1), corner(t.x + 1, t.y), corner(t.x + 1, t.y, 0), corner(t.x + 1, t.y + 1, 0)])} fill="#733517" stroke={INK} strokeWidth={2.5} />
+          )}
+        </g>
       ))}
+      {trees.map((t) => (
+        <polygon key={`o${t.key}`} points={pts(top(t))} fill={INK} stroke={INK} strokeWidth={5} />
+      ))}
+      {trees.map((t) => (
+        <polygon key={`s${t.key}`} points={pts(top(t))} fill="#b95f2b" />
+      ))}
+      {/* Furrows along the x axis: a lit ridge over a shadow line, running on into linked beds. */}
+      {trees.map((t) => {
+        const u0 = t.links.west ? 0 : 0.08
+        const u1 = t.links.east ? 1 : 0.92
+        return (
+          <g key={`r${t.key}`}>
+            {[0.2, 0.4, 0.6, 0.8].map((v) => {
+              const a = corner(t.x + u0, t.y + v)
+              const b = corner(t.x + u1, t.y + v)
+              return (
+                <g key={v}>
+                  <path d={`M ${a.x} ${a.y + 2} L ${b.x} ${b.y + 2}`} stroke="#8a3f1a" strokeWidth={4} opacity={0.7} />
+                  <path d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`} stroke="#e08a4f" strokeWidth={4} />
+                </g>
+              )
+            })}
+            {/* A few sprouts and a pebble along the rows. */}
+            {[
+              [0.22, 0.3],
+              [0.78, 0.7],
+              [0.7, 0.22],
+            ].map(([u, v], i) => {
+              const s = corner(t.x + u, t.y + v)
+              return i === 2 ? (
+                <ellipse key={i} cx={s.x} cy={s.y} rx={4} ry={2.6} fill="#d6c7b8" stroke={INK} strokeWidth={1.2} />
+              ) : (
+                <path key={i} d={`M ${s.x - 3} ${s.y} l 1 -6 M ${s.x + 3} ${s.y} l -1 -6`} stroke="#2e9e3a" strokeWidth={2.6} />
+              )
+            })}
+          </g>
+        )
+      })}
     </g>
   )
 }
+
+const pts = (points: readonly Pt[], o: Pt = { x: 0, y: 0 }) => points.map((q) => `${(q.x + o.x).toFixed(1)},${(q.y + o.y).toFixed(1)}`).join(' ')
 
 // Placement ghost: a glowing green footprint where the item fits, a throbbing comic red one where
 // it doesn't.
