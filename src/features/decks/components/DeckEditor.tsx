@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation'
 import { GAME_FIELD, GameButton, GameInput, GameLabel, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { toTreeTypeId } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
-import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
-import { updateDeck } from '../actions/updateDeck'
 import { flatBranchImpact } from '../lib/branch'
 import { BulkStatementImporter } from './BulkStatementImporter'
+import { useDeckDraftActions } from './DeckDraft'
 import { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './DeleteDialogs'
 import { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './EditDialogs'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
@@ -34,7 +33,7 @@ function DeckEditor({ editor }: DeckEditorProps) {
 
   return (
     <div className="space-y-5">
-      <SpeciesForm deckId={editor.deckId} treeType={editor.treeType} />
+      <SpeciesForm treeType={editor.treeType} />
       <AddRootForm deckId={editor.deckId} nodes={editor.nodes} />
       {editor.nodes.length > 0 && (
         <ul className="space-y-4">
@@ -60,38 +59,14 @@ function DeckEditor({ editor }: DeckEditorProps) {
   )
 }
 
-// Change the tree species; the page refreshes so the scene redraws in the new species.
-function SpeciesForm({ deckId, treeType }: { deckId: string; treeType: string }) {
-  const router = useRouter()
-  // A retired species (e.g. 'sakura') shows as its successor, the one it renders as.
-  const [value, setValue] = useState<string>(toTreeTypeId(treeType))
-  const [error, setError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-
-  const change = (next: string) => {
-    if (next === value) return
-    const previous = value
-    setValue(next)
-    setError(null)
-    startTransition(async () => {
-      const res = await updateDeck({ deckId, treeType: next })
-      if (!res.success) {
-        setValue(previous)
-        setError(res.error.message)
-        return
-      }
-      router.refresh()
-    })
-  }
-
+// Change the tree species: the whole page (tree sprite, ribbon, mindmap roots) switches at once
+// through the deck draft, and the server catches up in the background (rolled back with a toast).
+function SpeciesForm({ treeType }: { treeType: string }) {
+  const { changeSpecies } = useDeckDraftActions()
   return (
     <GameSlab className="p-4 text-amber-950">
-      <TreeSpeciesPicker value={value} onChange={change} disabled={isPending} legend="Tree species" />
-      {error && (
-        <p role="alert" className="mt-2 text-sm font-medium text-amber-800">
-          {error}.
-        </p>
-      )}
+      {/* A retired species (e.g. 'sakura') shows as its successor, the one it renders as. */}
+      <TreeSpeciesPicker value={toTreeTypeId(treeType)} onChange={changeSpecies} legend="Tree species" />
     </GameSlab>
   )
 }
@@ -154,21 +129,26 @@ type NodeEditorProps = {
 }
 
 function NodeEditor({ deckId, node, onEditStatement, onDeleteStatement, onEditRoot, onDeleteRoot }: NodeEditorProps) {
-  const router = useRouter()
+  const { addStatement, isPending } = useDeckDraftActions()
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<{ tone: 'amber' | 'gold'; text: string } | null>(null)
-  const [isPending, startTransition] = useTransition()
   const inputId = `statement-${node.id}`
 
+  // The statement shows in the list at once and the input clears for the next one; the server's
+  // verdict (drillable, or an error that puts the text back) arrives a moment later.
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const text = statement
+    if (!text.trim()) return
     setNotice(null)
-    startTransition(async () => {
-      const res = await createKnowledgeItem({ nodeId: node.id, statement })
-      if (!res.success) return setNotice({ tone: 'amber', text: `${res.error.message}.` })
-      setStatement('')
-      setNotice(res.data.drillable ? { tone: 'gold', text: 'Added. Ready to drill ✨' } : { tone: 'amber', text: DRILL_TIP })
-      router.refresh()
+    setStatement('')
+    void addStatement(node.id, text).then((res) => {
+      if (!res.success) {
+        setStatement((typed) => typed || text)
+        setNotice({ tone: 'amber', text: `${res.message}. The statement was not saved.` })
+        return
+      }
+      setNotice(res.drillable ? { tone: 'gold', text: 'Added. Ready to drill ✨' } : { tone: 'amber', text: DRILL_TIP })
     })
   }
 
@@ -188,16 +168,19 @@ function NodeEditor({ deckId, node, onEditStatement, onDeleteStatement, onEditRo
           {node.items.map((item) => (
             <li key={item.id} className="group flex items-start gap-2 rounded-lg px-1 py-0.5 hover:bg-white/50">
               <span aria-hidden className="pt-0.5">
-                {item.drillable ? '✅' : '💧'}
+                {isPending(item.id) ? '⏳' : item.drillable ? '✅' : '💧'}
               </span>
               <span className="min-w-0 flex-1 whitespace-pre-wrap">
                 {item.statement}
                 {!item.drillable && <span className="sr-only"> (not drillable yet)</span>}
               </span>
-              <HoverActions label="Statement tools" className="shrink-0">
-                <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEditStatement({ id: item.id, text: item.statement })} />
-                <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
-              </HoverActions>
+              {/* Still saving: no edit / delete until it has its server id. */}
+              {!isPending(item.id) && (
+                <HoverActions label="Statement tools" className="shrink-0">
+                  <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEditStatement({ id: item.id, text: item.statement })} />
+                  <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
+                </HoverActions>
+              )}
             </li>
           ))}
         </ul>
@@ -216,8 +199,8 @@ function NodeEditor({ deckId, node, onEditStatement, onDeleteStatement, onEditRo
           placeholder="Write a true statement, e.g. Khi nhiệt độ tăng, áp suất khí lớn hơn."
           className="flex-1"
         />
-        <GameButton type="submit" tone="cream" disabled={isPending}>
-          {isPending ? 'Adding…' : 'Add statement'}
+        <GameButton type="submit" tone="cream">
+          Add statement
         </GameButton>
       </form>
       {notice && (

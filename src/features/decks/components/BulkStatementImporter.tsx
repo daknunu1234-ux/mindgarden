@@ -1,10 +1,9 @@
 'use client'
 
-import { useId, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useId, useState } from 'react'
 import { GameButton, GameTextarea } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
-import { createKnowledgeItems } from '../actions/createKnowledgeItems'
+import { useDeckDraftActions } from './DeckDraft'
 import { MAX_BULK_STATEMENTS, MAX_STATEMENT_LENGTH, previewBulkStatements, type BulkPreviewItem } from '../lib/bulkStatements'
 
 type BulkStatementImporterProps = {
@@ -26,15 +25,16 @@ const PROBLEM_LABEL: Record<NonNullable<BulkPreviewItem['problem']>, string> = {
 }
 
 // "📋 Bulk Add via Notes / Bullets": paste a block of notes, see it split into statements live, then
-// import them all into this root at once (createKnowledgeItems). Owner-only (Tree Workshop list and
+// import them all into this root at once (createKnowledgeItems). Optimistic: the statements join the
+// root at once (deck draft) and the importer closes; the server's tally (created / not drillable /
+// skipped) arrives as a notice, and a refusal removes them again. Owner-only (Tree Workshop list and
 // the root's manage dialog).
 function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className }: BulkStatementImporterProps) {
-  const router = useRouter()
+  const { addStatements } = useDeckDraftActions()
   const textareaId = useId()
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [notice, setNotice] = useState<{ tone: 'gold' | 'amber'; text: string } | null>(null)
-  const [isPending, startTransition] = useTransition()
 
   const preview = previewBulkStatements(text, existing)
   const importable = preview.filter((p) => p.problem === null).map((p) => p.statement)
@@ -46,12 +46,17 @@ function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className 
   }
 
   const importAll = () => {
-    if (importable.length === 0 || tooMany || isPending) return
-    setNotice(null)
-    startTransition(async () => {
-      const res = await createKnowledgeItems({ deckId, rootId, statements: importable })
+    if (importable.length === 0 || tooMany) return
+    const statements = importable
+    const pasted = text
+    setNotice({ tone: 'gold', text: `Adding ${statements.length} ${statements.length === 1 ? 'statement' : 'statements'} to ${rootTitle}…` })
+    close()
+    void addStatements(deckId, rootId, statements).then((res) => {
       if (!res.success) {
-        setNotice({ tone: 'amber', text: `${res.error.message}.` })
+        // Nothing was saved: reopen with the notes so the owner can try again.
+        setText(pasted)
+        setOpen(true)
+        setNotice({ tone: 'amber', text: `${res.message}. Nothing was imported.` })
         return
       }
       const { created, skipped } = res.data
@@ -66,8 +71,6 @@ function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className 
           .filter(Boolean)
           .join(' · '),
       })
-      close()
-      router.refresh()
     })
   }
 
@@ -136,10 +139,10 @@ function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className 
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <GameButton type="button" tone="leaf" size="sm" onClick={importAll} disabled={importable.length === 0 || tooMany || isPending}>
-              {isPending ? 'Importing…' : `Import All (${importable.length})`}
+            <GameButton type="button" tone="leaf" size="sm" onClick={importAll} disabled={importable.length === 0 || tooMany}>
+              {`Import All (${importable.length})`}
             </GameButton>
-            <GameButton type="button" tone="cream" size="sm" onClick={close} disabled={isPending}>
+            <GameButton type="button" tone="cream" size="sm" onClick={close}>
               Cancel
             </GameButton>
           </div>

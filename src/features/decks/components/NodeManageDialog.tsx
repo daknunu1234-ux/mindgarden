@@ -18,10 +18,10 @@ import {
   HoverActions,
 } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
-import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import { BulkStatementImporter } from './BulkStatementImporter'
+import { useDeckDraftActions } from './DeckDraft'
 import { DeleteRootDialog, DeleteStatementDialog, type StatementToDelete } from './DeleteDialogs'
 import { EditStatementDialog, type StatementToEdit } from './EditDialogs'
 import type { EditorItem } from '../types'
@@ -65,6 +65,7 @@ function NodeManageDialog({ deckId, node, onOpenChange }: NodeManageDialogProps)
 
 function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNode; onClose: () => void }) {
   const router = useRouter()
+  const { addStatement: addToDraft, isPending: isSaving } = useDeckDraftActions()
   const [isPending, startTransition] = useTransition()
   const [title, setTitle] = useState(node.title)
   const [branch, setBranch] = useState('')
@@ -99,19 +100,25 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
     e.preventDefault()
     run(() => createMindmapNode({ deckId, title: branch, parentId: node.id }), 'Sub-branch added 🌿', () => setBranch(''))
   }
+  // Optimistic (deck draft): the statement joins the list, the mindmap and the counts at once and the
+  // input clears; the server's verdict follows (an error puts the text back).
   const addStatement = (e: FormEvent) => {
     e.preventDefault()
+    const text = statement
+    if (!text.trim()) return
     setNotice(null)
-    startTransition(async () => {
-      const res = await createKnowledgeItem({ nodeId: node.id, statement })
-      if (!res.success) return setNotice({ tone: 'amber', text: `${res.error.message}.` })
-      setStatement('')
+    setStatement('')
+    void addToDraft(node.id, text).then((res) => {
+      if (!res.success) {
+        setStatement((typed) => typed || text)
+        setNotice({ tone: 'amber', text: `${res.message}. The statement was not saved.` })
+        return
+      }
       setNotice(
-        res.data.drillable
+        res.drillable
           ? { tone: 'gold', text: 'Statement added. Ready to drill ✨' }
           : { tone: 'amber', text: 'Added, but not drillable yet: add a sibling statement or use a word the trap engine can flip (tăng/giảm, là, is…).' },
       )
-      router.refresh()
     })
   }
 
@@ -143,7 +150,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
                 onChange={(e) => setStatement(e.target.value)}
                 placeholder="A true statement, e.g. Ty thể sản sinh ATP."
               />
-              <GameButton type="submit" tone="leaf" disabled={isPending || !statement.trim()}>
+              <GameButton type="submit" tone="leaf" disabled={!statement.trim()}>
                 Add
               </GameButton>
             </div>
@@ -157,17 +164,19 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
               {node.statements.map((item, i) => (
                 <li key={item.id}>
                   <GameSlab className="group flex items-start gap-2 px-3 py-2 text-sm">
-                    <span aria-hidden className="pt-0.5" title={item.drillable ? 'Ready to drill' : 'Not drillable yet'}>
-                      {item.drillable ? '✅' : '💧'}
+                    <span aria-hidden className="pt-0.5" title={isSaving(item.id) ? 'Saving…' : item.drillable ? 'Ready to drill' : 'Not drillable yet'}>
+                      {isSaving(item.id) ? '⏳' : item.drillable ? '✅' : '💧'}
                     </span>
                     <span className="min-w-0 flex-1 whitespace-pre-wrap">
                       <span className="font-game text-xs font-bold text-amber-900/50">#{i + 1} </span>
                       {item.statement}
                     </span>
-                    <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
-                      <HoverActionButton icon="✏️" label={`Edit statement ${i + 1}`} tone="edit" onClick={() => setEditing({ id: item.id, text: item.statement })} />
-                      <HoverActionButton icon="🗑️" label={`Delete statement ${i + 1}`} tone="delete" onClick={() => setDeleting({ id: item.id, text: item.statement })} />
-                    </HoverActions>
+                    {!isSaving(item.id) && (
+                      <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
+                        <HoverActionButton icon="✏️" label={`Edit statement ${i + 1}`} tone="edit" onClick={() => setEditing({ id: item.id, text: item.statement })} />
+                        <HoverActionButton icon="🗑️" label={`Delete statement ${i + 1}`} tone="delete" onClick={() => setDeleting({ id: item.id, text: item.statement })} />
+                      </HoverActions>
+                    )}
                   </GameSlab>
                 </li>
               ))}

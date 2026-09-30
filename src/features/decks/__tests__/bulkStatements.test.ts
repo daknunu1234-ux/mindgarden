@@ -130,7 +130,8 @@ describe('createKnowledgeItems', () => {
     ])
     // Siblings make the subject swaps: all three are drillable together.
     expect(res.success && res.data.created.every((c) => c.drillable)).toBe(true)
-    expect(revalidatePath).toHaveBeenCalledWith('/deck/sinh-hoc')
+    // No page re-render: the deck page shows the statements optimistically (deck draft).
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('sanitizes each statement (spaces, invisible characters) and skips ones already in the root', async () => {

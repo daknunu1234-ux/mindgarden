@@ -242,6 +242,16 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   never the memoized grid (its props are stable; a test pins the memos). Tree and item taps stop at their
   button, and the popovers render in a portal outside the camera's element, so their clicks never pan the
   camera or reach the grid's tile-picking handler.
+- **Deck page edits, also instant**: changing a tree's species in the Tree Workshop and adding statements
+  (the Workshop list, the mindmap's ⚙️ Manage dialog, the bulk importer) used to wait on `router.refresh()`
+  (and `createKnowledgeItems` also revalidated the page), re-rendering the whole deck page on the server.
+  Now `DeckScene` is a client component holding a deck draft (`decks/lib/draft.ts`, tested): the new
+  species or statements show at once across the page (tree sprite, species ribbon, Roots / Statements
+  counts, size tier, mindmap, lists), the input clears, and `updateDeck` / `createKnowledgeItem(s)` run in
+  the background. Confirmed statements take their real ids and drillable flags (✅ / 💧); until then they
+  show ⏳ and can't be edited or deleted. A refusal rolls back: the old species with a toast, or the
+  statement text back in its input (the importer reopens with the notes). The farm isn't mounted on the
+  deck page, so nothing re-renders it; the next visit to `/` loads the new species fresh.
 - **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
   latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
   the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
@@ -286,7 +296,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | perf(garden): optimistic chop with refund credit, no page re-renders from farm actions |
+| (pending) | perf(decks): optimistic species changes and statement adds on the deck page |
+| `5ce4ce4` | perf(garden): optimistic chop with refund credit, no page re-renders from farm actions |
 | `cf89bf0` | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
 | `38eac10` | feat(garden): move mode for farm trees and items |
 | `082d9cc` | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
@@ -309,5 +320,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 63 files, 564 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 64 files, 570 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

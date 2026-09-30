@@ -279,7 +279,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - "📋 Bulk Add via Notes / Bullets" (`BulkStatementImporter`, in the Tree Workshop list and the root's ✏️ manage dialog): the client splits the paste with `lib/bulkStatements.ts` `parseBulletedText` (one statement per line; strips `- * +`, `• ‣ ⁃ – —`, `1.` `1)` `[1]` `(1)`; drops empty and < 5-character lines; de-duplicates) and shows a live preview, flagging lines that are too long, LaTeX, or already in the root
 - One `INSERT` for all new rows, same defaults as `createKnowledgeItem` (`prompt` = root title, `trap_rules = { negate: true }`); statements already in the root are skipped, not duplicated. `drillable` counts the root's existing and newly imported statements as siblings
-- `revalidatePath('/deck/<slug>')`, and the importer calls `router.refresh()`, so the mindmap and the lists show the new statements at once
+- No `revalidatePath` and no `router.refresh()`: the deck page's draft (`useDeckDraft`) shows the statements the moment they're imported (pending until this answers, then with their real ids and drillable flags), and rolls back if it fails. `createKnowledgeItem` and `updateDeck` (species) are used the same way
 
 ### `getDeckEditor` (decks)
 ```typescript

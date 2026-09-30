@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { CreateKnowledgeItemsDto } from '../dto/CreateKnowledgeItemsDto'
@@ -24,7 +23,7 @@ export async function createKnowledgeItems(input: unknown): Promise<ActionResult
 
   const res = await insertKnowledgeItems(supabase, user.id, parsed.data)
   if (!res.success) return res
-  // The deck page (mindmap, Tree Workshop list, counts) shows the new statements on its next render.
-  revalidatePath(`/deck/${res.data.slug}`)
+  // No revalidatePath: in a Server Action it re-renders the whole deck page before answering. The page
+  // already shows the statements (deck draft, lib/draft.ts), and it is dynamic, so the next visit is fresh.
   return ok({ created: res.data.created, skipped: res.data.skipped })
 }

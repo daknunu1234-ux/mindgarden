@@ -16,6 +16,7 @@ import {
   type RootToEdit,
   type StatementToDelete,
   type StatementToEdit,
+  useDeckDraftActions,
 } from '@/features/decks'
 import { useSessionLaunch } from '@/features/drill'
 import { RootMap, type ItemLevels, type MindmapOwnerTools, type MindmapPractice } from '@/features/mindmap'
@@ -37,7 +38,8 @@ type DeckRootsPanelProps = {
 }
 
 // Route-level composition: the mindmap canvas (mindmap feature) + owner tools (decks feature).
-// Manage dialogs refresh page data in place, so the canvas keeps its camera and re-lays out.
+// New statements come through the page's deck draft (optimistic), so the canvas keeps its camera and
+// re-lays out at once; renames, sub-branches and deletes still refresh page data in place.
 export function DeckRootsPanel({
   deckId,
   treeType,
@@ -58,6 +60,8 @@ export function DeckRootsPanel({
   const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
+  // Statements still saving (deck draft) have no server id yet: their edit / delete wait for it.
+  const { isPending } = useDeckDraftActions()
   const practice: MindmapPractice | null = useMemo(
     () => (practiceMode && launch ? { mode: practiceMode, onPractice: (request) => launch.open(request) } : null),
     [practiceMode, launch],
@@ -92,9 +96,14 @@ export function DeckRootsPanel({
   const ownerTools: MindmapOwnerTools | undefined = useMemo(
     () =>
       editor
-        ? { onEditStatement: setEditingStatement, onDeleteStatement: setDeletingStatement, onEditRoot: setEditingRoot, onDeleteRoot: setDeletingRootId }
+        ? {
+            onEditStatement: (s: StatementToEdit) => !isPending(s.id) && setEditingStatement(s),
+            onDeleteStatement: (s: StatementToDelete) => !isPending(s.id) && setDeletingStatement(s),
+            onEditRoot: setEditingRoot,
+            onDeleteRoot: setDeletingRootId,
+          }
         : undefined,
-    [editor],
+    [editor, isPending],
   )
   const rootToDelete: RootToDelete | null = useMemo(() => {
     if (!deletingRootId) return null

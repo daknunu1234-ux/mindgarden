@@ -1,18 +1,22 @@
+'use client'
+
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
-import { getTreeSizeTier } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, getTreeSpecies } from '@/shared/lib/treeSkins'
 import { DisplayNameEditor } from '@/features/auth'
 import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchContext } from '@/features/drill'
 import {
   CloneTreeButton,
   countDeckTree,
   DeckDangerZone,
+  DeckDraftProvider,
   DeckEditor,
   DeckReader,
   DeckShareToggle,
   TournamentHostToggle,
+  useDeckDraft,
   type DeckDetail,
   type DeckEditorData,
 } from '@/features/decks'
@@ -51,8 +55,13 @@ type DeckSceneProps = {
 const TREE_SIZE = 176
 
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
-// ground line and the mindmap roots grow out of its trunk into the soil.
-function DeckScene({ detail, ownerName, progress, editor, visitor, tournament }: DeckSceneProps) {
+// ground line and the mindmap roots grow out of its trunk into the soil. A client component so the
+// owner's edits are optimistic (decks' deck draft): a new species or new statements show across the
+// whole scene at once (sprite, ribbon, counts, size tier, mindmap, Workshop list) and sync in the
+// background, with no page refresh.
+function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEditor, visitor, tournament }: DeckSceneProps) {
+  const { view, actions } = useDeckDraft(serverDetail, serverEditor)
+  const { detail, editor } = view
   const { deck, tree } = detail
   const { nodeCount, itemCount } = countDeckTree(tree)
   const masteryPercent = progress?.masteryPercent ?? 0
@@ -148,7 +157,7 @@ function DeckScene({ detail, ownerName, progress, editor, visitor, tournament }:
                   {emoji} {name}
                 </Ribbon>
                 <Ribbon tone="wood">
-                  <span className="capitalize">{deck.treeType}</span>
+                  {getTreeSpecies(deck.treeType).icon} {getTreeSpecies(deck.treeType).label}
                 </Ribbon>
                 <Ribbon tone={size.tier === 'xl' ? 'gold' : 'sky'}>
                   <span title={`${size.name}: ${itemCount} ${itemCount === 1 ? 'statement' : 'statements'}`}>{size.badge}</span>
@@ -310,7 +319,8 @@ function DeckScene({ detail, ownerName, progress, editor, visitor, tournament }:
     </main>
   )
 
-  return launch ? <SessionLaunchProvider context={launch}>{scene}</SessionLaunchProvider> : scene
+  const withDraft = <DeckDraftProvider value={actions}>{scene}</DeckDraftProvider>
+  return launch ? <SessionLaunchProvider context={launch}>{withDraft}</SessionLaunchProvider> : withDraft
 }
 
 function Stat({ icon, label, value }: { icon: string; label: string; value: number }) {
