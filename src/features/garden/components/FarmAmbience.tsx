@@ -17,7 +17,7 @@ export function FallingParticles({ seed, stage, treeType, size }: { seed: string
     if (stage < 4 || (form === 'cactus' && stage < 5)) return []
     const random = seededRandom(`leaf:${seed}`)
     const colors =
-      treeType === 'sakura'
+      form === 'cherry'
         ? ['#fbcfe8', '#f9a8d4', '#fdf2f8']
         : form === 'cactus'
           ? [skin.flower ?? '#f472b6']
@@ -33,10 +33,10 @@ export function FallingParticles({ seed, stage, treeType, size }: { seed: string
         '--mg-dur': `${(5 + random() * 4).toFixed(1)}s`,
         '--mg-delay': `${(-random() * 8).toFixed(1)}s`,
       } as Vars,
-      petal: treeType === 'sakura' || form === 'cactus' || (stage === 5 && !!skin.flower),
-      thin: form === 'conifer' || form === 'bamboo',
+      petal: form === 'cherry' || form === 'cactus' || (stage === 5 && !!skin.flower),
+      thin: form === 'pine' || form === 'palm' || form === 'willow',
     }))
-  }, [seed, stage, treeType, form, skin, size])
+  }, [seed, stage, form, skin, size])
 
   return (
     <>

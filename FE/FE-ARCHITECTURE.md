@@ -124,13 +124,13 @@ A casual game running as a web app, not a web app with gamification bolted on. P
 
 | Stage | Range | Name | Visual | SVG notes |
 |-------|-------|------|--------|-----------|
-| 1 | 0–20% | Sprout | 🌱 | Tender shoot breaking the soil (cactus: a nub, bamboo: one shoot) |
-| 2 | 21–40% | Young Sapling | 🌿 | Thin trunk with branching stems |
-| 3 | 41–65% | Growing Tree | 🪴 | Distinct foliage volume |
-| 4 | 66–89% | Mature Canopy | 🌳 | Full, textured canopy (apple: red fruit) |
-| 5 | 90–100% | Golden Ancient Bloom | 🌟 | Golden aura + sparkles, blossoms / fruit / pine star / cactus flowers |
+| 1 | 0–20% | Sprout | 🌱 | Plump seedling with its seed cap / cotyledons in the species' colours (pine: a needle tuft, palm: a sprouting coconut, cactus: a round bud) |
+| 2 | 21–40% | Young Sapling | 🌿 | Thick stem with a mini species crown |
+| 3 | 41–65% | Growing Tree | 🪴 | The species' recognisable silhouette; bees start buzzing |
+| 4 | 66–89% | Mature Canopy | 🌳 | Full crown with depth layers (acorns, cones, blossoms, oranges, coconuts, cactus flowers) |
+| 5 | 90–100% | Golden Ancient Bloom | 🌟 | The mature crown with a gold rim round its silhouette, golden aura, sparkles and the species' finest accents |
 
-**Species** (`decks.tree_type`, catalog in `shared/lib/treeSkins.ts`, one silhouette family each): 🌳 oak, 🌸 sakura, 🍎 apple (broadleaf) · 🌲 pine (conifer) · 🎋 bamboo · 🌵 saguaro (cactus). Every drawing grows from the same trunk base (`TREE_BASE_RATIO`), so the deck scene's roots attach for all species. Gold "fully grown" accents use `GOLDEN_BLOOM_PERCENT` (90).
+**Species** (`decks.tree_type`, catalog in `shared/lib/treeSkins.ts`, each with its own drawing in `garden/components/TreeStageSvg.tsx`, 10 × 5 = 50 sprites): 🌳 oak · 🌲 pine · 🍂 birch · 🌸 cherry · 🌿 willow · 🔮 mystic · 🌴 palm · 🍊 citrus · 🍁 maple · 🌵 cactus. Retired ids (sakura, saguaro, apple, bamboo) render as cherry, cactus, citrus, palm (`LEGACY_TREE_TYPES`). Every drawing grows from the same trunk base (`TREE_BASE_RATIO`), so the deck scene's roots attach for all species. Gold "fully grown" accents use `GOLDEN_BLOOM_PERCENT` (90).
 
 ```ts
 // features/garden/hooks/useTreeStage.ts
@@ -141,7 +141,7 @@ export const getTreeStage = (pct: number): TreeStage =>
 - Stage change → cross-fade SVGs (`transition-opacity duration-700`); reaching stage 5 → one confetti burst
 - **Farm World** (`garden/components/FarmIslandView.tsx`, geometry `garden/lib/farmLayout.ts`, camera `shared/lib/camera.ts` + `shared/hooks/useCamera.ts`, shared with the mindmap): the full-bleed home page (`/`) under the site header. An isometric farmstead on an island: plots 1.45 tiles apart on raised soil beds with border stones and contact shadows, cobblestone lanes (spanning tree from the dock + a lane to the farmhouse), a white picket fence along the front edge (open at the dock), lampposts, benches, straw bales, beehives beside flowering trees (sakura / apple from stage 3), flower patches and grass tufts (seeded). Scenery is pure SVG (`FarmScenery.tsx`); trees and landmarks are HTML buttons over it, stacked back-to-front
   - **Landmarks**: 🏡 farmhouse → `/profile` (sign-in dialog when signed out); 🚜 tractor → Daily Delivery dialog listing today's thirsty trees with a "Start delivery" into the first one's drill (no quest system yet)
-  - **Per plot**: 💧 when signed in and not practised today (player's local day), ✨ at 100%, wooden nameplate; stage 4–5 trees drop leaves/petals, apple & sakura get two orbiting bees (max 12 animated trees); a one-time water splash + ripple the first time a watered tree is seen that day (per browser, `localStorage`)
+  - **Per plot**: 💧 when signed in and not practised today (player's local day), ✨ at 100%, wooden nameplate; stage 4–5 trees drop leaves/petals, bees buzz round every tree from stage 3 (cacti when flowering) (max 12 animated trees); a one-time water splash + ripple the first time a watered tree is seen that day (per browser, `localStorage`)
   - **HUD** (corners): level + XP bar (top-left); 🔥 streak, 🪙 coins, 💎 gems (top-right); zoom − / % / + / fit (bottom-left); Farm/Grid toggle (bottom-centre); seed sack → `/deck/new` (bottom-right); island switcher + notices (top-centre, when needed). Coins = stored 🪙 gold (1 per statement mastered for the first time, `users.coins`; the drill updates it live through `CoinsProvider`), gems = Mighty Roots on the island. Coins buy tree seeds (100 🪙) and clones (min(100 + statements, 150) 🪙); the ➕ on the coin pill opens the Coin Shop
   - **Camera**: fits and centres on arrival; drag to pan with mouse or one finger (`touch-action: none`), two-finger pinch and Ctrl/⌘ + wheel (trackpad pinch) zoom around the fingers/cursor (35–180%); a drag > 6 px swallows the click that ends it so dragging over a plot never opens it
   - **Motion**: CSS-only `.mg-*` keyframes in `globals.css` (transform/opacity); all particles, bees and splashes are off under `prefers-reduced-motion`

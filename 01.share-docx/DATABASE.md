@@ -60,7 +60,7 @@
 | slug | VARCHAR(160) | NOT NULL, UNIQUE, CHECK kebab-case | "cell-biology-101" |
 | description | TEXT | NULLABLE | |
 | is_public | BOOLEAN | NOT NULL, DEFAULT FALSE | Shared with the community: readable (read-only) by everyone with the link, and listed in the Visited Gardens of players who opened it. Private until the owner shares it (the default was TRUE before migration `20260928000600`; existing trees kept their value) |
-| tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak' | Species: oak, pine, sakura, bamboo, apple, saguaro (validated by Zod from `shared/lib/treeSkins.ts`; unknown values render as oak) |
+| tree_type | VARCHAR(30) | NOT NULL, DEFAULT 'oak', CHECK (`decks_tree_type_check`, migration 13) | Species: oak, pine, birch, cherry, willow, mystic, palm, citrus, maple, cactus (validated by Zod from `shared/lib/treeSkins.ts`). Retired ids render as their successor until migration 13 rewrites them (sakura → cherry, saguaro → cactus, apple → citrus, bamboo → palm); unknown values render as oak |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | is_tournament_open | BOOLEAN | NOT NULL, DEFAULT FALSE | The owner hosts a Mind Tournament on this tree (migration `20260928000900`). Only meaningful while `is_public`: visitors join only public, hosting trees. Owner-only switch (`setTournamentOpen`); closing keeps every result |
 
@@ -430,6 +430,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 9 | `20260928000800_tree_visits.sql` | `tree_visits` + RLS (read own) + `record_tree_visit()`, the only writer (another gardener's public tree only). Needs file 7 |
   | 11 | `20260928001000_display_names.sql` | `users.display_name` (public Garden Name, 2–30, CHECK), its column grant, `get_display_names()`, and both tournament board functions re-created to return `display_name` instead of `full_name` |
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
+  | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
 - **Fresh setup**: with the Supabase CLI, `npx supabase db reset` applies them in filename order. Without it, paste each file into the SQL Editor in the order above (each one is a single transaction). Set `SUPABASE_SERVICE_ROLE_KEY` on the server before step 2 (see *Answer secrecy*)
@@ -440,6 +441,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 7** can run any time after file 6. The app tolerates it missing: the login and balance fallbacks log which migration to run and never block sign-in
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
+- **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
 - **File 12** can run any time after file 11. Until it runs, the farm is empty (the log names the migration), the Shop can't place anything, chopping falls back to the plain delete (no refund) and coins pay ×1
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty

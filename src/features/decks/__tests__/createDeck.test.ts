@@ -71,9 +71,9 @@ describe('createDeck (seed economy)', () => {
   it('a new gardener (300 coins) plants a tree for 100 and keeps 200', async () => {
     const db = fakeSupabase({ userId: USER, coins: STARTING_COINS })
 
-    const res = await createDeck({ title: 'Sinh học Tế bào', treeType: 'sakura' })
+    const res = await createDeck({ title: 'Sinh học Tế bào', treeType: 'cherry' })
 
-    expect(res).toMatchObject({ success: true, data: { remainingCoins: 200, deck: { slug: 'sinh-hoc-te-bao', treeType: 'sakura', userId: USER } } })
+    expect(res).toMatchObject({ success: true, data: { remainingCoins: 200, deck: { slug: 'sinh-hoc-te-bao', treeType: 'cherry', userId: USER } } })
     expect(db.coins).toBe(200)
     expect(db.decks).toHaveLength(1)
     expect(vi.mocked(revalidatePath).mock.calls.map(([p]) => p)).toEqual(['/', '/profile'])

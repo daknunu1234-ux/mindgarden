@@ -16,7 +16,7 @@ function TreeSpeciesPicker({ value, onChange, disabled = false, legend = 'Tree' 
   return (
     <fieldset className="space-y-2" disabled={disabled}>
       <legend className="mb-2 font-game text-sm font-bold text-amber-950">{legend}</legend>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 min-[400px]:grid-cols-3 sm:grid-cols-5">
         {TREE_SPECIES.map((species) => {
           const picked = value === species.id
           return (

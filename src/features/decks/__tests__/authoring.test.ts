@@ -3,6 +3,7 @@ import { CreateDeckDto } from '../dto/CreateDeckDto'
 import { CreateKnowledgeItemDto } from '../dto/CreateKnowledgeItemDto'
 import { CreateMindmapNodeDto } from '../dto/CreateMindmapNodeDto'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
+import { TREE_TYPE_IDS } from '@/shared/lib/treeSkins'
 
 const ID = '6f1c2a8e-2b1e-4c8a-9d3f-1a2b3c4d5e6f'
 
@@ -19,7 +20,13 @@ describe('CreateDeckDto', () => {
 
   it('rejects an empty title and unknown tree skins', () => {
     expect(CreateDeckDto.safeParse({ title: '   ' }).success).toBe(false)
-    expect(CreateDeckDto.safeParse({ title: 'x', treeType: 'palm' }).success).toBe(false)
+    expect(CreateDeckDto.safeParse({ title: 'x', treeType: 'banyan' }).success).toBe(false)
+  })
+
+  it('plants all ten species, but never a retired one (they only live on in old rows)', () => {
+    for (const treeType of TREE_TYPE_IDS) expect(CreateDeckDto.safeParse({ title: 'x', treeType }).success, treeType).toBe(true)
+    expect(TREE_TYPE_IDS).toHaveLength(10)
+    for (const retired of ['sakura', 'saguaro', 'apple', 'bamboo']) expect(CreateDeckDto.safeParse({ title: 'x', treeType: retired }).success, retired).toBe(false)
   })
 
   it('does not accept a client-chosen owner or slug', () => {
@@ -81,14 +88,15 @@ describe('isDrillable with the default { negate: true }', () => {
 describe('UpdateDeckDto', () => {
   it('accepts every species in the shared catalog', async () => {
     const { UpdateDeckDto } = await import('../dto/UpdateDeckDto')
-    for (const treeType of ['oak', 'pine', 'sakura', 'bamboo', 'apple', 'saguaro']) {
+    for (const treeType of ['oak', 'pine', 'birch', 'cherry', 'willow', 'mystic', 'palm', 'citrus', 'maple', 'cactus']) {
       expect(UpdateDeckDto.safeParse({ deckId: ID, treeType }).success, treeType).toBe(true)
     }
   })
 
   it('rejects unknown species and empty updates', async () => {
     const { UpdateDeckDto } = await import('../dto/UpdateDeckDto')
-    expect(UpdateDeckDto.safeParse({ deckId: ID, treeType: 'palm' }).success).toBe(false)
+    expect(UpdateDeckDto.safeParse({ deckId: ID, treeType: 'banyan' }).success).toBe(false)
+    expect(UpdateDeckDto.safeParse({ deckId: ID, treeType: 'sakura' }).success).toBe(false)
     expect(UpdateDeckDto.safeParse({ deckId: ID }).success).toBe(false)
   })
 

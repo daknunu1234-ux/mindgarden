@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { GameButton, GameDialog, GameDialogContent, GameIcon, GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger } from '@/shared/components/game'
-import { getTreeSizeTier } from '@/shared/lib/treeSkins'
+import { SEED_PRICE_COINS } from '@/shared/lib/economy'
+import { getTreeSizeTier, TREE_SPECIES } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
 import { FARM_CATALOG, SHOP_TABS, type CatalogItem, type ShopTab } from '../lib/farmCatalog'
@@ -95,9 +96,7 @@ function FarmShopModal({ open, onOpenChange, coins, unplacedTrees, onPlantTree, 
                 ))}
               </ul>
             )}
-            <GameButton asChild tone="sun" className="w-full">
-              <Link href="/deck/new">+ Plant New Seed</Link>
-            </GameButton>
+            <SeedGallery />
           </GameTabsContent>
 
           {SHOP_TABS.filter((t): t is { id: Exclude<ShopTab, 'trees'>; label: string } => t.id !== 'trees').map((t) => (
@@ -148,6 +147,36 @@ function UnplacedTree({ tree, onPlant }: { tree: FarmPlotView; onPlant: () => vo
         </GameButton>
       </div>
     </article>
+  )
+}
+
+// "Plant a New Seed": the ten species as seed packets, each a young tree on a soil pedestal. Picking
+// one opens the planting form with that species chosen (the seed is paid there).
+function SeedGallery() {
+  return (
+    <section aria-labelledby="seed-gallery" className="rounded-[20px] border-[3px] border-dashed border-[#c9955e] bg-white/60 p-3">
+      <h3 id="seed-gallery" className="mb-2 text-center font-game text-base font-extrabold text-amber-950">
+        🌱 Plant a New Seed · {SEED_PRICE_COINS} 🪙
+      </h3>
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {TREE_SPECIES.map((species) => (
+          <li key={species.id}>
+            <Link
+              href={`/deck/new?species=${species.id}`}
+              className="group/seed flex h-full flex-col items-center gap-1 rounded-[16px] border-[2.5px] border-[#3b1f0e] bg-gradient-to-b from-white to-[#fff3dc] px-1.5 pt-1.5 pb-2 text-center shadow-[inset_0_2px_0_#fff,0_4px_0_#3b1f0e] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:translate-y-1 active:shadow-[inset_0_2px_0_#fff]"
+            >
+              <span className={cn('relative flex h-20 w-full items-end justify-center overflow-hidden rounded-[12px]', STAGE_BG)}>
+                <span aria-hidden className="absolute bottom-1.5 h-3.5 w-16 rounded-[50%] border-2 border-[#3b1f0e] bg-gradient-to-b from-[#f0955a] to-[#c9622b]" />
+                <TreeStageSvg stage={4} treeType={species.id} label="" ground={false} className="relative mb-2.5 size-[68px] transition-transform duration-200 group-hover/seed:scale-110" />
+              </span>
+              <span className="font-game text-xs leading-tight font-extrabold text-amber-950">
+                {species.icon} {species.label}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

@@ -105,6 +105,41 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
+## Tree species: 10 × 5 = 50 sprites
+
+`decks.tree_type` is one of ten species (`shared/lib/treeSkins.ts`, validated by Zod, and by a database
+check after migration 13), each drawn by its own function in `garden/components/TreeStageSvg.tsx`:
+
+| Species | Look |
+|---------|------|
+| 🌳 Oak | Bulbous emerald crown in soft layered volumes, branch stubs, acorns when mature |
+| 🌲 Pine | Chunky tiered conifer: rounded triangular foliage cakes with scalloped skirts, cones, a star at stage 5 |
+| 🍂 Golden Birch | White bark with dark marks, sunny golden-yellow crown |
+| 🌸 Cherry Blossom | Puffy cotton-candy pink crown on a forked trunk, blossoms and petal sparkles |
+| 🌿 Weeping Willow | Rounded dome with chunky yarn-like tendrils cascading in front and behind |
+| 🔮 Mystic Bonsai | Twisted S-curved trunk, glowing violet cloud pads, drifting luminous spores |
+| 🌴 Tropical Palm | Thick curved trunk with segment rings, plump drooping fronds, coconuts |
+| 🍊 Citrus Grove | Round green crown dotted with oversized glossy oranges (3 / 6 / 9 by stage) |
+| 🍁 Autumn Maple | Bold cut-out five-point leaves in coral and crimson |
+| 🌵 Desert Cactus | Plump saguaro with rounded arms and pink blooms on the tips |
+
+- **Stages**: 1 Sprout (a plump seedling with the species' seed cap and cotyledons; pine tuft, sprouting
+  coconut, round baby cactus), 2 Sapling (thick stem, mini crown), 3 Adolescent (the recognisable
+  silhouette; bees start), 4 Mature (full crown with depth layers and species accents), 5 Mastered (the
+  mature crown with a gold rim round its whole silhouette, golden aura, sparkles, the finest accents).
+- **How they're drawn**: each species is designed once at full size and grown with a per-stage scale;
+  outlines keep their thickness and young trees get relatively plumper shapes. Cel shading: merged bold
+  outline, shadowed underside, sunlit top, glint and warm bounce light, like the rest of the diorama.
+- **On the farm**: every species grows from the same trunk base on the tile centre, so it stands on the
+  full-tile garden bed with its stage sign, bees, popovers and buff tags unchanged.
+- **Picking a species**: the planting form and the Tree Workshop's picker show all ten; the Shop's 🌳
+  Trees tab has a seed gallery (each species as a young tree) that opens `/deck/new?species=<id>`.
+- **Retired species**: sakura → cherry, saguaro → cactus, apple → citrus, bamboo → palm
+  (`LEGACY_TREE_TYPES`). Old rows render as their successor; migration 13 rewrites them and adds the check.
+- Tests (`garden/__tests__/treeSprites.test.ts`): all 50 render with no bad numbers, all 50 differ, gold
+  only at stage 5, mature trees paint more than saplings and sprouts, retired ids draw like their successor,
+  and the migration's ids and renames match the catalogue.
+
 ## Visual system: tropical island diorama
 
 A stylized 3D casual-mobile look over the same grid, RPCs and buffs (presentation only: no rule,
@@ -173,6 +208,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 10 | `20260928000900_mind_tournament.sql` | Mind Tournament tables |
 | 11 | `20260928001000_display_names.sql` | Custom garden display names |
 | 12 | `20260930000000_farm_grid.sql` | `garden_placements`, `purchase_and_place_item()`, `farm_coin_multiplier()`, buffed `award_mastery_coin()`, `users.coin_carry`, `uproot_deck()`, backfill of existing trees onto the grid |
+| 13 | `20261001000000_ten_tree_species.sql` | Retired species → successor, `decks_tree_type_check` (the ten ids). Run **after** deploying the code |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -185,7 +221,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
+| (pending) | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
+| `1a167c0` | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
 | `d91e334` | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
 | `ccda259` | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
 | `4b1ffea` | feat(garden): isometric farm grid with shop, placements, buffs and woodshop refund; gems removed; this file created |
@@ -203,5 +240,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 59 files, 525 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 60 files, 535 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

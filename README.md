@@ -26,6 +26,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
    | 10 | `20260928000900_mind_tournament.sql` | Mind Tournament: hosting switch, isolated contestant scores, both leaderboards |
    | 11 | `20260928001000_display_names.sql` | Custom Garden Names shown on boards and gardens (emails and full names stay private) |
    | 12 | `20260930000000_farm_grid.sql` | Farm grid: the 🏪 Shop, placed trees and items, coin buffs, Woodshop refund |
+   | 13 | `20261001000000_ten_tree_species.sql` | Ten tree species: retired ids rewritten, `tree_type` check (run after deploying the code) |
 
    With the Supabase CLI: `npx supabase db reset` (applies them in filename order). Without it: open the
    Supabase Dashboard → SQL Editor, and paste and run each file in the order above.

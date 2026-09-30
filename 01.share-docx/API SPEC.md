@@ -221,7 +221,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `createDeck` (decks)
 ```typescript
-// Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'sakura' | 'bamboo' | 'apple' | 'saguaro' }
+// Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'birch' | 'cherry' | 'willow' | 'mystic' | 'palm' | 'citrus' | 'maple' | 'cactus' }
 // defaults (DATABASE.md): isPublic = false (private until shared), treeType = 'oak'
 // sharing later: updateDeck({ deckId, isPublic }), the Tree Workshop's "Share tree with community (Public link) 🌐" switch
 // slug: generated with shared/utils/slugify (diacritics stripped); on a unique clash → -2 … -5, then a random suffix; "new" is reserved

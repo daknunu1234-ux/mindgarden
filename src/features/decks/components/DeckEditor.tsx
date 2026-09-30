@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { GAME_FIELD, GameButton, GameInput, GameLabel, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
+import { toTreeTypeId } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createMindmapNode } from '../actions/createMindmapNode'
@@ -62,7 +63,8 @@ function DeckEditor({ editor }: DeckEditorProps) {
 // Change the tree species; the page refreshes so the scene redraws in the new species.
 function SpeciesForm({ deckId, treeType }: { deckId: string; treeType: string }) {
   const router = useRouter()
-  const [value, setValue] = useState(treeType)
+  // A retired species (e.g. 'sakura') shows as its successor, the one it renders as.
+  const [value, setValue] = useState<string>(toTreeTypeId(treeType))
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 

@@ -16,9 +16,11 @@ type CreateDeckFormProps = {
   // The player's purse from the server (null when unknown) and when it was read (epoch ms).
   coins: number | null
   coinsAsOf?: number
+  // Species picked before arriving (the farm Shop's seed gallery links /deck/new?species=<id>).
+  initialTreeType?: TreeTypeId
 }
 
-function CreateDeckForm({ coins: serverCoins, coinsAsOf }: CreateDeckFormProps) {
+function CreateDeckForm({ coins: serverCoins, coinsAsOf, initialTreeType = 'oak' }: CreateDeckFormProps) {
   const router = useRouter()
   const { open: openLogin } = useLoginDialog()
   const { open: openShop } = useCoinShop()
@@ -28,7 +30,7 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf }: CreateDeckFormProps) 
   const affordable = canAffordSeed(coins)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [treeType, setTreeType] = useState<TreeTypeId>('oak')
+  const [treeType, setTreeType] = useState<TreeTypeId>(initialTreeType)
   // New trees start private; sharing is a choice (here, or later in the Tree Workshop).
   const [isPublic, setIsPublic] = useState(false)
   const [error, setError] = useState<string | null>(null)
