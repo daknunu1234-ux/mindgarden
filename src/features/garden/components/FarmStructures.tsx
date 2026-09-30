@@ -3,7 +3,7 @@
 // highlights and soft contact shadows. Flat ground things (auto-tiled streams, tree garden beds,
 // placement ghost, buff auras) go in the ground SVG; standing things are drawn in an SVG whose (0, 0) is their ground
 // point. Pure markup, no hooks; animations are the `.mg-*` classes in globals.css.
-import type { CSSProperties, ReactNode } from 'react'
+import { memo, type CSSProperties, type ReactNode } from 'react'
 import type { CatalogItem } from '../lib/farmCatalog'
 import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
 import { STREAM_LAYERS, streamShapes, type StreamLayer } from '../lib/streamTiles'
@@ -46,7 +46,7 @@ const STREAM_FILLS: Record<StreamLayer, string> = { bank: '#e9c77f', foam: '#fff
 // (ink outline, sandy bank, white foam, turquoise water, bright shine) is drawn for all tiles at once:
 // fills cover the seams between shapes, so only the waterway's outer edge gets a border. Glints,
 // bubbles on every tile and pebbles by lone ponds.
-export function StreamNetwork({ streams, origin }: { streams: readonly LinkedTile[]; origin: Pt }) {
+function StreamNetworkImpl({ streams, origin }: { streams: readonly LinkedTile[]; origin: Pt }) {
   const shapes = (layer: StreamLayer) =>
     streams.flatMap((s) => streamShapes(s, s.links, layer).map((shape, i) => ({ key: `${s.key}-${i}`, points: pts(shape, origin) })))
   const bank = shapes('bank')
@@ -98,7 +98,7 @@ export function StreamTile({ footprint, origin, links = NO_LINKS }: { footprint:
 // outline (ink under all fills), the front faces and the furrow ends only show on sides with no
 // tree beside them.
 const BED_LIFT = 6
-export function TreePlots({ trees, origin }: { trees: readonly LinkedTile[]; origin: Pt }) {
+function TreePlotsImpl({ trees, origin }: { trees: readonly LinkedTile[]; origin: Pt }) {
   const corner = (x: number, y: number, lift = BED_LIFT): Pt => {
     const s = tileToScreen(x, y)
     return { x: s.x + origin.x, y: s.y + origin.y - lift }
@@ -573,3 +573,7 @@ export function ItemPreview({ item, className }: { item: CatalogItem; className?
     </svg>
   )
 }
+
+// Memoized: static layers render once; beds and streams only when their tiles change.
+export const StreamNetwork = memo(StreamNetworkImpl)
+export const TreePlots = memo(TreePlotsImpl)

@@ -53,7 +53,8 @@ describe('placeFarmItem', () => {
       data: { placementId: 'new', remainingCoins: 50, cost: 50 },
     })
     expect(calls).toEqual([{ p_item_type: 'woodshop', p_x: 3, p_y: 4, p_deck_id: null, p_variant: null }])
-    expect(revalidatePath).toHaveBeenCalledWith('/')
+    // No page re-render: the farm shows the change optimistically (a revalidate would cost seconds).
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('sends animals as item type animal with their variant, and plants trees for free', async () => {

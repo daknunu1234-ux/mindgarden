@@ -3,7 +3,7 @@
 // topsoil, deep soil, stone) and rocky underside, palms, distant islets and drifting clouds.
 // Pure SVG / HTML markup, no hooks; geometry from lib/diorama.ts (tested). Animations are the
 // `.mg-*` classes in globals.css (off for reduced motion).
-import type { CSSProperties } from 'react'
+import { memo, type CSSProperties } from 'react'
 import { seededRandom } from '@/shared/utils/seededRandom'
 import {
   BEACH_TILES,
@@ -46,7 +46,7 @@ const pts = (points: readonly Pt[], o: Pt) => points.map((p) => `${(p.x + o.x).t
 
 // Under the island: the lagoon glow, swell rings rolling out from the shore, sun glints, the
 // island's shadow on the water and the distant islets. Drawn first (world SVG).
-export function OceanLayer({ world, origin }: { world: { w: number; h: number }; origin: Pt }) {
+function OceanLayerImpl({ world, origin }: { world: { w: number; h: number }; origin: Pt }) {
   const beach = islandCorners(BEACH_TILES)
   const grown = (k: number) => {
     const c = islandCorners(k)
@@ -128,7 +128,7 @@ function Islet() {
 
 // The island itself, under everything that stands on it: underside, cliff strata, beach, grass
 // tiles and the scattered tufts / flowers (`seed` = the farm, so every farm keeps its own).
-export function IslandBase({ origin, seed }: { origin: Pt; seed: string }) {
+function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
   const beach = islandCorners(BEACH_TILES)
   const wet = islandCorners(BEACH_TILES * 0.72)
   const grass = islandCorners(0)
@@ -263,10 +263,14 @@ export function Palm({ scale = 1, flip = false }: { scale?: number; flip?: boole
 
 // ── Sky ──────────────────────────────────────────────────────────────────────
 
-// One puffy cartoon cloud (flat, shaded underside), drawn in a 160 × 70 box.
+// One puffy cartoon cloud (flat, shaded underside, a baked soft shadow below), in a 160 × 78 box.
+// No CSS drop-shadow: clouds are always moving, and a filter would be recomputed every frame.
 export function Cloud({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg viewBox="0 0 160 70" className={className} style={style} aria-hidden>
+    <svg viewBox="0 0 160 78" className={className} style={style} aria-hidden>
+      {[1, 0.8, 0.6].map((f) => (
+        <ellipse key={f} cx={82} cy={70} rx={66 * f} ry={6 * f} fill="#06506e" opacity={0.06} />
+      ))}
       <path d="M 18 58 q -16 0 -14 -14 q 2 -14 20 -12 q 2 -18 24 -18 q 10 -14 30 -8 q 16 -12 34 2 q 22 -4 26 16 q 18 2 16 18 q -2 16 -20 16 z" fill="#d6f1fb" />
       <path d="M 18 52 q -14 0 -12 -12 q 2 -12 18 -10 q 2 -16 22 -16 q 10 -13 28 -7 q 15 -11 32 2 q 20 -4 24 14 q 16 2 14 16 q -2 13 -18 13 z" fill="#ffffff" />
       <ellipse cx={58} cy={24} rx={14} ry={5} fill="#ffffff" opacity={0.9} />
@@ -275,7 +279,7 @@ export function Cloud({ className, style }: { className?: string; style?: CSSPro
 }
 
 // Clouds in the world's sky corners, drifting gently (they move with the camera).
-export function WorldClouds({ world }: { world: { w: number; h: number } }) {
+function WorldCloudsImpl({ world }: { world: { w: number; h: number } }) {
   const clouds = [
     { x: world.w * 0.04, y: 26, w: 190, dur: 30, delay: 0 },
     { x: world.w * 0.72, y: 60, w: 230, dur: 36, delay: -12 },
@@ -286,7 +290,7 @@ export function WorldClouds({ world }: { world: { w: number; h: number } }) {
       {clouds.map((c, i) => (
         <div key={i} aria-hidden className="pointer-events-none absolute" style={{ left: c.x, top: c.y, width: c.w, zIndex: 400_000 }}>
           <div className="mg-drift" style={{ '--mg-dur': `${c.dur}s`, '--mg-delay': `${c.delay}s` } as Vars}>
-            <Cloud className="w-full opacity-90 drop-shadow-[0_10px_8px_rgba(6,78,110,0.18)]" />
+            <Cloud className="w-full opacity-90" />
           </div>
         </div>
       ))}
@@ -296,7 +300,7 @@ export function WorldClouds({ world }: { world: { w: number; h: number } }) {
 
 // Clouds sailing across the viewport over the world (screen space: a far, slow layer and a near,
 // faster one for parallax). Never block input.
-export function SkyClouds() {
+function SkyCloudsImpl() {
   const clouds = [
     { top: '8%', w: 120, dur: 170, delay: -20, opacity: 0.55 },
     { top: '22%', w: 90, dur: 150, delay: -95, opacity: 0.5 },
@@ -311,9 +315,15 @@ export function SkyClouds() {
           className="mg-cloud absolute left-0"
           style={{ top: c.top, width: c.w, opacity: c.opacity, '--mg-dur': `${c.dur}s`, '--mg-delay': `${c.delay}s` } as Vars}
         >
-          <Cloud className="w-full drop-shadow-[0_12px_10px_rgba(6,78,110,0.15)]" />
+          <Cloud className="w-full" />
         </div>
       ))}
     </div>
   )
 }
+
+// Memoized: static layers render once; beds and streams only when their tiles change.
+export const OceanLayer = memo(OceanLayerImpl)
+export const IslandBase = memo(IslandBaseImpl)
+export const WorldClouds = memo(WorldCloudsImpl)
+export const SkyClouds = memo(SkyCloudsImpl)

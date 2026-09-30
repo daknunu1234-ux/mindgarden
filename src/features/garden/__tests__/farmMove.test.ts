@@ -90,7 +90,8 @@ describe('moveFarmPlacement', () => {
     const { calls } = fakeSupabase(ME)
     expect(await moveFarmPlacement({ placementId: ITEM, x: 3, y: 9 })).toEqual({ success: true, data: { id: ITEM, x: 3, y: 9 } })
     expect(calls).toEqual([{ p_placement_id: ITEM, p_new_x: 3, p_new_y: 9 }])
-    expect(revalidatePath).toHaveBeenCalledWith('/')
+    // No page re-render: the farm shows the change optimistically (a revalidate would cost seconds).
+    expect(revalidatePath).not.toHaveBeenCalled()
   })
 
   it('reports a taken tile and something that is not yours', async () => {

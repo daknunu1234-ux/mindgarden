@@ -110,8 +110,7 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
   it was. Free. Server-authoritative: `moveFarmPlacement` → `move_garden_placement()` (migration 14)
   checks ownership, keeps the footprint (1 × 1 / 2 × 2) inside the 16 × 16 grid, refuses overlaps with
   anything but itself, and locks the gardener's row like purchases. Players still can't UPDATE placements
-  directly. Buffs need no recalculation: they are read from the current tiles at every payout. The farm
-  shows the move at once and then refreshes from the server.
+  directly. Buffs need no recalculation: they are read from the current tiles at every payout.
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
@@ -219,6 +218,29 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 - **Responsive**: the camera still drags / pinches / zooms; on phones the island banner and buff pills
   wrap under the level crest and purse, and Shop cards stack in one column.
 
+## Performance: instant edits and a smooth grid
+
+- **0 ms edits (optimistic state, `garden/lib/optimistic.ts`, tested)**: planting a tree, buying an
+  item, moving and picking up change the farm the moment the player acts. Each edit is an op (add /
+  move / remove) laid over the placements the server last sent; stream / fence / tree-bed tiling, buff
+  tags, the buff pills, the Shop's Trees tab and the purse all follow at once. The server action runs in
+  the background: an add learns its real id when confirmed (until then it can't be moved or picked up),
+  a refusal drops the op, which rolls the farm back, restores the coins and shows a toast.
+- **Why it took ~4 s before**: each farm action called `revalidatePath('/')`, which in a Server Action
+  re-renders the whole home page (every query) before answering, and the client then ran
+  `router.refresh()` for a second full render. Both are gone from the farm flows; the page is dynamic
+  (router cache 0 s), so the next visit still loads fresh data.
+- **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
+  latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
+  the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
+  the stream network re-render only when their tiles change; each tree and item is a memoized tile with
+  primitive props (buff and fence-link keys), so one edit or a moving ghost re-renders only what changed.
+- **GPU**: no CSS blur / drop-shadow filters on anything that moves or repeats per tile. Tree contact
+  and cast shadows are static multi-stop radial gradients; clouds carry a baked soft shadow in their
+  SVG; the placement ghost glows with a radial gradient; the lifted (moving) item has no filter.
+  Swaying trees, clouds, the floating ghost and animals get their own compositor layers
+  (`will-change: transform`, `translate3d(0, 0, 0)`, only while motion is on).
+
 ## Database migrations
 
 `supabase/migrations/`, applied in this order on a fresh database (details and hosted-project order:
@@ -252,7 +274,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): move mode for farm trees and items |
+| (pending) | perf(garden): optimistic farm edits, memoized grid and filter-free shadows |
+| `38eac10` | feat(garden): move mode for farm trees and items |
 | `082d9cc` | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
 | `eb89c78` | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
 | `1a167c0` | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
@@ -273,5 +296,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 61 files, 550 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 62 files, 557 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

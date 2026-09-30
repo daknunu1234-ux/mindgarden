@@ -466,9 +466,9 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not yours), TILE_UNAVAILABLE (taken / off the grid), INTERNAL_ERROR
 // removeFarmPlacement({ placementId }) → { id }   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not yours), INTERNAL_ERROR
 ```
-- `placeFarmItem` calls `purchase_and_place_item()`: the database charges its own catalogue price (no price or size is sent), refuses overlaps / off-grid tiles, and inserts in one transaction. Trees are free. `revalidatePath('/')`; the farm pushes `remainingCoins` into `CoinsProvider`
-- `moveFarmPlacement` calls `move_garden_placement()` (migration 14): the caller's own placement only, the whole footprint on the grid and clear of every other placement (the moved one aside), under the same row lock as purchases. `revalidatePath('/')`. Buffs and stream / fence auto-tiling follow from the new tiles; nothing else is stored
-- `removeFarmPlacement`: no refund. A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
+- `placeFarmItem` calls `purchase_and_place_item()`: the database charges its own catalogue price (no price or size is sent), refuses overlaps / off-grid tiles, and inserts in one transaction. Trees are free. No `revalidatePath` (in a Server Action it re-renders the whole farm page before answering, which took seconds): the farm shows the item optimistically and the page is dynamic, so the next visit is fresh; the farm pushes `remainingCoins` into `CoinsProvider`
+- `moveFarmPlacement` calls `move_garden_placement()` (migration 14): the caller's own placement only, the whole footprint on the grid and clear of every other placement (the moved one aside), under the same row lock as purchases. No `revalidatePath` (the farm applies the move optimistically). Buffs and stream / fence auto-tiling follow from the new tiles; nothing else is stored
+- `removeFarmPlacement`: no refund, no `revalidatePath` (optimistic on the farm). A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
 - UI (`garden`): the farm's 🏪 Shop (`FarmShopModal`, tabs 🌳 Trees · 🏗️ Structures · 🌊 Landscape · 🪵 Decorations · 🐮 Animals) → placement mode on `FarmIsometricGrid` (green / red ghost; click to place, tap twice on touch; Esc, right-click or Cancel leaves without paying)
 
 ### `getFarmHud` (progress)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { memo, useMemo, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { cn } from '@/shared/utils/cn'
 import { beachPalms, FARM_WORLD } from '../lib/diorama'
 import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
@@ -74,7 +74,11 @@ type FarmIsometricGridProps = {
 // placed on it. Screen position of tile (x, y): ((x − y) · TILE_W / 2, (x + y) · TILE_H / 2) from
 // the grid origin (lib/farmGrid.ts, tested); standing things are painted back to front by their
 // ground point (z-index = ground y).
-function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover, onBuildTap, onBuildCancel, onOpenPlot, onOpenItem }: FarmIsometricGridProps) {
+// Performance: the grid is memoized (the camera re-rendering the page never reaches it), its static
+// layers (ocean, island with its 256 tiles, palms, clouds) are memoized components, and every tree and
+// item is a memoized tile with stable or primitive props, so planting, moving or hovering a ghost only
+// re-renders what actually changed.
+function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHover, onBuildTap, onBuildCancel, onOpenPlot, onOpenItem }: FarmIsometricGridProps) {
   const worldRef = useRef<HTMLDivElement>(null)
   const pointerType = useRef('mouse')
   const origin = FARM_WORLD.origin
@@ -89,42 +93,55 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
     return screenToTile(wx, wy)
   }
 
-  const ghost =
-    build?.tile && ({ ...build.tile, width: build.footprint.width, height: build.footprint.height } satisfies Footprint)
+  const ghostX = build?.tile?.x ?? null
+  const ghostY = build?.tile?.y ?? null
+  const ghostW = build?.footprint.width ?? 1
+  const ghostH = build?.footprint.height ?? 1
+  const ghost: Footprint | null = ghostX !== null && ghostY !== null ? { x: ghostX, y: ghostY, width: ghostW, height: ghostH } : null
   const movingId = build?.movingId ?? null
   const ghostOk = ghost ? (movingId ? checkMove(placements, movingId, ghost) === 'ok' : checkPlacement(placements, ghost) === 'ok') : false
-  // Move mode: everything else stays; the moved thing has left its old tile and, on a green spot, is
-  // already at the new one, so neighbouring streams, fences and tree beds retile live at both places.
-  const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
-  const layout: readonly Placement[] = movingId && ghost && ghostOk ? withMoved(placements, movingId, ghost) : others
   // A stream or Farmer's House being placed or moved to a free spot: preview the buffs it would give.
   const auraKind = build && (build.itemType === 'stream' || build.itemType === 'farmer_house') ? build.itemType : null
-  const withGhost: readonly Placement[] = movingId
-    ? layout
-    : ghost && ghostOk && auraKind
-      ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: ghost.x, y: ghost.y, width: ghost.width, height: ghost.height, variant: null }]
-      : placements
 
-  const trees = placements.flatMap((p) => {
-    const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
-    return plot ? [{ placement: p, plot }] : []
-  })
-  // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
-  const treeBeds: LinkedTile[] = trees
-    .filter(({ placement: p }) => p.id !== movingId)
-    .map(({ placement: p }) => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'tree', p) }))
-  const streams: LinkedTile[] = others.filter((p) => p.itemType === 'stream').map((p) => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) }))
-  const standing = placements.filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
-  const animated = new Set(
-    trees
-      .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3)
-      .slice(0, MAX_ANIMATED)
-      .map(({ placement }) => placement.id),
-  )
-  const groundOf = (f: Footprint) => {
-    const c = footprintCenter(f)
-    return { x: c.x + origin.x, y: c.y + origin.y }
-  }
+  // Everything derived from the tiles, recomputed only when the farm or the ghost's spot changes.
+  const scene = useMemo(() => {
+    const spot = ghostX !== null && ghostY !== null ? { x: ghostX, y: ghostY, width: ghostW, height: ghostH } : null
+    // Move mode: everything else stays; the moved thing has left its old tile and, on a green spot, is
+    // already at the new one, so neighbouring streams, fences and tree beds retile live at both places.
+    const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
+    const layout: readonly Placement[] = movingId && spot && ghostOk ? withMoved(placements, movingId, spot) : others
+    const withGhost: readonly Placement[] = movingId
+      ? layout
+      : spot && ghostOk && auraKind
+        ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: spot.x, y: spot.y, width: spot.width, height: spot.height, variant: null }]
+        : placements
+    const trees = placements.flatMap((p) => {
+      const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
+      return plot ? [{ placement: p, plot }] : []
+    })
+    const animated = new Set(
+      trees
+        .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3)
+        .slice(0, MAX_ANIMATED)
+        .map(({ placement }) => placement.id),
+    )
+    return {
+      // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
+      treeBeds: trees
+        .filter(({ placement: p }) => p.id !== movingId)
+        .map(({ placement: p }): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'tree', p) })),
+      streams: others.filter((p) => p.itemType === 'stream').map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) })),
+      trees: trees.map(({ placement, plot }) => {
+        const current = treeBuff(placement.x, placement.y, placements)
+        const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
+        return { placement, plot, animate: animated.has(placement.id), buffs: buffKey(current, next) }
+      }),
+      items: placements
+        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree')
+        .sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
+        .map((p) => ({ placement: p, links: p.itemType === 'fence' ? linksKey(fenceLinks(p.id === movingId ? others : layout, p)) : '' })),
+    }
+  }, [placements, plotsByDeck, movingId, ghostX, ghostY, ghostW, ghostH, ghostOk, auraKind])
 
   return (
     <div
@@ -155,13 +172,71 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
       <svg aria-hidden width={FARM_WORLD.w} height={FARM_WORLD.h} className="absolute inset-0 overflow-visible">
         <OceanLayer world={FARM_WORLD} origin={origin} />
         <IslandBase origin={origin} seed={seed} />
-        <TreePlots trees={treeBeds} origin={origin} />
-        <StreamNetwork streams={streams} origin={origin} />
+        <TreePlots trees={scene.treeBeds} origin={origin} />
+        <StreamNetwork streams={scene.streams} origin={origin} />
         {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
         {ghost && <GhostFootprint footprint={ghost} origin={origin} valid={ghostOk} />}
       </svg>
 
-      {/* Palms on the beach, in the same painter's order as everything else. */}
+      <BeachPalms />
+
+      {/* Standing things, back to front. In build mode they let clicks through to the grid. */}
+      <div className={build ? 'pointer-events-none' : undefined}>
+        {scene.trees.map(({ placement, plot, animate, buffs }) => (
+          <TreeTile key={placement.id} placement={placement} plot={plot} animate={animate} buffs={buffs} lifted={placement.id === movingId} onOpen={onOpenPlot} />
+        ))}
+        {scene.items.map(({ placement, links }) => (
+          <FarmItem key={placement.id} placement={placement} links={links} lifted={placement.id === movingId} onOpen={onOpenItem} />
+        ))}
+      </div>
+
+      <WorldClouds world={FARM_WORLD} />
+
+      {/* The item being placed, floating over its footprint: glowing green, or red and blocked. */}
+      {ghost && build && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute"
+          style={{ left: groundOf(ghost).x, top: groundOf(ghost).y, zIndex: 500_000 }}
+        >
+          {/* Glow: a static radial gradient behind the miniature (a filter on a floating element would
+              be recomputed every frame). */}
+          <span
+            className={cn(
+              'absolute size-40 -translate-x-1/2 -translate-y-[70%] rounded-full',
+              ghostOk
+                ? 'bg-[radial-gradient(closest-side,rgba(184,255,92,0.55),rgba(184,255,92,0.18)_55%,rgba(184,255,92,0)_100%)]'
+                : 'bg-[radial-gradient(closest-side,rgba(255,31,61,0.5),rgba(255,31,61,0.16)_55%,rgba(255,31,61,0)_100%)]',
+            )}
+          />
+          <div className={cn('relative', ghostOk ? 'mg-float' : 'opacity-70')}>{build.preview}</div>
+          {!ghostOk && (
+            <span className="mg-throb absolute -top-28 left-1/2 -translate-x-1/2 -rotate-6 rounded-xl border-[3px] border-[#5c0011] bg-gradient-to-b from-[#ff6b6b] to-[#d90429] px-2.5 py-1 font-game text-sm font-extrabold whitespace-nowrap text-white shadow-[0_4px_0_#5c0011] [text-shadow:0_2px_0_#5c0011]">
+              ✖ Blocked!
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const groundOf = (f: Footprint) => {
+  const c = footprintCenter(f)
+  return { x: c.x + FARM_WORLD.origin.x, y: c.y + FARM_WORLD.origin.y }
+}
+
+// Primitive keys so memoized tiles compare cheaply: a tree's buffs now / after the ghost, and a fence's
+// links ("nesw" as 1 / 0).
+const buffKey = (current: TreeBuff, next: TreeBuff) => `${+current.stream}${+current.house}${+next.stream}${+next.house}`
+const linksKey = (l: { north: boolean; east: boolean; south: boolean; west: boolean }) => `${+l.north}${+l.east}${+l.south}${+l.west}`
+const bit = (key: string, i: number) => key[i] === '1'
+
+// Palms on the beach, in the same painter's order as everything else (static: rendered once).
+const BeachPalms = memo(function BeachPalms() {
+  const origin = FARM_WORLD.origin
+  return (
+    <>
       {beachPalms().map((palm, i) => (
         <svg
           key={i}
@@ -174,72 +249,52 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
           <Palm scale={palm.scale} flip={palm.flip} />
         </svg>
       ))}
-
-      {/* Standing things, back to front. In build mode they let clicks through to the grid. */}
-      <div className={build ? 'pointer-events-none' : undefined}>
-        {trees.map(({ placement, plot }) => {
-          const ground = groundOf(placement)
-          if (placement.id === movingId) {
-            return (
-              <Lifted key={placement.id} z={Math.round(ground.y) + 1}>
-                <PlotButton geometry={ground} plot={plot} animate={false} phase={treeSwayPhase(placement.x, placement.y)} onOpen={onOpenPlot} />
-              </Lifted>
-            )
-          }
-          const current = treeBuff(placement.x, placement.y, placements)
-          const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
-          return (
-            <div key={placement.id}>
-              <PlotButton geometry={ground} plot={plot} animate={animated.has(placement.id)} phase={treeSwayPhase(placement.x, placement.y)} onOpen={onOpenPlot} />
-              <PlotLabels geometry={ground} plot={plot} onOpen={onOpenPlot} />
-              <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
-            </div>
-          )
-        })}
-        {standing.map((p, i) =>
-          p.id === movingId ? (
-            <Lifted key={p.id} z={Math.round(groundOf(p).y) + 1}>
-              <FarmItem placement={p} ground={groundOf(p)} index={i} placements={others} onOpen={onOpenItem} />
-            </Lifted>
-          ) : (
-            <FarmItem key={p.id} placement={p} ground={groundOf(p)} index={i} placements={layout} onOpen={onOpenItem} />
-          ),
-        )}
-      </div>
-
-      <WorldClouds world={FARM_WORLD} />
-
-      {/* The item being placed, floating over its footprint: glowing green, or red and blocked. */}
-      {ghost && build && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{ left: groundOf(ghost).x, top: groundOf(ghost).y, zIndex: 500_000 }}
-        >
-          <div
-            className={cn(
-              'relative',
-              ghostOk ? 'mg-float [filter:drop-shadow(0_0_10px_#b8ff5c)]' : 'opacity-75 [filter:drop-shadow(0_0_8px_#ff1f3d)_saturate(0.55)]',
-            )}
-          >
-            {build.preview}
-          </div>
-          {!ghostOk && (
-            <span className="mg-throb absolute -top-28 left-1/2 -translate-x-1/2 -rotate-6 rounded-xl border-[3px] border-[#5c0011] bg-gradient-to-b from-[#ff6b6b] to-[#d90429] px-2.5 py-1 font-game text-sm font-extrabold whitespace-nowrap text-white shadow-[0_4px_0_#5c0011] [text-shadow:0_2px_0_#5c0011]">
-              ✖ Blocked!
-            </span>
-          )}
-        </div>
-      )}
-    </div>
+    </>
   )
-}
+})
 
-// The thing being moved, picked up at its old spot: raised 12 px, see-through, a soft shadow below.
+// One planted tree: the tree, its labels and buff tags; lifted (no labels) while it is being moved.
+const TreeTile = memo(function TreeTile({
+  placement,
+  plot,
+  animate,
+  buffs,
+  lifted,
+  onOpen,
+}: {
+  placement: Placement
+  plot: FarmPlotView
+  animate: boolean
+  buffs: string
+  lifted: boolean
+  onOpen: (plot: FarmPlotView) => void
+}) {
+  const ground = groundOf(placement)
+  const phase = treeSwayPhase(placement.x, placement.y)
+  if (lifted) {
+    return (
+      <Lifted z={Math.round(ground.y) + 1}>
+        <PlotButton geometry={ground} plot={plot} animate={false} phase={phase} onOpen={onOpen} />
+      </Lifted>
+    )
+  }
+  const current = { multiplier: 1, stream: bit(buffs, 0), house: bit(buffs, 1) }
+  const next = { multiplier: 1, stream: bit(buffs, 2), house: bit(buffs, 3) }
+  return (
+    <>
+      <PlotButton geometry={ground} plot={plot} animate={animate} phase={phase} onOpen={onOpen} />
+      <PlotLabels geometry={ground} plot={plot} onOpen={onOpen} />
+      <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
+    </>
+  )
+})
+
+// The thing being moved, picked up at its old spot: raised 12 px and see-through (trees keep their
+// gradient shadows on the ground below).
 // Its own layer at its depth (a transformed wrapper is a stacking context of its own).
 function Lifted({ z, children }: { z: number; children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute inset-0 -translate-y-3 opacity-60 drop-shadow-[0_10px_6px_rgba(6,40,20,0.35)] transition-[transform,opacity] duration-200" style={{ zIndex: z }}>
+    <div className="pointer-events-none absolute inset-0 -translate-y-3 opacity-60 transition-[transform,opacity] duration-200" style={{ zIndex: z }}>
       {children}
     </div>
   )
@@ -280,35 +335,37 @@ function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: nu
 }
 
 // A bought item standing on the farm: its drawing plus a button over it (name, buff, pick up).
-function FarmItem({
+// Memoized: `links` is the fence's "nesw" key, so moving something elsewhere doesn't redraw it.
+const FarmItem = memo(function FarmItem({
   placement,
-  ground,
-  index,
-  placements,
+  links,
+  lifted,
   onOpen,
 }: {
   placement: Placement
-  ground: { x: number; y: number }
-  index: number
-  placements: readonly Placement[]
+  links: string
+  lifted: boolean
   onOpen: (placement: Placement) => void
 }) {
+  const ground = groundOf(placement)
   const entry = catalogFor(placement.itemType, placement.variant)
   const big = placement.width > 1
   const box = big ? { w: 170, h: 170 } : placement.itemType === 'fence' ? { w: 56, h: 50 } : { w: 70, h: 62 }
   const z = Math.round(ground.y)
-  return (
+  // Animals start their idle at a point fixed by their id, so neighbours never move in step.
+  const delay = [...placement.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 9
+  const body = (
     <>
       {placement.itemType === 'animal' ? (
         <div className="pointer-events-none absolute" style={{ left: ground.x, top: ground.y, zIndex: z }}>
-          <AnimalSprite variant={placement.variant} delay={(index * 1.7) % 9} />
+          <AnimalSprite variant={placement.variant} delay={delay} />
         </div>
       ) : (
         <svg aria-hidden className="pointer-events-none absolute overflow-visible" width={1} height={1} style={{ left: ground.x, top: ground.y, zIndex: z }}>
           {placement.itemType === 'farmer_house' && <FarmerHouse />}
           {placement.itemType === 'woodshop' && <WoodshopSprite />}
           {placement.itemType === 'rockery' && <RockerySprite />}
-          {placement.itemType === 'fence' && <FenceSprite links={fenceLinks(placements, placement)} />}
+          {placement.itemType === 'fence' && <FenceSprite links={{ north: bit(links, 0), east: bit(links, 1), south: bit(links, 2), west: bit(links, 3) }} />}
         </svg>
       )}
       <button
@@ -320,6 +377,9 @@ function FarmItem({
       />
     </>
   )
-}
+  return lifted ? <Lifted z={z + 1}>{body}</Lifted> : body
+})
+
+const FarmIsometricGrid = memo(FarmIsometricGridImpl)
 
 export { FarmIsometricGrid }

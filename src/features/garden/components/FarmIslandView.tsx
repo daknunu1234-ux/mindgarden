@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { GameButton } from '@/shared/components/game'
 import { useCamera } from '@/shared/hooks/useCamera'
 import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/camera'
@@ -15,7 +14,8 @@ import { removeFarmPlacement } from '../actions/removeFarmPlacement'
 import { getTreeStage } from '../hooks/useTreeStage'
 import { treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
-import { checkMove, checkPlacement, firstFreeTile, withMoved, type Placement } from '../lib/farmGrid'
+import { checkMove, checkPlacement, firstFreeTile, type Placement } from '../lib/farmGrid'
+import { applyOps, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
@@ -63,8 +63,9 @@ type BuildRequest =
 // second tap on the same tile (or "Place here") puts it down. Move mode (↔️ Move in a tree or item
 // popover) works the same way for something already placed: it lifts, the ghost shows where it can
 // go, and putting it down moves it (Esc / Cancel leaves it where it was).
+// Every edit is optimistic (lib/optimistic.ts): planting, buying, moving and picking up show at once
+// and sync in the background (no page refresh); a refusal rolls the farm back with a toast.
 function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
-  const router = useRouter()
   const { toast } = useToast()
   const { setCoins } = useCoins()
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
@@ -79,23 +80,29 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const content = contentSize(view, world, zoom)
   const offset = { x: centreOffset(view.w, world.w, zoom), y: centreOffset(view.h, world.h, zoom) }
 
-  const plotsByDeck = useMemo(() => new Map(plots.map((p) => [p.id, p])), [plots])
   const [selectedPlot, setSelectedPlot] = useState<FarmPlotView | null>(null)
   const [selectedItem, setSelectedItem] = useState<Placement | null>(null)
   const [deliveryOpen, setDeliveryOpen] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
   const [build, setBuild] = useState<{ request: BuildRequest; tile: { x: number; y: number } | null } | null>(null)
   const [buildError, setBuildError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-  const thirsty = plots.filter((p) => p.needsWater === true && p.itemCount > 0).length
 
-  // Moves the server has confirmed but the refreshed page hasn't brought yet: applied on top of the
-  // placements so the farm (and its stream / fence tiling) updates at once. New props clear them.
-  const [moves, setMoves] = useState<{ base: Placement[]; to: Record<string, { x: number; y: number }> }>({ base: placements, to: {} })
-  const farm = useMemo(
-    () => (moves.base === placements ? Object.entries(moves.to).reduce<Placement[]>((acc, [id, to]) => withMoved(acc, id, to), placements) : placements),
-    [moves, placements],
-  )
+  // Optimistic edits over the server's placements; fresh placements from the server clear them.
+  const [ops, setOps] = useState<{ base: Placement[]; list: FarmOp[] }>({ base: placements, list: [] })
+  const opList = useMemo(() => (ops.base === placements ? ops.list : []), [ops, placements])
+  const editOps = useCallback((change: (list: FarmOp[]) => FarmOp[]) => setOps((o) => ({ base: placements, list: change(o.base === placements ? o.list : []) })), [placements])
+  const nextKey = useRef(0)
+  const farm = useMemo(() => applyOps(placements, opList), [placements, opList])
+
+  // Trees as the farm shows them: planted ones carry their tile and buff; the rest wait in the Shop.
+  const allTrees = useMemo(() => {
+    const byId = new Map<string, FarmPlotView>()
+    for (const tree of [...plots, ...unplacedTrees]) byId.set(tree.id, tree)
+    return [...byId.values()]
+  }, [plots, unplacedTrees])
+  const { planted, unplanted } = useMemo(() => splitTrees(allTrees, farm), [allTrees, farm])
+  const plotsByDeck = useMemo(() => new Map(planted.map((p) => [p.id, p])), [planted])
+  const thirsty = planted.filter((p) => p.needsWater === true && p.itemCount > 0).length
 
   const footprint =
     build?.request.kind === 'item'
@@ -136,69 +143,118 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
 
   // Move mode for a placed tree (by its placement) or item.
   const startMove = (placement: Placement) => {
+    // Still being placed: its server id isn't known yet.
+    if (isPendingId(placement.id)) {
+      toast({ message: 'Still placing that: try again in a moment', icon: '⏳' })
+      return
+    }
     const current = farm.find((p) => p.id === placement.id) ?? placement
     const tree = current.itemType === 'tree' && current.deckId ? (plotsByDeck.get(current.deckId) ?? null) : null
     startBuild({ kind: 'move', placement: current, tree, name: tree ? `“${tree.title}”` : (catalogFor(current.itemType, current.variant)?.name ?? 'Item') })
   }
 
+  const failed = (message: string) => toast({ message: `${message}. The farm is back as it was.`, icon: '⚠️', tone: 'farewell' })
+
+  // Puts the ghost down: the farm changes at once and the server catches up in the background.
   const place = (tile: { x: number; y: number }) => {
-    if (!build || isPending) return
+    if (!build) return
     if (!fits(tile)) {
       setBuildError('That spot is taken or off the farm: pick a green tile.')
       return
     }
     const request = build.request
+    const key = `op${nextKey.current++}`
     setBuildError(null)
+    setBuild(null)
+
     if (request.kind === 'move') {
-      if (tile.x === request.placement.x && tile.y === request.placement.y) {
-        setBuild(null)
-        return
-      }
-      startTransition(async () => {
-        const res = await moveFarmPlacement({ placementId: request.placement.id, x: tile.x, y: tile.y })
+      if (tile.x === request.placement.x && tile.y === request.placement.y) return
+      editOps((list) => [...list, { key, kind: 'move', id: request.placement.id, to: tile }])
+      toast({ message: `${request.name} moved`, icon: '↔️' })
+      void moveFarmPlacement({ placementId: request.placement.id, x: tile.x, y: tile.y }).then((res) => {
         if (!res.success) {
-          setBuildError(`${res.error.message}.`)
-          return
+          editOps((list) => rollback(list, key))
+          failed(res.error.message)
         }
-        setMoves((m) => ({ base: placements, to: { ...(m.base === placements ? m.to : {}), [res.data.id]: { x: res.data.x, y: res.data.y } } }))
-        setBuild(null)
-        toast({ message: `${request.name} moved`, icon: '↔️' })
-        router.refresh()
       })
       return
     }
-    startTransition(async () => {
-      const res = await placeFarmItem(
-        request.kind === 'tree' ? { item: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y } : { item: request.item.id, x: tile.x, y: tile.y },
-      )
+
+    const placement: Placement =
+      request.kind === 'tree'
+        ? { id: `${PENDING_PREFIX}${key}`, itemType: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y, width: 1, height: 1, variant: null }
+        : { id: `${PENDING_PREFIX}${key}`, itemType: request.item.itemType, deckId: null, x: tile.x, y: tile.y, width: request.item.width, height: request.item.height, variant: request.item.variant }
+    const price = request.kind === 'item' ? request.item.price : 0
+    const purseBefore = coins
+    editOps((list) => [...list, { key, kind: 'add', placement }])
+    if (price > 0 && purseBefore !== null) setCoins(purseBefore - price)
+    toast({
+      message: request.kind === 'tree' ? `“${request.tree.title}” is planted on your farm` : `${request.item.name} placed · −${price} 🪙`,
+      icon: request.kind === 'tree' ? '🌳' : request.item.icon,
+    })
+    void placeFarmItem(
+      request.kind === 'tree' ? { item: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y } : { item: request.item.id, x: tile.x, y: tile.y },
+    ).then((res) => {
       if (!res.success) {
-        setBuildError(`${res.error.message}.`)
+        editOps((list) => rollback(list, key))
+        if (price > 0 && purseBefore !== null) setCoins(purseBefore)
+        failed(res.error.message)
         return
       }
+      editOps((list) => confirmAdd(list, key, res.data.placementId))
       setCoins(res.data.remainingCoins)
-      setBuild(null)
-      toast({
-        message:
-          request.kind === 'tree' ? `“${request.tree.title}” is planted on your farm` : `${request.item.name} placed · −${res.data.cost} 🪙`,
-        icon: request.kind === 'tree' ? '🌳' : request.item.icon,
-      })
-      router.refresh()
+    })
+  }
+
+  // Takes a placement off the farm at once (a tree goes back to the Shop's Trees tab).
+  const pickUp = (placement: Placement, message: string, icon: string) => {
+    if (isPendingId(placement.id)) return
+    const key = `op${nextKey.current++}`
+    editOps((list) => [...list, { key, kind: 'remove', id: placement.id }])
+    toast({ message, icon })
+    void removeFarmPlacement({ placementId: placement.id }).then((res) => {
+      if (!res.success) {
+        editOps((list) => rollback(list, key))
+        failed(res.error.message)
+      }
     })
   }
 
   const removeFromFarm = (plot: FarmPlotView) => {
-    if (!plot.placementId) return
+    const placement = farm.find((p) => p.id === plot.placementId)
     setSelectedPlot(null)
-    startTransition(async () => {
-      const res = await removeFarmPlacement({ placementId: plot.placementId })
-      if (!res.success) {
-        toast({ message: `${res.error.message}.`, icon: '⚠️', tone: 'farewell' })
-        return
-      }
-      toast({ message: `“${plot.title}” is back in the Shop's Trees tab`, icon: '📦' })
-      router.refresh()
-    })
+    if (placement) pickUp(placement, `“${plot.title}” is back in the Shop's Trees tab`, '📦')
   }
+
+  // Stable handlers for the (memoized) grid: they read the latest state through a ref, so camera
+  // drags and zooms never re-render the grid's 256 tiles.
+  const latest = useRef({ build, place })
+  useLayoutEffect(() => {
+    latest.current = { build, place }
+  })
+  const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
+  const onBuildCancel = useCallback(() => setBuild(null), [])
+  const onBuildTap = useCallback((tile: { x: number; y: number }, pointerType: string) => {
+    const { build: current, place: put } = latest.current
+    // Mouse: click places. Touch / pen: the first tap moves the ghost, the second places.
+    if (pointerType === 'mouse' || (current?.tile && current.tile.x === tile.x && current.tile.y === tile.y)) put(tile)
+    else setBuild((b) => (b ? { ...b, tile } : b))
+  }, [])
+  const buildGhost = useMemo(
+    () =>
+      build
+        ? {
+            footprint,
+            itemType: build.request.kind === 'tree' ? ('tree' as const) : build.request.kind === 'move' ? build.request.placement.itemType : build.request.item.itemType,
+            movingId: build.request.kind === 'move' ? build.request.placement.id : null,
+            preview: ghostPreview,
+            tile: build.tile,
+          }
+        : null,
+    // footprint is derived from build.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [build, ghostPreview],
+  )
 
   return (
     <div className="relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]">
@@ -220,29 +276,15 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               placements={farm}
               plotsByDeck={plotsByDeck}
               seed={visitor?.name ?? gardenName ?? 'garden'}
-              build={
-                build
-                  ? {
-                      footprint,
-                      itemType: build.request.kind === 'tree' ? 'tree' : build.request.kind === 'move' ? build.request.placement.itemType : build.request.item.itemType,
-                      movingId: build.request.kind === 'move' ? build.request.placement.id : null,
-                      preview: ghostPreview,
-                      tile: build.tile,
-                    }
-                  : null
-              }
-              onBuildHover={(tile) => setBuild((b) => (b ? { ...b, tile } : b))}
-              onBuildTap={(tile, pointerType) => {
-                // Mouse: click places. Touch / pen: the first tap moves the ghost, the second places.
-                if (pointerType === 'mouse' || (build?.tile && build.tile.x === tile.x && build.tile.y === tile.y)) place(tile)
-                else setBuild((b) => (b ? { ...b, tile } : b))
-              }}
-              onBuildCancel={() => setBuild(null)}
+              build={buildGhost}
+              onBuildHover={onBuildHover}
+              onBuildTap={onBuildTap}
+              onBuildCancel={onBuildCancel}
               onOpenPlot={setSelectedPlot}
               onOpenItem={setSelectedItem}
             />
 
-            {placements.length === 0 && !build && (
+            {farm.length === 0 && !build && (
               <div
                 className="absolute -translate-x-1/2 -translate-y-1/2 rounded-[18px] border-[3px] border-[#4a230c] bg-gradient-to-b from-[#fffcf3] to-[#f5dcb2] px-4 py-2 text-center font-game text-base font-extrabold text-[#4a2511] shadow-[inset_0_2px_0_#fff,0_4px_0_#b07a45,0_10px_16px_rgba(47,95,22,0.3)]"
                 style={{ left: world.w / 2, top: world.h / 2 + 30, zIndex: 200_000 }}
@@ -324,11 +366,11 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               </span>
             </span>
             {build.tile && (
-              <GameButton tone="leaf" size="sm" onClick={() => build.tile && place(build.tile)} disabled={!ghostOk || isPending}>
-                {isPending ? (build.request.kind === 'move' ? 'Moving…' : 'Placing…') : build.request.kind === 'move' ? 'Move here' : 'Place here'}
+              <GameButton tone="leaf" size="sm" onClick={() => build.tile && place(build.tile)} disabled={!ghostOk}>
+                {build.request.kind === 'move' ? 'Move here' : 'Place here'}
               </GameButton>
             )}
-            <GameButton tone="cream" size="sm" onClick={() => setBuild(null)} disabled={isPending}>
+            <GameButton tone="cream" size="sm" onClick={() => setBuild(null)}>
               Cancel
             </GameButton>
           </div>
@@ -340,7 +382,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               gridHref={gridHref}
               quests={signedIn ? thirsty : 0}
               onQuests={() => setDeliveryOpen(true)}
-              unplaced={unplacedTrees.length}
+              unplaced={unplanted.length}
               onShop={() => (signedIn ? setShopOpen(true) : openLogin())}
             />
           </div>
@@ -352,7 +394,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           open={shopOpen}
           onOpenChange={setShopOpen}
           coins={coins}
-          unplacedTrees={unplacedTrees}
+          unplacedTrees={unplanted}
           onPlantTree={(tree) => startBuild({ kind: 'tree', tree })}
           onBuy={(item) => startBuild({ kind: 'item', item })}
         />
@@ -378,8 +420,21 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           })
         }
       />
-      <FarmItemDialog placement={selectedItem} isOwner={isOwner} onClose={() => setSelectedItem(null)} onMove={isOwner ? startMove : undefined} />
-      <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={plots} signedIn={signedIn} />
+      <FarmItemDialog
+        placement={selectedItem}
+        isOwner={isOwner}
+        onClose={() => setSelectedItem(null)}
+        onMove={isOwner ? startMove : undefined}
+        onPickUp={
+          isOwner
+            ? (placement) => {
+                setSelectedItem(null)
+                pickUp(placement, `${catalogFor(placement.itemType, placement.variant)?.name ?? 'Item'} picked up`, '📦')
+              }
+            : undefined
+        }
+      />
+      <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={planted} signedIn={signedIn} />
     </div>
   )
 }

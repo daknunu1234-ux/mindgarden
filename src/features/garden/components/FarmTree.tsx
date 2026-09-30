@@ -108,7 +108,8 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
   )
 }
 
-// The tree's shadows on its bed, soft CSS radial gradients with a little blur (no hard edges): a dark
+// The tree's shadows on its bed: static multi-stop radial gradients that fade out softly (no blur filter,
+// which would cost GPU fill-rate on every tree every frame): a dark
 // contact shadow hugging the trunk, and a longer cast shadow thrown back and to the right (sun from
 // the upper left), so the tree reads as standing up off the ground. Drawn outside the swaying tree.
 function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: number; scale: number }) {
@@ -118,12 +119,12 @@ function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: numb
     <>
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(8,48,24,0.34),rgba(8,48,24,0))] blur-[3px]"
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(8,48,24,0.32)_0%,rgba(8,48,24,0.2)_40%,rgba(8,48,24,0.07)_75%,rgba(8,48,24,0)_100%)]"
         style={{ left: x - cast.w / 2 + 30 * scale * reach, top: y - cast.h / 2 - 12 * scale * reach, width: cast.w, height: cast.h, transform: 'rotate(-22deg)' }}
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(40,20,6,0.55),rgba(40,20,6,0))] blur-[1.5px]"
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(40,20,6,0.55)_0%,rgba(40,20,6,0.32)_45%,rgba(40,20,6,0.08)_80%,rgba(40,20,6,0)_100%)]"
         style={{ left: x - contact.w / 2 + 2, top: y - contact.h / 2 + 1, width: contact.w, height: contact.h }}
       />
     </>

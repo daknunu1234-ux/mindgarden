@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { RemoveFarmPlacementDto } from '../dto/FarmDto'
@@ -19,7 +18,8 @@ export async function removeFarmPlacement(input: unknown): Promise<ActionResult<
   } = await supabase.auth.getUser()
   if (!user) return fail('AUTH_UNAUTHORIZED', 'Sign in to build your farm')
 
-  const res = await removePlacement(supabase, user.id, parsed.data)
-  if (res.success) revalidatePath('/')
-  return res
+  // No revalidatePath: in a Server Action it re-renders the whole farm page before answering
+  // (seconds). The farm already shows the change (optimistic, lib/optimistic.ts), and the page is
+  // dynamic (router cache 0 s), so the next visit loads fresh data anyway.
+  return removePlacement(supabase, user.id, parsed.data)
 }

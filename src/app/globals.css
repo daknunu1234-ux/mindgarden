@@ -400,3 +400,15 @@
   .mg-aura { animation: mg-aura 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .mg-sparkle { animation: mg-sparkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 }
+
+/* ── Compositing hints for the farm's always-moving pieces ────────────────────
+   Each swaying tree, drifting cloud, floating ghost and wandering animal gets its own GPU layer
+   (will-change + translate3d), so its animation is a cheap composite instead of repainting the
+   world under it. Only while motion is on; with reduced motion nothing animates, so no layers. */
+@media (prefers-reduced-motion: no-preference) {
+  .mg-tree-sway, .mg-cloud, .mg-drift, .mg-float, .mg-wander, .mg-snuffle, .mg-squash {
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+  .mg-tree-sway, .mg-float { transform: translate3d(0, 0, 0); }
+}
