@@ -34,7 +34,7 @@ import {
   WoodshopSprite,
   type LinkedTile,
 } from './FarmStructures'
-import { LABEL_LAYER, PlotButton, PlotLabels } from './FarmTree'
+import { LABEL_LAYER, PlotButton, PlotLabels, treeSwayPhase } from './FarmTree'
 
 export { FARM_WORLD }
 
@@ -171,7 +171,7 @@ function FarmIsometricGrid({ placements, plotsByDeck, seed, build, onBuildHover,
           const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
           return (
             <div key={placement.id}>
-              <PlotButton geometry={ground} plot={plot} animate={animated.has(placement.id)} onOpen={onOpenPlot} />
+              <PlotButton geometry={ground} plot={plot} animate={animated.has(placement.id)} phase={treeSwayPhase(placement.x, placement.y)} onOpen={onOpenPlot} />
               <PlotLabels geometry={ground} plot={plot} onOpen={onOpenPlot} />
               <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
             </div>

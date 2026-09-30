@@ -12,6 +12,10 @@ export type TreeSkin = {
   barkDeep: string
   // Tint a well-mastered root glows with.
   glow: string
+  // Lighting (no outlines): the rich, saturated ambient occlusion under foliage clusters, and the
+  // sun-kissed rim light along their upper contours.
+  occlusion: string
+  rim: string
   // Optional accents: fruit (citrus) and flowers / sparkles (cherry, cactus, mystic).
   fruit?: string
   flower?: string
@@ -26,70 +30,70 @@ export const TREE_SPECIES = [
     label: 'Oak',
     icon: '🌳',
     form: 'oak',
-    skin: { canopyLight: '#7ee787', canopyDark: '#16a34a', bark: '#9a5b2c', barkDeep: '#5c3417', glow: '#a3e635' },
+    skin: { canopyLight: '#7ee787', canopyDark: '#16a34a', bark: '#9a5b2c', barkDeep: '#5c3417', glow: '#a3e635', occlusion: '#0b5d2e', rim: '#fff3b0' },
   },
   {
     id: 'pine',
     label: 'Pine',
     icon: '🌲',
     form: 'pine',
-    skin: { canopyLight: '#4ade80', canopyDark: '#0f7a3a', bark: '#7a4a23', barkDeep: '#3b2615', glow: '#34d399' },
+    skin: { canopyLight: '#4ade80', canopyDark: '#0f7a3a', bark: '#7a4a23', barkDeep: '#3b2615', glow: '#34d399', occlusion: '#053d22', rim: '#c9fbff' },
   },
   {
     id: 'birch',
     label: 'Golden Birch',
     icon: '🍂',
     form: 'birch',
-    skin: { canopyLight: '#fde047', canopyDark: '#e3a008', bark: '#f5f1e8', barkDeep: '#8a8175', glow: '#facc15' },
+    skin: { canopyLight: '#fde047', canopyDark: '#e3a008', bark: '#f5f1e8', barkDeep: '#8a8175', glow: '#facc15', occlusion: '#9a5a06', rim: '#fffbe0' },
   },
   {
     id: 'cherry',
     label: 'Cherry Blossom',
     icon: '🌸',
     form: 'cherry',
-    skin: { canopyLight: '#fbcfe8', canopyDark: '#f472b6', bark: '#7a3e3e', barkDeep: '#4a2323', glow: '#f9a8d4', flower: '#fff1f7' },
+    skin: { canopyLight: '#fbcfe8', canopyDark: '#f472b6', bark: '#7a3e3e', barkDeep: '#4a2323', glow: '#f9a8d4', occlusion: '#8e2a63', rim: '#fff0f8', flower: '#fff1f7' },
   },
   {
     id: 'willow',
     label: 'Weeping Willow',
     icon: '🌿',
     form: 'willow',
-    skin: { canopyLight: '#c5f27a', canopyDark: '#5fa82a', bark: '#7b5a36', barkDeep: '#4a331c', glow: '#bef264' },
+    skin: { canopyLight: '#c5f27a', canopyDark: '#5fa82a', bark: '#7b5a36', barkDeep: '#4a331c', glow: '#bef264', occlusion: '#3f6212', rim: '#f7ffc9' },
   },
   {
     id: 'mystic',
     label: 'Mystic Bonsai',
     icon: '🔮',
     form: 'mystic',
-    skin: { canopyLight: '#e0a8ff', canopyDark: '#8b3fd9', bark: '#6b4a5e', barkDeep: '#3d2536', glow: '#e879f9', flower: '#f5d0fe' },
+    skin: { canopyLight: '#e0a8ff', canopyDark: '#8b3fd9', bark: '#6b4a5e', barkDeep: '#3d2536', glow: '#e879f9', occlusion: '#4c1d95', rim: '#fbe7ff', flower: '#f5d0fe' },
   },
   {
     id: 'palm',
     label: 'Tropical Palm',
     icon: '🌴',
     form: 'palm',
-    skin: { canopyLight: '#6ee77a', canopyDark: '#15944a', bark: '#c98a4b', barkDeep: '#7a4b22', glow: '#86efac', fruit: '#8a4f22' },
+    skin: { canopyLight: '#6ee77a', canopyDark: '#15944a', bark: '#c98a4b', barkDeep: '#7a4b22', glow: '#86efac', occlusion: '#065f46', rim: '#e6fff0', fruit: '#8a4f22' },
   },
   {
     id: 'citrus',
     label: 'Citrus Grove',
     icon: '🍊',
     form: 'citrus',
-    skin: { canopyLight: '#8df07a', canopyDark: '#1f9d3a', bark: '#8a5a2b', barkDeep: '#52341a', glow: '#fdba74', fruit: '#ff8a1f', flower: '#ffffff' },
+    skin: { canopyLight: '#8df07a', canopyDark: '#1f9d3a', bark: '#8a5a2b', barkDeep: '#52341a', glow: '#fdba74', occlusion: '#14532d', rim: '#fff3b0', fruit: '#ff8a1f', flower: '#ffffff' },
   },
   {
     id: 'maple',
     label: 'Autumn Maple',
     icon: '🍁',
     form: 'maple',
-    skin: { canopyLight: '#ff8a5c', canopyDark: '#d61f2c', bark: '#6e3b22', barkDeep: '#3e1f10', glow: '#fb7185' },
+    skin: { canopyLight: '#ff8a5c', canopyDark: '#d61f2c', bark: '#6e3b22', barkDeep: '#3e1f10', glow: '#fb7185', occlusion: '#7f1d1d', rim: '#ffe3b8' },
   },
   {
     id: 'cactus',
     label: 'Desert Cactus',
     icon: '🌵',
     form: 'cactus',
-    skin: { canopyLight: '#8fd46f', canopyDark: '#2f8a3e', bark: '#a16207', barkDeep: '#713f12', glow: '#facc15', flower: '#ff5fa2' },
+    skin: { canopyLight: '#8fd46f', canopyDark: '#2f8a3e', bark: '#a16207', barkDeep: '#713f12', glow: '#facc15', occlusion: '#1f5f2c', rim: '#f3ffd6', flower: '#ff5fa2' },
   },
 ] as const satisfies readonly TreeSpecies[]
 

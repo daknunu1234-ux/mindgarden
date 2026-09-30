@@ -21,9 +21,23 @@ export const LABEL_LAYER = 100_000
 
 // ── Plot: tree, ambience, badges and nameplate (HTML button over the SVG bed) ─
 
-type PlotButtonProps = { geometry: GroundPoint; plot: FarmPlotView; animate: boolean; onOpen: (plot: FarmPlotView) => void }
+type PlotButtonProps = {
+  geometry: GroundPoint
+  plot: FarmPlotView
+  animate: boolean
+  // Sway phase in seconds (from the tile, so neighbours never sway in unison): treeSwayPhase().
+  phase?: number
+  onOpen: (plot: FarmPlotView) => void
+}
 
-export function PlotButton({ geometry, plot, animate, onOpen }: PlotButtonProps) {
+// How far a tree's shadows reach, by stage (a sprout barely shades the soil).
+const SHADOW_REACH = [0, 0.35, 0.55, 0.8, 1, 1] as const
+
+// Idle sway phase for the tree on tile (x, y): (x + 7y) mod 5 steps of 0.4 s, so the island's trees
+// move out of step.
+export const treeSwayPhase = (x: number, y: number): number => (((x + y * 7) % 5) + 5) % 5 * 0.4
+
+export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotButtonProps) {
   const stage = getTreeStage(plot.masteryPercent)
   const stageName = TREE_STAGES[stage].name
   const mighty = plot.masteryPercent >= 100
@@ -52,35 +66,67 @@ export function PlotButton({ geometry, plot, animate, onOpen }: PlotButtonProps)
       className="group absolute rounded-[40%] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
       style={{ ...hitbox, zIndex: Math.round(geometry.y) }}
     >
+      <TreeShadows x={geometry.x - hitbox.left} y={geometry.y - hitbox.top} reach={SHADOW_REACH[stage]} scale={size.scale} />
+      {/* Tap / hover: a springy squash & stretch about the trunk base. The sway lives one layer in,
+          so the two transforms never fight; shadows, signs, badges and buff tags stay on the ground. */}
       <div
         className={cn(
-          'pointer-events-none absolute origin-[50%_90%] transition-transform duration-200 group-hover:-translate-y-1 group-hover:scale-[1.04] group-focus-visible:-translate-y-1',
+          'pointer-events-none absolute origin-[50%_90%] transition-transform duration-300 ease-[cubic-bezier(.34,1.8,.64,1)]',
+          'group-hover:scale-105 group-focus-visible:scale-105 group-active:scale-x-105 group-active:scale-y-95 group-active:duration-100',
           splash && 'scale-[1.05]',
         )}
         style={{ left: tree.left - hitbox.left, top: tree.top - hitbox.top, width: tree.width, height: tree.height }}
       >
-        <TreeStageSvg
-          stage={stage}
-          treeType={plot.treeType}
-          label=""
-          ground={false}
-          scale={size.scale}
-          className="size-full [&>g]:pointer-events-auto"
-        />
-        {animate && (
-          // Same bottom-centre anchor as the drawing, so leaves and bees follow the scaled crown.
-          <div
-            className="absolute inset-0"
-            style={{ transform: `scale(${size.scale})`, transformOrigin: `${TREE_BASE_RATIO.x * 100}% ${TREE_BASE_RATIO.y * 100}%` }}
-          >
-            <FallingParticles seed={plot.id} stage={stage} treeType={plot.treeType} size={FARM_TREE_SIZE} />
-            <Bees stage={stage} treeType={plot.treeType} size={FARM_TREE_SIZE} />
-          </div>
-        )}
+        <div
+          className="mg-tree-sway absolute inset-0"
+          style={{ '--mg-sway-delay': `${-phase}s`, transformOrigin: `${TREE_BASE_RATIO.x * 100}% ${TREE_BASE_RATIO.y * 100}%` } as CSSProperties}
+        >
+          <TreeStageSvg
+            stage={stage}
+            treeType={plot.treeType}
+            label=""
+            ground={false}
+            shadow={false}
+            scale={size.scale}
+            className="size-full [&>g]:pointer-events-auto"
+          />
+          {animate && (
+            // Same bottom-centre anchor as the drawing, so leaves and bees follow the scaled crown.
+            <div
+              className="absolute inset-0"
+              style={{ transform: `scale(${size.scale})`, transformOrigin: `${TREE_BASE_RATIO.x * 100}% ${TREE_BASE_RATIO.y * 100}%` }}
+            >
+              <FallingParticles seed={plot.id} stage={stage} treeType={plot.treeType} size={FARM_TREE_SIZE} />
+              <Bees stage={stage} treeType={plot.treeType} size={FARM_TREE_SIZE} />
+            </div>
+          )}
+        </div>
       </div>
 
       {splash && <WaterSplash baseX={geometry.x - hitbox.left} baseY={geometry.y - hitbox.top} />}
     </button>
+  )
+}
+
+// The tree's shadows on its bed, soft CSS radial gradients with a little blur (no hard edges): a dark
+// contact shadow hugging the trunk, and a longer cast shadow thrown back and to the right (sun from
+// the upper left), so the tree reads as standing up off the ground. Drawn outside the swaying tree.
+function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: number; scale: number }) {
+  const contact = { w: 62 * scale * (0.5 + 0.5 * reach), h: 18 * scale * (0.6 + 0.4 * reach) }
+  const cast = { w: 128 * scale * reach, h: 34 * scale * reach }
+  return (
+    <>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(8,48,24,0.34),rgba(8,48,24,0))] blur-[3px]"
+        style={{ left: x - cast.w / 2 + 30 * scale * reach, top: y - cast.h / 2 - 12 * scale * reach, width: cast.w, height: cast.h, transform: 'rotate(-22deg)' }}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(40,20,6,0.55),rgba(40,20,6,0))] blur-[1.5px]"
+        style={{ left: x - contact.w / 2 + 2, top: y - contact.h / 2 + 1, width: contact.w, height: contact.h }}
+      />
+    </>
   )
 }
 

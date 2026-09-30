@@ -4,6 +4,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { getTreeSpecies, LEGACY_TREE_TYPES, toTreeTypeId, TREE_SPECIES, TREE_TYPE_IDS } from '@/shared/lib/treeSkins'
+import { shade } from '@/shared/lib/color'
+import { treeSwayPhase } from '../components/FarmTree'
 import { TreeStageSvg } from '../components/TreeStageSvg'
 import type { TreeStage } from '../types'
 
@@ -71,6 +73,60 @@ describe('50 tree sprites (10 species × 5 stages)', () => {
   it('scales size tiers about the trunk base, and ignores a bad scale', () => {
     expect(render('maple', 4, 1.35)).toContain('matrix(1.35 0 0 1.35')
     expect(render('maple', 4, Number.NaN)).toBe(render('maple', 4))
+  })
+})
+
+describe('lit, not outlined', () => {
+  const all = TREE_TYPE_IDS.flatMap((id) => STAGES.map((stage) => ({ id, stage, svg: render(id, stage) })))
+
+  it('uses no dark outline colours on any sprite', () => {
+    // The old cartoon outline was each colour darkened by 58%, plus a few fixed inks.
+    for (const { id, stage, svg } of all) {
+      const skin = getTreeSpecies(id).skin
+      for (const ink of [skin.canopyDark, skin.canopyLight, skin.barkDeep, skin.bark].map((c) => shade(c, -0.58)).concat(['#3b1f0e', '#1f4a14', '#4a2511'])) {
+        expect(svg.includes(ink), `${id} ${stage} uses ${ink}`).toBe(false)
+      }
+    }
+  })
+
+  it("separates every species from the ground with its own occlusion shade and rim light", () => {
+    for (const id of TREE_TYPE_IDS) {
+      const { occlusion, rim } = getTreeSpecies(id).skin
+      const svg = render(id, 4)
+      expect(svg, id).toContain(occlusion)
+      expect(svg, id).toContain(rim)
+    }
+  })
+
+  it('casts its own soft shadows unless the scene does', () => {
+    const withShadow = renderToStaticMarkup(createElement(TreeStageSvg, { stage: 4, treeType: 'oak', label: '', ground: false }))
+    const without = renderToStaticMarkup(createElement(TreeStageSvg, { stage: 4, treeType: 'oak', label: '', ground: false, shadow: false }))
+    expect(withShadow).toContain('#0b3b1f')
+    expect(without).not.toContain('#0b3b1f')
+  })
+
+  it('marks the crown for the lagging foliage bob, and pulses only stage 5', () => {
+    for (const { id, stage, svg } of all) {
+      if (stage > 1) expect(svg, `${id} ${stage}`).toContain('mg-foliage')
+      expect(svg.includes('mg-aura'), `${id} ${stage}`).toBe(stage === 5)
+      expect(svg.includes('mg-sparkle'), `${id} ${stage}`).toBe(stage === 5)
+    }
+  })
+})
+
+describe('treeSwayPhase', () => {
+  it('steps (x + 7y) mod 5 by 0.4 s, so side-by-side trees sway out of step', () => {
+    expect(treeSwayPhase(0, 0)).toBe(0)
+    expect(treeSwayPhase(1, 0)).toBeCloseTo(0.4)
+    expect(treeSwayPhase(0, 1)).toBeCloseTo(0.8)
+    expect(treeSwayPhase(3, 1)).toBeCloseTo(0)
+    for (let x = 0; x < 15; x++) {
+      for (let y = 0; y < 15; y++) {
+        expect(treeSwayPhase(x, y)).not.toBeCloseTo(treeSwayPhase(x + 1, y))
+        expect(treeSwayPhase(x, y)).not.toBeCloseTo(treeSwayPhase(x, y + 1))
+        expect([0, 0.4, 0.8, 1.2, 1.6].some((p) => Math.abs(p - treeSwayPhase(x, y)) < 1e-9)).toBe(true)
+      }
+    }
   })
 })
 

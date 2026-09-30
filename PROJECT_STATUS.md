@@ -128,8 +128,28 @@ check after migration 13), each drawn by its own function in `garden/components/
   silhouette; bees start), 4 Mature (full crown with depth layers and species accents), 5 Mastered (the
   mature crown with a gold rim round its whole silhouette, golden aura, sparkles, the finest accents).
 - **How they're drawn**: each species is designed once at full size and grown with a per-stage scale;
-  outlines keep their thickness and young trees get relatively plumper shapes. Cel shading: merged bold
-  outline, shadowed underside, sunlit top, glint and warm bounce light, like the rest of the diorama.
+  young trees get relatively plumper shapes.
+- **Lit, never outlined**: trees stand out from the ground through light and colour alone (a test fails
+  if an outline colour comes back). Each species has an `occlusion` and a `rim` colour in its skin:
+  - a rich, saturated ambient-occlusion shade under and behind every foliage cluster, frond, tier,
+    leaf and trunk (deep jungle green under oak, plum under cherry, ochre under birch, crimson under
+    maple…), offset down-right like a real shadow instead of a dark ring;
+  - a sun-kissed rim light along the upper contours (warm sunlight, soft cyan on pine, pastel on
+    cherry / mystic), plus lifted highlights, a sunlit cap, glints and a warm bounce light below;
+  - stage 5 wraps the silhouette in a soft translucent golden halo (no hard rim).
+- **Depth on the ground**: two soft shadows, blurred CSS radial gradients on the farm (outside the
+  swaying tree, so they stay put): a dark contact shadow hugging the trunk and a longer cast shadow
+  thrown back and to the right (sun upper left), growing with the stage and size tier. Elsewhere
+  (cards, Shop) the SVG draws the same pair as stacked translucent ellipses (`shadow` prop).
+- **Alive**: the tree sways about its trunk base (±1.5°) and breathes (scale 0.99 × 1.02) on a 5.2 s
+  loop (`.mg-tree-sway`); its crown (`.mg-foliage`) follows 0.45 s later for a bouncy lag. The phase
+  comes from the tile, `((x + 7y) mod 5) × 0.4 s` (`treeSwayPhase`, tested: side-by-side trees always
+  differ), so the island never sways in unison. Stage 5's aura pulses (`.mg-aura`) and its sparkles
+  twinkle out of step (`.mg-sparkle`). All off for reduced motion.
+- **Tactile**: hover or keyboard focus springs the tree up to 105%, a tap squashes it (105% wide, 95%
+  tall) and it bounces back (spring easing). Sway and squash sit on separate layers so they never
+  fight; the stage sign, mastery badge, bubbles and buff tags live in the label layer and the shadows
+  on the bed, so none of them jitter; bees and falling leaves ride with the crown.
 - **On the farm**: every species grows from the same trunk base on the tile centre, so it stands on the
   full-tile garden bed with its stage sign, bees, popovers and buff tags unchanged.
 - **Picking a species**: the planting form and the Tree Workshop's picker show all ten; the Shop's 🌳
@@ -221,7 +241,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
+| (pending) | feat(garden): outline-free lit trees with soft shadows, idle sway and tap springs |
+| `eb89c78` | feat(garden): ten tree species with 50 chunky 3D sprites and a Shop seed gallery |
 | `1a167c0` | feat(garden): full-tile tree garden beds and auto-tiled continuous streams |
 | `d91e334` | feat(garden): tropical island diorama, chunky toy sprites, buff tags and game HUD overhaul |
 | `ccda259` | docs: formalize PROJECT_STATUS update rule in AGENTS.md and record commit hash |
@@ -240,5 +261,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 60 files, 535 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
+- `npm test`: 60 files, 540 tests passing. `npx tsc --noEmit` and `npm run lint` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

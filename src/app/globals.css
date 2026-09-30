@@ -364,3 +364,39 @@
 @media (prefers-reduced-motion: reduce) {
   .mg-cloud, .mg-bubble, .mg-sheen, .mg-swell { display: none; }
 }
+
+/* ── Living trees (garden/FarmTree, TreeStageSvg) ────────────────────────────
+   The whole tree sways about its trunk base (±1.5deg) and breathes (a little taller and slimmer twice
+   per sway). Its crown (`.mg-foliage`) follows a beat later for a bouncy, toy-like lag. Each tree
+   sets --mg-sway-delay from its tile, so the island never sways in unison. Stage 5: the golden aura
+   pulses and the sparkles twinkle. Transform / opacity only; all off for reduced motion. */
+@keyframes mg-tree-sway {
+  0%, 100% { transform: rotate(-1.5deg) scale(1, 1); }
+  25% { transform: rotate(0deg) scale(0.99, 1.02); }
+  50% { transform: rotate(1.5deg) scale(1, 1); }
+  75% { transform: rotate(0deg) scale(0.99, 1.02); }
+}
+@keyframes mg-foliage {
+  0%, 100% { transform: rotate(-0.8deg) translateY(0); }
+  25% { transform: rotate(0deg) translateY(-1.2px); }
+  50% { transform: rotate(0.8deg) translateY(0); }
+  75% { transform: rotate(0deg) translateY(-1.2px); }
+}
+@keyframes mg-aura {
+  0%, 100% { opacity: 0.75; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+@keyframes mg-sparkle {
+  0%, 100% { opacity: 0.55; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-tree-sway { animation: mg-tree-sway 5.2s ease-in-out var(--mg-sway-delay, 0s) infinite; }
+  .mg-foliage {
+    animation: mg-foliage 5.2s ease-in-out calc(var(--mg-sway-delay, 0s) + 0.45s) infinite;
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+  .mg-aura { animation: mg-aura 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-sparkle { animation: mg-sparkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+}
