@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { exchangeAuthCode, safeNextPath } from '@/features/auth/server'
 import { createClient } from '@/shared/lib/supabase/server'
 
-// GET /auth/callback?code=…&next=/deck/… (API SPEC.md): magic-link landing page.
+// GET /auth/callback?code=…&next=/deck/… (API SPEC.md): where magic links and Google OAuth land.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const code = searchParams.get('code')

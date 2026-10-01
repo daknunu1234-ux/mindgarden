@@ -49,6 +49,16 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
 
+## Sign-in
+
+- **Google 1-click** (active): the login dialog leads with "Đăng nhập bằng Google" (Google logo, loading
+  state while redirecting). `signInWithOAuth({ provider: 'google' })` runs in the browser and Google
+  returns to `/auth/callback`, then to the page the player was on.
+- **Email magic link**: still there, under the Google button.
+- **First sign-in**: both land on `/auth/callback`, which exchanges the code and makes sure the profile
+  row exists with the 300 🪙 starter purse (`ensure_user_profile()`); the signup trigger fills the name
+  and picture from Google. A new farm starts empty, so nothing else is created.
+
 ## Knowledge Engine
 
 - **Authoring**: statements are plain text only (no LaTeX / OCR), cleaned (NFC, single spaces) and
@@ -424,7 +434,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
+| (pending) | feat(auth): Google 1-click sign-in in the login dialog |
+| `12f6cb3` | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
 | `3e31e55` | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
 | `956ef3d` | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
 | `88dc2e7` | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
@@ -458,5 +469,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 73 files, 677 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 73 files, 680 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

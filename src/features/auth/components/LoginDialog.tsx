@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { GameButton, GameDialog, GameDialogContent, GameInput, GameLabel, GameSlab } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { signInWithEmail } from '../actions/signInWithEmail'
+import { GoogleSignInButton } from './GoogleSignInButton'
 
 type Status = { kind: 'idle' } | { kind: 'sent'; email: string } | { kind: 'error'; message: string }
 
@@ -37,7 +38,7 @@ function LoginDialog() {
       <GameDialogContent
         title="🌱 Join the Garden"
         ribbon="leaf"
-        description="We'll email you a magic link. Signing in saves the mastery your trees earn."
+        description="Sign in with Google in one click, or get a magic link by email. Signing in saves the mastery your trees earn."
       >
         {status.kind === 'sent' ? (
           <GameSlab role="status" tone="gold" className="p-4 text-center text-sm text-amber-950">
@@ -51,6 +52,12 @@ function LoginDialog() {
           </GameSlab>
         ) : (
           <form onSubmit={submit} className="space-y-4">
+            <GoogleSignInButton next={next} onError={(message) => setStatus({ kind: 'error', message })} />
+            <p className="flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-amber-900/60">
+              <span aria-hidden className="h-px flex-1 bg-amber-900/20" />
+              or
+              <span aria-hidden className="h-px flex-1 bg-amber-900/20" />
+            </p>
             <div>
               <GameLabel htmlFor="login-email">Email</GameLabel>
               <GameInput

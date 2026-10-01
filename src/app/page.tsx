@@ -165,7 +165,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       <>
         {login === 'error' && (
           <p className="rounded-full border-2 border-amber-500 bg-amber-50/95 px-3 py-1 font-game text-sm font-semibold text-amber-900 shadow-[0_3px_0_rgba(180,83,9,0.4)]">
-            That sign-in link didn&apos;t work. Request a new one with Sign in.
+            That sign-in didn&apos;t work. Try again with Sign in.
           </p>
         )}
         {refund > 0 && !visitOwnerId && (
@@ -210,9 +210,9 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
         </header>
 
         {login === 'error' && (
-          <GamePanel tone="gold" ribbon="gold" title="Sign-in link wilted" className="mb-8">
+          <GamePanel tone="gold" ribbon="gold" title="Sign-in wilted" className="mb-8">
             <p className="text-center text-sm">
-              It may have expired or been opened in a different browser. Request a new one with Sign in.
+              The link may have expired or been opened in a different browser, or the Google sign-in was cancelled. Try again with Sign in.
             </p>
           </GamePanel>
         )}

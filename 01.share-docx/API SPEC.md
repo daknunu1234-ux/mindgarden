@@ -81,7 +81,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 
 | Feature | Action / Route | Method | Description | Auth |
 |---------|---------------|--------|-------------|------|
-| Auth | `/auth/callback` | GET | Exchange the magic-link (PKCE) code for a session | Public |
+| Auth | `/auth/callback` | GET | Exchange the magic-link or Google OAuth (PKCE) code for a session | Public |
+| Auth | Google sign-in (browser, no action) | — | `supabase.auth.signInWithOAuth({ provider: 'google' })` from `GoogleSignInButton`; returns on `/auth/callback` | Public |
 | Auth | `signInWithEmail` | Action/POST | Email a magic link | Public |
 | Auth | `signOut` | Action/POST | Clear the session | Optional |
 | Auth | `getCurrentUser` | Action | Verified user or null (layout, pages) | Optional |
@@ -131,8 +132,21 @@ Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `PO
 ```
 Query:   ?code=<oauth_code>&next=/deck/cell-biology-101
 Success: exchangeCodeForSession(code) → 307 to `next` (same-origin paths only, `auth/lib/safeNextPath`)
-Failure: 302 to /?login=error
+Failure: 302 to /?login=error   (no code: expired link, another browser, or Google sign-in cancelled)
 ```
+- Shared by magic links and Google OAuth. After the exchange, `ensureUserProfile` (`ensure_user_profile()`) creates a missing `users` row with the 300 🪙 starter purse; an existing row is never changed. A new farm needs no other defaults (no placements; trees wait in the Shop)
+
+### Google 1-click sign-in (auth, browser)
+```typescript
+// GoogleSignInButton in LoginDialog ("Đăng nhập bằng Google"), browser Supabase client:
+supabase.auth.signInWithOAuth({
+  provider: 'google',
+  options: { redirectTo: oauthRedirectUrl(window.location.origin, next),   // <origin>/auth/callback(?next=<same-origin path>)
+             queryParams: { access_type: 'offline', prompt: 'select_account' } } })
+```
+- Not a Server Action: the PKCE code verifier must be stored by the browser that receives the code. The button shows a loading state until the browser leaves; a failure to start shows an amber message in the dialog
+- `next` = the page the dialog was opened on (`auth/lib/oauthRedirect.ts`, sanitized by `safeNextPath`; left out for `/`). The signup trigger fills `full_name` / `avatar_url` from Google's `name` / `picture`
+- Setup: Supabase → Authentication → Providers → Google (client id + secret), and `<origin>/auth/callback` in Redirect URLs
 
 ### `signInWithEmail` (auth)
 ```typescript
