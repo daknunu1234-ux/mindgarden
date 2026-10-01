@@ -124,7 +124,7 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | The hosting tree |
 | user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | The contestant (never the host) |
 | current_points | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 and ≤ max_points | Σ tournament `mastery_level` over the tree's current drillable statements |
-| max_points | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | 5 × N, N = drillable statements (the ones the trap engine can ask), refreshed on every answer |
+| max_points | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | 5 × N, N = drillable statements (the ones the question engine can ask: every note since the zero-drop engine, bar a degenerate one like a lone "aaa"), refreshed on every answer |
 | mastery_percentage | NUMERIC(5,2) | GENERATED ALWAYS AS `round(current_points / nullif(max_points, 0) × 100, 2)` STORED | NULL when the tree has no drillable statement |
 | days_count | INT | NOT NULL, DEFAULT 1, CHECK ≥ 1 | Distinct local calendar days with at least one answer on this tree |
 | is_graduated | BOOLEAN | NOT NULL, DEFAULT FALSE | Every drillable statement reached 5/5. Set once, never cleared |
@@ -146,7 +146,7 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 
 | Rule | Enforced by |
 |------|-------------|
-| Mastery % = current_points / (N × 5) × 100; N = drillable statements (a non-drillable one can never be asked, so 100% stays reachable) | Generated column; `record_tournament_answer` gets the tree's drillable ids from the server and sums only those |
+| Mastery % = current_points / (N × 5) × 100; N = drillable statements (a non-drillable one can never be asked, so 100% stays reachable; in practice every statement counts) | Generated column; `record_tournament_answer` gets the tree's drillable ids from the server and sums only those |
 | A practice day counts once: a later local day adds 1; more answers that day (or an earlier date) add nothing | `days_count = case when p_day > last_practiced_date then days_count + 1`, `last_practiced_date = greatest(...)`; `p_day` = the contestant's local day (browser timezone, UTC fallback, as for `practice_days`) |
 | Graduation at 100% is permanent, and a graduate's run is frozen | `is_graduated` is set when `max_points > 0 and current_points >= max_points`; later answers raise `TOURNAMENT_GRADUATED`; `graduated_at` is CHECK-paired with it |
 | Only a signed-in visitor on a public, hosting tree competes; never the host | `shared/lib/visitor.ts` `tournamentAccess` in the app, re-checked in `record_tournament_answer` (`TOURNAMENT_CLOSED`, `TOURNAMENT_HOST`) |

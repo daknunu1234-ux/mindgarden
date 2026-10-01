@@ -65,7 +65,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `NODE_NOT_EMPTY` | 409 | Deleting a root that still has statements or sub-roots |
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
-| `DRILL_NO_ITEMS` | 422 | Node has no drillable item (none left, or all `INSUFFICIENT_MUTATIONS`) |
+| `DRILL_NO_ITEMS` | 422 | The deck / branch has no askable statement (an empty root; since the zero-drop question engine, only a lone note like "aaa" can't be asked) |
 | `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs 100 🪙 (`createDeck`), cloning one costs min(100 + statements, 150) 🪙 (`cloneDeck`) |
 | `FORBIDDEN_VISITOR_PRACTICE` | 403 | Practising or grading a tree you don't own (strict read-only visitor mode, signed out included). Message: "You must clone this tree to your garden to practice it!" (`getDrillSession`, `checkDrillAnswer`, `submitDrillResult`) |
 | `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
@@ -114,8 +114,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
 | Decks | `chopDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress, farm tile; Woodshop refund), answers `{ id, refund, totalCoins }` (no redirect, no revalidate). The farm's 🪓 Chop and the deck page's Danger Zone | Required |
-| Drill | `getDrillQuestion` | Action/POST | 2–3 choices (1 correct + 1–2 traps) for a node | Optional |
-| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (1 correct + 1–2 traps per item). Owner only | Required (owner) |
+| Drill | `getDrillQuestion` | Action/POST | Not built (superseded by `getDrillSession({ nodeId })`) | Optional |
+| Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (one 2–4 choice question per item: cloze, recall, true/false, recognition…). Owner only | Required (owner) |
 | Drill | `checkDrillAnswer` | Action/POST | Grade one answer without saving progress. Owner only | Required (owner) |
 | Progress | `submitDrillResult` | Action/POST | Grade answer, update item mastery & streak. Owner only | Required (owner) |
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
@@ -266,10 +266,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```typescript
 // Input (CreateKnowledgeItemDto): { nodeId: string; statement: string /* 1–500 chars, plain text, no \commands like \frac */ }
 // Server sets: correct_stmt = statement, prompt = the root's title, trap_rules = { negate: true }
-// data: { id: string; drillable: boolean /* engine finds ≥ 1 trap */ }
+// data: { id: string; drillable: boolean /* the question engine can ask it even alone in its deck: true unless it has no two distinct words or letters */ }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND
 ```
-- Authors never see or send trap rules; non-drillable items are saved but skipped by drill sessions
+- Authors never see or send trap rules. Zero drop: every note gets a question (cloze, recall, true/false, recognition, or "spot your exact note"; backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable
 
 ### `createKnowledgeItems` (decks)
 ```typescript
@@ -320,9 +320,9 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `submitTournamentAnswer` (tournament)
 ```typescript
-// Input (SubmitTournamentAnswerDto): { deckId: string; itemId: string; seed: string; tag: 'A' | 'B' | 'C'; timeZone?: string }
+// Input (SubmitTournamentAnswerDto): { deckId: string; itemId: string; seed: string; tag: 'A' | 'B' | 'C' | 'D'; timeZone?: string }
 // data
-{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
+{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C' | 'D';
   masteryLevel: 0–5; previousMasteryLevel: 0–5;          // this statement's TOURNAMENT level
   currentPoints: number; maxPoints: number;              // Σ levels / 5 × N (N = drillable statements)
   masteryPercentage: number | null;                      // 2 decimals; null without drillable statements
@@ -331,7 +331,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (the host), TOURNAMENT_CLOSED,
 //         TOURNAMENT_GRADUATED, DECK_NOT_FOUND, ITEM_NOT_FOUND (not a drillable statement of this tree), INTERNAL_ERROR
 ```
-- **Grading** on the server, exactly like `submitDrillResult` (re-run the trap engine with the seed and the node's siblings); then `record_tournament_answer` (service role) applies ±1, counts a new local day once, recomputes points over the tree's current drillable statements and graduates at 100% (DATABASE.md "Mind Tournament")
+- **Grading** on the server, exactly like `submitDrillResult` (rebuild the question with the question engine from the seed and the whole tree); then `record_tournament_answer` (service role) applies ±1, counts a new local day once, recomputes points over the tree's current drillable statements and graduates at 100% (DATABASE.md "Mind Tournament")
 - **Isolated**: never writes `user_progress`, `practice_days` (streak) or coins. A graduate's run is frozen (`TOURNAMENT_GRADUATED`)
 - The drill overlay shows the score after each round and a "🎓 Tree Mastered!" dialog with confetti on `justGraduated`
 
@@ -355,11 +355,11 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // data
 { itemId: string; prompt: string;
   seed: string;                               // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
-  choices: { tag: 'A' | 'B' | 'C'; text: string }[] }   // shuffled, no correctTag
+  choices: { tag: 'A' | 'B' | 'C' | 'D'; text: string }[] }   // shuffled, no correctTag
 // Errors: VALIDATION_FAILED, NODE_NOT_FOUND, DRILL_NO_ITEMS
 ```
 - **Item pick**: signed in → lowest `mastery_level`, then oldest `last_practiced_at`; anonymous → first by `created_at` not in `excludeItemIds`
-- Items returning `INSUFFICIENT_MUTATIONS` are skipped
+- Not built; see `getDrillSession`
 
 ### `getDrillSession` (drill)
 ```typescript
@@ -372,10 +372,14 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   mode: 'practice' | 'tournament';           // 'tournament' only from getTournamentSession
   sessionId: string;                          // crypto.randomUUID() per call
   focus: { nodeId: string; title: string } | null;   // set for a branch round
-  questions: { itemId: string; nodeTitle: string; prompt: string;
+  questions: { itemId: string; nodeTitle: string;
+               kind: 'cloze' | 'recall-right' | 'recall-left' | 'statement' | 'recognize' | 'exact';
+               context: string[];             // breadcrumb badge: root titles, top-level → the note's own root
+               prompt: string;                // the big line: a sentence with ____, a key, "Which statement is true?"…
+               instruction: string;           // the hint under it ("Fill in the blank"); may be ''
                seed: string;                  // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
-               choices: { tag: 'A' | 'B' | 'C'; text: string }[] }[];   // no correctTag
-  skippedCount: number;                       // items that returned INSUFFICIENT_MUTATIONS
+               choices: { tag: 'A' | 'B' | 'C' | 'D'; text: string }[] }[];   // 2–4 choices, no correctTag
+  skippedCount: number;                       // notes the question engine can't ask (a lone "aaa"); nearly always 0
   masteredCount: number;                      // drillable items the player has at 5/5 (resting, or mixed in when reviewing)
   includeMastered: boolean }
 // Errors: VALIDATION_FAILED, DECK_NOT_FOUND, NODE_NOT_FOUND (nodeId not in this deck), DRILL_NO_ITEMS,
@@ -387,24 +391,24 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Order**: items shuffled with `seededRandom(sessionId)`, then lowest mastery first (`lib/queue.ts` `orderByMastery`, stable, so ties keep the shuffle), then cut to `limit`. A queue shorter than `limit` gives a shorter round (no error)
 - **Round size** (`lib/drillSize.ts`): 5, 10 (default) or 20. Pages read `?limit=` (`/deck/[slug]/drill?limit=5`, `/deck/[slug]/tournament?limit=20`), else the `mindgarden_drill_size` cookie the selector saves, else 10. `SessionLaunchModal` / `DrillSizeSelector` pick it before a round; sizes the scope can't fill are disabled or badged "only N"
 - **Launch pop-up** (drill's `SessionLaunchModal` via `SessionLaunchProvider` / `SessionLaunchButton` / `useSessionLaunch`, pure plan `lib/sessionLaunch.ts` `planLaunch`): every start on the deck page opens it first, in both modes and both scopes. "💧 Water Tree" / "🌿 Review Mastered" / "⚔️ Join Mind Tournament" (whole tree) and "Drill Root" / "⚔️ Compete Root" (mindmap statement cards, the root inspector, the visitor's tree list). It shows "[Water Tree 🌱 / Review 🌿 / Compete ⚔️] - [Whole Tree / Root: name]", the questions available in that scope (drillable statements minus the mode's 5/5 ones, the owner's mastery for watering, the contestant's tournament levels for competing), the 5 / 10 / 20 selector, and "Start Session" → `/deck/[slug]/drill?limit=…(&rootId=…)` or `/deck/[slug]/tournament?limit=…(&rootId=…)`. Both pages render the same header (`DrillRoundHeader`) and runner (`DrillOverlay`); only where answers are saved differs
-- **Traps**: each item gets the other statements of its node as siblings (sibling concept swaps, backend/ARCHITECTURE.md §7)
+- **Questions** (`shared/lib/questionEngine.ts`, backend/ARCHITECTURE.md §7): the whole deck is prepared once (`prepareDeck`), then each item gets one question for its seed (`buildQuestion`): cloze (author `[marks]`, numbers / years, quoted and technical terms), key–value / definition recall in both directions, true/false traps on the note's proposition (a predicate-only note inherits its root's title as subject), recognition for short items, and the fallbacks. The whole deck is the context even for a branch round, because grading rebuilds questions from the whole deck
 - With `nodeId` it covers what `getDrillQuestion` was planned for (per-node practice from the mindmap); `getDrillQuestion` is not built
 
 ### `checkDrillAnswer` (drill)
 ```typescript
-// Input (DrillSubmissionDto, from progress): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' }
+// Input (DrillSubmissionDto, from progress): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' | 'D' }
 // data
-{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C' }
+{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C' | 'D' }
 // Errors: VALIDATION_FAILED, ITEM_NOT_FOUND, FORBIDDEN_VISITOR_PRACTICE (not the item's deck owner, or signed out)
 ```
-- **Grading**: same as `submitDrillResult` (re-run `generateTraps` with the seed), but saves nothing
+- **Grading**: same as `submitDrillResult` (rebuild the question from the seed and the whole deck), but saves nothing
 - Owner only, like `getDrillSession`: used when the owner's session expired mid-round
 
 ### `submitDrillResult` (progress)
 ```typescript
-// Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C'; timeZone?: string /* browser IANA zone */ }
+// Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' | 'D'; timeZone?: string /* browser IANA zone */ }
 // data
-{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C';
+{ isCorrect: boolean; correctTag: 'A' | 'B' | 'C' | 'D';
   masteryLevel: 0 | 1 | 2 | 3 | 4 | 5; previousMasteryLevel: 0 | 1 | 2 | 3 | 4 | 5; mistakeCount: number;
   streakCount: number | null;    // current daily streak; null if it could not be saved (the answer still counts)
   coinsEarned: number;           // 🪙 paid by this answer: 1 on the item's first 5/5, else 0
@@ -412,12 +416,12 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ITEM_NOT_FOUND, FORBIDDEN_VISITOR_PRACTICE (not the item's deck owner)
 ```
 - **Owner only**: a visitor's answer is refused before anything is saved, so no progress, streak or 🪙 can be earned on someone else's tree
-- **Grading**: re-run `generateTraps(correctStmt, trapRules, seed)`, compare `tag` with `correctTag`
+- **Grading**: `decks/server` `findDrillItem` loads the item with its whole deck (`deckItems`, the rows `listDrillItems` gives sessions); the question engine rebuilds the question from the seed (`prepareDeck` + `buildQuestion`); `tag` is compared with its `correctTag`
 - **Mastery** (`nextMastery` in `progress/lib`, scale in `shared/lib/mastery.ts`): correct → `min(level + 1, 5)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`. A 5/5 item drops to 4/5 on a wrong answer (it can only get there in review mode)
 - **Write**: first answer inserts the `user_progress` row, later ones update `mastery_level`, `mistake_count`, `last_practiced_at = now()` (players can't rewrite the row's user/item, DATABASE.md "Gold coins")
 - **Gold** (admin client, `progress/services/coins.ts`): if the answer leaves the item at 5/5 and it was never paid (`coin_awarded_at` NULL), `award_mastery_coin` pays 1 🪙 atomically. Once per item ever: re-mastering after a drop, or answering a mastered item again, pays 0. A coin failure never fails the answer (`coinsEarned: 0`, `totalCoins: null`). The client pushes `totalCoins` into `shared/stores/CoinsProvider` so the farm HUD updates without a reload. There's no `revalidatePath` because it would re-render the drill route and restart the round
 - **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak")
-- **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it passes the item's node siblings to the engine, exactly like `getDrillSession`
+- **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it gives the engine the same whole-deck context as `getDrillSession` (one deck load per graded answer)
 - **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"). Statements reach players only through `getDeckEditor` (owner) and `getDeckReader` (public trees, read-only); `trap_rules` and the correct tag never do
 
 ### `updateDeck` (decks)

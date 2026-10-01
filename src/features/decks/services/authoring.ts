@@ -201,11 +201,6 @@ export async function insertKnowledgeItem(
   const owner = await checkDeckOwner(supabase, node.deck_id, userId)
   if (!owner.success) return owner
 
-  // Existing statements in this root become sibling-swap material for the new one
-  // (read via answers.ts: the owner check above authorizes this node).
-  const siblings = await readAnswersForNodes(supabase, [nodeId])
-  if (!siblings.success) return siblings
-
   const { data, error } = await supabase
     .from('knowledge_items')
     .insert({
@@ -223,8 +218,7 @@ export async function insertKnowledgeItem(
     console.error('[decks] insertKnowledgeItem failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not add the statement')
   }
-  const siblingStatements = siblings.data.map((s) => s.correctStmt)
-  return ok({ id: data.id, drillable: isDrillable(statement, DEFAULT_TRAP_RULES, siblingStatements) })
+  return ok({ id: data.id, drillable: isDrillable(statement) })
 }
 
 export type BulkInsertResult = {
@@ -272,18 +266,13 @@ export async function insertKnowledgeItems(
     return fail('INTERNAL_ERROR', 'Could not import the statements')
   }
 
-  const all = [...existing.data.map((s) => s.correctStmt), ...fresh]
   return ok({
     slug: owner.data.slug,
     // Rows come back in insert order.
     created: fresh.map((statement, i) => ({
       id: data[i].id,
       statement,
-      drillable: isDrillable(
-        statement,
-        DEFAULT_TRAP_RULES,
-        all.filter((s) => s !== statement),
-      ),
+      drillable: isDrillable(statement),
     })),
     skipped,
   })
@@ -345,15 +334,11 @@ async function flattenDeckStatements(supabase: Client, deckId: string, treeType:
         id: n.id,
         title: n.title,
         depth,
-        items: (byNode.get(n.id) ?? []).map((item, _, all) => ({
+        items: (byNode.get(n.id) ?? []).map((item) => ({
           id: item.itemId,
           statement: item.correctStmt,
-          // Same siblings the drill session will use, so ✅/💧 matches what players get.
-          drillable: isDrillable(
-            item.correctStmt,
-            item.trapRules,
-            all.filter((other) => other.itemId !== item.itemId).map((other) => other.correctStmt),
-          ),
+          // The question engine asks every note it can; ✅/💧 matches what players get.
+          drillable: isDrillable(item.correctStmt),
         })),
       })
       visit(n.id, depth + 1)
@@ -580,9 +565,7 @@ export async function editKnowledgeItem(
   }
   if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can edit statements')
 
-  const siblings = await readAnswersForNodes(supabase, [item.node_id])
-  const others = siblings.success ? siblings.data.filter((s) => s.itemId !== itemId).map((s) => s.correctStmt) : []
-  return ok({ id: itemId, statement: text, drillable: isDrillable(text, DEFAULT_TRAP_RULES, others), slug: owner.data.slug })
+  return ok({ id: itemId, statement: text, drillable: isDrillable(text), slug: owner.data.slug })
 }
 
 export type RemovedBranch = { rootId: string; slug: string; deletedStatements: number; deletedSubRoots: number }

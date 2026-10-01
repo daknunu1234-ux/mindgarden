@@ -3,16 +3,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const OWNER = 'owner-1'
 const STATEMENT = 'Khi nhiệt độ tăng, áp suất khí lớn hơn.'
 
+// The deck as listDrillItems loads it: grading rebuilds the question from the whole deck.
+const ITEM = {
+  id: 'i1',
+  nodeId: 'n1',
+  nodeTitle: 'Khí',
+  prompt: 'Khí',
+  correctStmt: STATEMENT,
+  trapRules: { negate: true },
+  siblingStatements: ['Khi áp suất giảm, thể tích khí tăng.'],
+  path: ['Khí'],
+  ancestry: ['n1'],
+}
+const SIBLING = { ...ITEM, id: 'i2', correctStmt: 'Khi áp suất giảm, thể tích khí tăng.', siblingStatements: [STATEMENT] }
+
 vi.mock('@/features/decks/server', () => ({
   findDrillItem: vi.fn(async () => ({
     success: true,
     data: {
-      id: 'i1',
-      nodeId: 'n1',
+      id: ITEM.id,
       ownerId: OWNER,
-      correctStmt: STATEMENT,
-      trapRules: { negate: true },
-      siblingStatements: ['Khi áp suất giảm, thể tích khí tăng.'],
+      correctStmt: ITEM.correctStmt,
+      trapRules: ITEM.trapRules,
+      siblingStatements: ITEM.siblingStatements,
+      deckItems: [ITEM, SIBLING],
     },
   })),
 }))
@@ -31,6 +45,7 @@ describe('strict read-only visitor mode: grading', () => {
   it('grades the owner', async () => {
     const res = await gradeSubmission({} as never, submission, OWNER)
     expect(res.success).toBe(true)
+    if (res.success) expect(['A', 'B', 'C', 'D']).toContain(res.data.correctTag)
   })
 
   it('refuses a visitor and a signed-out player with FORBIDDEN_VISITOR_PRACTICE', async () => {

@@ -10,7 +10,12 @@ const LINH = 'linh'
 const ITEMS = [
   { id: 'i1', nodeId: 'n1', nodeTitle: 'Bào quan', prompt: 'Bào quan', correctStmt: 'Ty thể sản sinh ATP.', trapRules: { negate: true } },
   { id: 'i2', nodeId: 'n1', nodeTitle: 'Bào quan', prompt: 'Bào quan', correctStmt: 'Ribosome tổng hợp protein.', trapRules: { negate: true } },
-].map((item, _i, all) => ({ ...item, siblingStatements: all.filter((o) => o.id !== item.id).map((o) => o.correctStmt) }))
+].map((item, _i, all) => ({
+  ...item,
+  siblingStatements: all.filter((o) => o.id !== item.id).map((o) => o.correctStmt),
+  path: [item.nodeTitle],
+  ancestry: [item.nodeId],
+}))
 
 function tree(deck: Partial<{ isPublic: boolean; isTournamentOpen: boolean }> = {}) {
   vi.mocked(listDrillItems).mockResolvedValue({

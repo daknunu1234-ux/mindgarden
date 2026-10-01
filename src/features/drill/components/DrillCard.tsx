@@ -14,6 +14,16 @@ type DrillCardProps = {
   onSelect: (tag: DrillTag) => void
 }
 
+// The ribbon over the question: what kind of question this is.
+const KIND_TITLE: Record<DrillQuestion['kind'], string> = {
+  cloze: 'Fill the gap',
+  'recall-right': 'Recall',
+  'recall-left': 'Recall',
+  statement: 'Which is true?',
+  recognize: 'Which belongs here?',
+  exact: 'Spot your note',
+}
+
 function choiceState(tag: DrillTag, state: DrillState): ChoiceState {
   if (state.status === 'answering' || state.status === 'done') return 'idle'
   if (state.status === 'checking') return tag === state.picked ? 'pending' : 'idle'
@@ -30,12 +40,21 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
 
   return (
     <div className="space-y-5">
-      {/* Items authored in-app use the root title as their prompt; then the ribbon says so instead. */}
-      <GamePanel tone="parchment" ribbon="leaf" title={question.prompt !== question.nodeTitle ? question.nodeTitle : 'Which is true?'}>
-        <h2 className="text-center font-game text-xl leading-snug font-bold whitespace-pre-wrap sm:text-2xl">{question.prompt}</h2>
-        {question.prompt !== question.nodeTitle && (
-          <p className="mt-1 text-center text-sm font-medium text-amber-900/65">Which statement is true?</p>
+      {/* The breadcrumb badge says where the note lives, so a fragment ("compiles down to clean
+          JavaScript") reads as the full idea; then the question line and its hint. */}
+      <GamePanel tone="parchment" ribbon="leaf" title={KIND_TITLE[question.kind]}>
+        {question.context.length > 0 && (
+          <p className="mb-2 flex justify-center">
+            <span
+              className="max-w-full truncate rounded-full border-2 border-emerald-700/30 bg-emerald-50 px-3 py-0.5 font-game text-xs font-bold text-emerald-900"
+              title={question.context.join(' › ')}
+            >
+              [{question.context.join(' › ')}]
+            </span>
+          </p>
         )}
+        <h2 className="text-center font-game text-xl leading-snug font-bold whitespace-pre-wrap sm:text-2xl">{question.prompt}</h2>
+        {question.instruction && <p className="mt-1 text-center text-sm font-medium text-amber-900/65">{question.instruction}</p>}
       </GamePanel>
 
       <div className="space-y-3.5" role="group" aria-label="Choices">
@@ -56,14 +75,31 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
           ) : (
             <div className="text-amber-950">
               <p className="font-game text-lg font-bold text-amber-700">🌿 Almost! This root needs a little more water</p>
-              <p className="mt-3 text-sm">
-                <span className="font-semibold">The trap changed: </span>
-                <MutationHighlight text={textOf(state.picked)} compareTo={textOf(state.answer.correctTag)} tone="amber" />
-              </p>
-              <p className="mt-1.5 text-sm">
-                <span className="font-semibold">The true statement: </span>
-                <MutationHighlight text={textOf(state.answer.correctTag)} compareTo={textOf(state.picked)} tone="gold" />
-              </p>
+              {/* A true/false trap differs from the note in one place: highlight it. Other kinds just
+                  show the right answer next to the pick. */}
+              {question.kind === 'statement' || question.kind === 'exact' ? (
+                <>
+                  <p className="mt-3 text-sm">
+                    <span className="font-semibold">{question.kind === 'exact' ? 'Your pick changed: ' : 'The trap changed: '}</span>
+                    <MutationHighlight text={textOf(state.picked)} compareTo={textOf(state.answer.correctTag)} tone="amber" />
+                  </p>
+                  <p className="mt-1.5 text-sm">
+                    <span className="font-semibold">{question.kind === 'exact' ? 'Your note: ' : 'The true statement: '}</span>
+                    <MutationHighlight text={textOf(state.answer.correctTag)} compareTo={textOf(state.picked)} tone="gold" />
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm">
+                    <span className="font-semibold">You picked: </span>
+                    <span className="rounded bg-amber-200 px-0.5">{textOf(state.picked)}</span>
+                  </p>
+                  <p className="mt-1.5 text-sm">
+                    <span className="font-semibold">The answer: </span>
+                    <span className="rounded bg-yellow-200 px-0.5 font-semibold">{textOf(state.answer.correctTag)}</span>
+                  </p>
+                </>
+              )}
             </div>
           )}
           {state.progress && <MasteryMeter progress={state.progress} />}

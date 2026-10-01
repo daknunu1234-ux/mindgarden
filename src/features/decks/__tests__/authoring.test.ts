@@ -74,14 +74,20 @@ describe('isDrillable with the default { negate: true }', () => {
     expect(isDrillable('Mitochondria produce ATP.')).toBe(true)
   })
 
-  it('becomes true once a sibling statement exists in the same root', () => {
-    expect(isDrillable('Ribosome tổng hợp protein.')).toBe(false)
-    expect(isDrillable('Ribosome tổng hợp protein.', undefined, ['Ty thể sản sinh ATP.'])).toBe(true)
+  // Zero drop: notes the old trap-only engine rejected are all askable now (cloze, recall,
+  // recognition, or at worst "spot your exact note"), with or without siblings.
+  it('is true for notes the old engine rejected: no siblings, no flippable word, fragments', () => {
+    expect(isDrillable('Ribosome tổng hợp protein.')).toBe(true)
+    expect(isDrillable('Cells need water.')).toBe(true)
+    expect(isDrillable('Ty thể của tế bào.')).toBe(true)
+    expect(isDrillable('compiles down to clean JavaScript')).toBe(true)
+    expect(isDrillable('E = mc^2')).toBe(true)
+    expect(isDrillable('ATP')).toBe(true)
   })
 
-  it('is false only when no trap can be made', () => {
-    expect(isDrillable('Cells need water.')).toBe(false)
-    expect(isDrillable('Ty thể của tế bào.')).toBe(false)
+  it('is false only for a note with no two distinct words or letters', () => {
+    expect(isDrillable('aaa')).toBe(false)
+    expect(isDrillable('[x]')).toBe(false)
   })
 })
 

@@ -69,7 +69,7 @@ src/
     │   ├── components/             # RootMap, MindmapCards (NodePill, StatementCard), MasteryRing
     │   ├── hooks/                  # mindmapLayout (pure, tested), nodeMastery(), scene geometry
     │   └── types/                  # RootNodeView, RootLayout
-    ├── drill/                      # 2–3 choice cards & feedback (+ getDrillQuestion on the server)
+    ├── drill/                      # 2–4 choice cards with breadcrumb badge & feedback
     │   ├── components/             # DrillOverlay, DrillCard, ChoiceButton, WateringScene, MutationHighlight
     │   ├── hooks/                  # useDrillSession
     │   └── types/                  # DrillState, DrillChoiceView
@@ -87,7 +87,7 @@ src/
 |---------|-----------------|---------------------------|----------|-------|-------------------|
 | `garden` | Farm World (default `/`): 16 × 16 isometric grid, 🏪 Shop, placement mode; classic grid (`/?view=grid`); single tree, stage math | `FarmIslandView`, `FarmIsometricGrid`, `FarmShopModal`, `GardenGrid`, `TreeCard`, `useTreeStage` | Know about roots or drill | Trees (decks + progress) and placements from the page | Its own farm actions (`placeFarmItem`, `removeFarmPlacement`); deck pages via links |
 | `mindmap` | Mindmap layout (crown → categories → statements), collapse, 🔍 inspector drawer, owner ✏️ hooks (wired to decks in `app/`) | `RootMap`, `NodePill`, `StatementCard`, `layoutMindmap` | Load questions, compute tree stage | `tree` + item levels props | URL: `router.push('/deck/[slug]/drill?nodeId=id')` |
-| `drill` | Question, 2–3 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
+| `drill` | Question (breadcrumb badge, prompt, instruction), 2–4 choices, feedback, confetti | `DrillOverlay`, `DrillCard`, `ChoiceButton`, `MutationHighlight`, `useDrillSession` | Draw trees/roots, render login UI | `slug` + `?nodeId=` | `getDrillQuestion`, `submitDrillResult`, `StreakProvider`, `LoginDialogProvider`, `router.refresh()` |
 | `auth` | Sign-in and profile entry points | `LoginDialog`, `ProfileButton` | Touch deck or progress data | Server user (layout) | Supabase OAuth → `/auth/callback` |
 | `tournament` | Mind Tournament boards on `/deck/[slug]` (📜 Hall of Fame, 🌱 Active Learners) and the live badge | `TournamentBoard`, `TournamentLiveBadge` | Draw rounds (drill does, in `mode: 'tournament'`) | Boards + the viewer's standing from `getTournamentBoards` | Owner switch lives in decks (`TournamentHostToggle`); "⚔️ Join Mind Tournament" links to `/deck/[slug]/tournament` |
 | `user-profile` | Gardener's Trophy & Record Hall on `/profile` | `GardenerCard`, `GardenStatsGrid`, `MightyShowcase`, `PlantedTreeList` | Call actions or query tables | View models from the page (`auth` user, `progress.getGardenStats`, tree pictures from `garden`) | Links to `/deck/[slug]`, `/deck/[slug]/drill`, `/deck/new` |

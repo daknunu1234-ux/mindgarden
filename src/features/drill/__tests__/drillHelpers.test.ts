@@ -66,7 +66,9 @@ describe('drill DTOs', () => {
     expect(GetDrillSessionDto.safeParse({ slug: 'Bad Slug' }).success).toBe(false)
     // An unknown round size falls back to 10 instead of failing the round.
     expect(GetDrillSessionDto.parse({ slug: 'ok', limit: 99 }).limit).toBe(10)
-    expect(CheckDrillAnswerDto.safeParse({ itemId: ITEM, seed: 'abc', tag: 'D' }).success).toBe(false)
+    // Questions have up to four choices (A–D) now; anything else is refused.
+    expect(CheckDrillAnswerDto.safeParse({ itemId: ITEM, seed: 'abc', tag: 'D' }).success).toBe(true)
+    expect(CheckDrillAnswerDto.safeParse({ itemId: ITEM, seed: 'abc', tag: 'E' }).success).toBe(false)
     expect(CheckDrillAnswerDto.safeParse({ itemId: 'nope', seed: 'abc', tag: 'A' }).success).toBe(false)
   })
 })

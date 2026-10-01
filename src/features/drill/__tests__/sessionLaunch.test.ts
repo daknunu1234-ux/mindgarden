@@ -27,6 +27,8 @@ const ITEMS = NODES.flatMap((node, n) =>
     correctStmt: `Chỉ số ${n}${k} tăng khi trời nóng.`,
     trapRules: { negate: true },
     siblingStatements: [],
+    path: [node.title],
+    ancestry: [node.id],
   })),
 )
 const ids = (title: string) => [0, 1].map((k) => `i-${title}-${k}`)

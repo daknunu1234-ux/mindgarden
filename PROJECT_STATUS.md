@@ -91,7 +91,31 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 - **Scoped question pacing**: one launch modal picks the session size (5 / 10 / 20 questions) and the
   scope (the whole tree or a single root branch, `?nodeId=`). 5/5 statements rest from normal rounds
   unless the player chooses review (`?review=1`).
-- **Trap engine** (`shared/lib/trapEngine.ts`): pure and deterministic (seeded), no DB, no network.
+- **Question engine, zero drop** (`shared/lib/questionEngine.ts` + `notePatterns.ts` + `trapEngine.ts`; all pure and
+  seeded, no DB, no network; backend/ARCHITECTURE.md §7). Mindmap notes are fragments, so no note needs to be a full
+  sentence any more: every note gets a 2–4 choice question (A–D), server-graded. The ✅ / 💧 "not drillable" status
+  is gone in practice (only a lone note with no two distinct words or letters, like "aaa", can't be asked).
+  - **Contextual inheritance**: a predicate-only note ("compiles down to clean JavaScript" under "TypeScript",
+    "sản sinh ATP" under "Ty thể") takes its root's title as subject: "TypeScript compiles down to clean
+    JavaScript". Every question shows its breadcrumb badge (`[Sinh học › Bào quan]`).
+  - **Key–value & definitions**: `Key: Value`, `Key - Value`, `Key = Value`, "X là Y", "X nghĩa là Y", "X is
+    defined as Y", "X refers to Y"… are asked both ways ("Ty thể: ____" and "____: nhà máy năng lượng"), with
+    other notes' values / keys as the wrong choices.
+  - **Cloze**: `[author marks]` (then only cloze), numbers and years (plausible wrong numbers: a year stays a
+    year, `%` and decimals kept), "quoted" terms, proper nouns and technical terms (ATP, JavaScript, Hà Nội, pH).
+  - **True / false**: the classic one-mutation traps (sibling swaps, tăng/giảm, operators, negation), now on the
+    note's full proposition.
+  - **Recognition**: short phrases / bullet items: "Which note belongs under “Phân tử”?" with items from
+    sibling categories (never the same root or anything below it).
+  - **Fallbacks** (nothing above fits): recognition across the deck, then "Which is exactly your note?" (copies
+    with two words swapped or one dropped). Recognition stands in for the classic "front: root / back: note"
+    flashcard so the answer is still checked on the server: a self-graded card would let anyone claim mastery
+    and the 5/5 🪙.
+  - **Plausible distractors**: closest notes first, only from the note's own subject when it has any (3 good
+    choices beat 4 with an odd one out), never a root title shown in the badge.
+  - **One context everywhere**: sessions, grading (`findDrillItem` now loads the whole deck: one deck read per
+    graded answer) and the Mind Tournament prepare the same whole deck, so a branch round grades exactly what
+    it showed (`drill/__tests__/questionConsistency.test.ts`). Tournament N now counts every note.
 - **Visitors**: strict read-only. They read every root and statement of a shared tree, then clone it to
   practise (progress is not copied). The Mind Tournament is the only exception.
 
@@ -360,7 +384,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
+| (pending) | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
+| `eed0080` | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
 | `b9195ed` | style(decks): statement rows start with their text; status moves to a trailing badge |
 | `89e737f` | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
 | `7d77fdb` | feat(decks): inline outline editor in the Tree Workshop; mindmap canvas restored |
@@ -390,5 +415,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 66 files, 594 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 69 files, 638 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

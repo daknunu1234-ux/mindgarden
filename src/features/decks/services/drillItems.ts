@@ -27,10 +27,18 @@ export type DrillSourceItem = {
   trapRules: TrapRules
   // True statements of the other items in the same node, for sibling concept swaps.
   siblingStatements: string[]
+  // Breadcrumb: root titles from the top-level root down to this item's root, and their ids. The
+  // question engine reads notes in context (a predicate-only note inherits its root as subject;
+  // recognition questions use other roots' notes as distractors).
+  path: string[]
+  ancestry: string[]
 }
 export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'> & {
   // Owner of the item's deck: grading refuses anyone else (read-only visitors).
   ownerId: string
+  // Every item of the deck, exactly as listDrillItems returns them: the question engine needs the
+  // same context to rebuild the question it showed, or the correct tag would differ.
+  deckItems: DrillSourceItem[]
 }
 export type DeckRef = { deckId: string } | { slug: string }
 export type DrillNode = { id: string; parentId: string | null; title: string }
@@ -73,6 +81,7 @@ export async function listDrillItems(
   if (!answers.success) return answers
   const byNode = answersByNode(answers.data)
   const byItem = new Map(answers.data.map((a) => [a.itemId, a]))
+  const lineage = nodeLineage(nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })))
 
   // Siblings = every other statement in the node, exactly what findDrillItem uses for grading.
   // The engine sorts them, so their order doesn't matter.
@@ -91,6 +100,8 @@ export async function listDrillItems(
             correctStmt: answer.correctStmt,
             trapRules: answer.trapRules,
             siblingStatements: (byNode.get(node.id) ?? []).filter((a) => a.itemId !== item.id).map((a) => a.correctStmt),
+            path: lineage.get(node.id)?.path ?? [node.title],
+            ancestry: lineage.get(node.id)?.ancestry ?? [node.id],
           },
         ]
       }),
@@ -111,8 +122,25 @@ export async function listDrillItems(
   })
 }
 
-// One item with its answer and its node siblings, for server-side grading.
-// Must feed the engine the same siblings as listDrillItems, or the correct tag would differ.
+// Root id → its breadcrumb (titles and ids from the top-level root down to it). A cycle or a
+// missing parent just ends the walk, so a malformed tree never loops.
+export function nodeLineage(nodes: readonly DrillNode[]): Map<string, { path: string[]; ancestry: string[] }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const out = new Map<string, { path: string[]; ancestry: string[] }>()
+  for (const node of nodes) {
+    const chain: DrillNode[] = []
+    const seen = new Set<string>()
+    for (let at: DrillNode | undefined = node; at && !seen.has(at.id); at = at.parentId ? byId.get(at.parentId) : undefined) {
+      seen.add(at.id)
+      chain.unshift(at)
+    }
+    out.set(node.id, { path: chain.map((n) => n.title), ancestry: chain.map((n) => n.id) })
+  }
+  return out
+}
+
+// One item with its answer, for server-side grading, plus the whole deck as listDrillItems loads it:
+// the question engine must see the same context the session saw, or the correct tag would differ.
 // The user client (RLS) proves the item is readable before any answer is read.
 export async function findDrillItem(
   supabase: SupabaseClient<Database>,
@@ -120,7 +148,7 @@ export async function findDrillItem(
 ): Promise<ActionResult<DrillGradingItem>> {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, node_id, mindmap_nodes(decks(user_id))')
+    .select('id, node_id, mindmap_nodes(deck_id)')
     .eq('id', itemId)
     .maybeSingle()
 
@@ -128,20 +156,20 @@ export async function findDrillItem(
     console.error('[decks] findDrillItem failed', error)
     return fail('INTERNAL_ERROR', 'Could not load item')
   }
-  if (!data) return fail('ITEM_NOT_FOUND', 'Item not found')
-  const ownerId = (data.mindmap_nodes as { decks: { user_id: string } | null } | null)?.decks?.user_id
-  if (!ownerId) return fail('ITEM_NOT_FOUND', 'Item not found')
+  const deckId = (data?.mindmap_nodes as { deck_id: string } | null)?.deck_id
+  if (!data || !deckId) return fail('ITEM_NOT_FOUND', 'Item not found')
 
-  const answers = await readAnswersForNodes(supabase, [data.node_id])
-  if (!answers.success) return answers
-  const own = answers.data.find((a) => a.itemId === data.id)
+  const deck = await listDrillItems(supabase, { deckId })
+  if (!deck.success) return deck.error.code === 'DECK_NOT_FOUND' ? fail('ITEM_NOT_FOUND', 'Item not found') : deck
+  const own = deck.data.items.find((i) => i.id === data.id)
   if (!own) return fail('ITEM_NOT_FOUND', 'Item not found')
 
   return ok({
-    id: own.itemId,
+    id: own.id,
     correctStmt: own.correctStmt,
     trapRules: own.trapRules,
-    siblingStatements: answers.data.filter((a) => a.itemId !== own.itemId).map((a) => a.correctStmt),
-    ownerId,
+    siblingStatements: own.siblingStatements,
+    ownerId: deck.data.deck.ownerId,
+    deckItems: deck.data.items,
   })
 }

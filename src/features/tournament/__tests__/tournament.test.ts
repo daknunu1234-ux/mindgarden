@@ -7,7 +7,7 @@ vi.mock('@/shared/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 
 import { listDrillItems } from '@/features/decks/server'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
-import { generateTraps } from '@/shared/lib/trapEngine'
+import { buildQuestion, prepareDeck, toDeckNote } from '@/shared/lib/questionEngine'
 import { tournamentAccess } from '@/shared/lib/visitor'
 import {
   compareActive,
@@ -131,7 +131,8 @@ const LINH = '22222222-2222-4222-8222-222222222222'
 const DECK = '33333333-3333-4333-8333-333333333333'
 const itemId = (n: number) => `44444444-4444-4444-8444-${String(n).padStart(12, '0')}`
 
-// Two drillable statements in one root (sibling subject swaps + tăng/giảm), one that isn't.
+// Three statements in two roots. Zero drop: even the odd one out ("aaa", which no trap or cloze
+// fits) is asked, as a recognition card against the other root's notes, so N = 3.
 const ITEMS = [
   { id: itemId(1), nodeId: 'n1', nodeTitle: 'Bào quan', prompt: 'Bào quan', correctStmt: 'Ty thể sản sinh ATP.', trapRules: { negate: true } },
   {
@@ -142,10 +143,12 @@ const ITEMS = [
     correctStmt: 'Ribosome tổng hợp protein khi nhiệt độ tăng.',
     trapRules: { negate: true },
   },
-  { id: itemId(3), nodeId: 'n2', nodeTitle: 'Khác', prompt: 'Khác', correctStmt: 'Xyz.', trapRules: {} },
+  { id: itemId(3), nodeId: 'n2', nodeTitle: 'Khác', prompt: 'Khác', correctStmt: 'aaa', trapRules: {} },
 ].map((item, _i, all) => ({
   ...item,
   siblingStatements: all.filter((o) => o.nodeId === item.nodeId && o.id !== item.id).map((o) => o.correctStmt),
+  path: [item.nodeTitle],
+  ancestry: [item.nodeId],
 }))
 
 type Participant = { id: string; deck_id: string; user_id: string; current_points: number; max_points: number; days_count: number; is_graduated: boolean; graduated_at: string | null; last_practiced_date: string }
@@ -225,12 +228,13 @@ function hostTree(deck: Partial<{ isPublic: boolean; isTournamentOpen: boolean; 
   })
 }
 
-// The tag a question built with `seed` expects, and a wrong one.
+// The tag a question built with `seed` expects, and a wrong one (the same whole-deck context the
+// service grades with).
 function tagsFor(n: number, seed: string) {
-  const item = ITEMS[n - 1]
-  const traps = generateTraps(item.correctStmt, item.trapRules, seed, item.siblingStatements)
-  if (!traps.ok) throw new Error('expected a drillable item')
-  return { right: traps.correctTag, wrong: traps.choices.find((c) => c.tag !== traps.correctTag)!.tag }
+  const built = buildQuestion(prepareDeck(ITEMS.map(toDeckNote)), ITEMS[n - 1].id, seed)
+  if (!built.ok) throw new Error('expected a drillable item')
+  const { choices, correctTag } = built.question
+  return { right: correctTag, wrong: choices.find((c) => c.tag !== correctTag)!.tag }
 }
 
 const DAY1 = new Date('2026-09-29T03:00:00Z')
@@ -250,7 +254,7 @@ describe('recordTournamentAnswer', () => {
     hostTree()
     const db = fakeAdmin()
     const res = await answer(1, true)
-    expect(res).toMatchObject({ success: true, data: { isCorrect: true, masteryLevel: 1, previousMasteryLevel: 0, currentPoints: 1, maxPoints: 10, masteryPercentage: 10, daysCount: 1 } })
+    expect(res).toMatchObject({ success: true, data: { isCorrect: true, masteryLevel: 1, previousMasteryLevel: 0, currentPoints: 1, maxPoints: 15, masteryPercentage: 6.67, daysCount: 1 } })
     expect(db.calls).toEqual(['record_tournament_answer'])
   })
 
@@ -303,12 +307,14 @@ describe('recordTournamentAnswer', () => {
     for (let i = 0; i < 4; i++) {
       await answer(1, true)
       await answer(2, true)
+      await answer(3, true)
     }
     await answer(1, true)
-    const last = await answer(2, true, DAY2)
+    await answer(2, true)
+    const last = await answer(3, true, DAY2)
     expect(last).toMatchObject({
       success: true,
-      data: { currentPoints: 10, maxPoints: 10, masteryPercentage: 100, isGraduated: true, justGraduated: true, daysCount: 2 },
+      data: { currentPoints: 15, maxPoints: 15, masteryPercentage: 100, isGraduated: true, justGraduated: true, daysCount: 2 },
     })
     expect(await answer(1, true, DAY2)).toMatchObject({ success: false, error: { code: 'TOURNAMENT_GRADUATED' } })
   })
@@ -328,11 +334,11 @@ describe('recordTournamentAnswer', () => {
     expect(db.calls).toEqual([])
   })
 
-  it('refuses a statement the engine can\'t ask (it is not part of the tournament)', async () => {
+  it('refuses a statement that is not part of this tree\'s tournament', async () => {
     hostTree()
     const db = fakeAdmin()
     const { client } = fakeUserClient()
-    const res = await recordTournamentAnswer(client, LINH, { deckId: DECK, itemId: itemId(3), seed: 's1', tag: 'A' })
+    const res = await recordTournamentAnswer(client, LINH, { deckId: DECK, itemId: itemId(99), seed: 's1', tag: 'A' })
     expect(res).toMatchObject({ success: false, error: { code: 'ITEM_NOT_FOUND' } })
     expect(db.calls).toEqual([])
   })

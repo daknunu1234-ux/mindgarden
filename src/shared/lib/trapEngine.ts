@@ -15,7 +15,8 @@ export type TrapRules = {
   swaps?: { from: string; to: string }[]
   negate?: boolean
 }
-export type DrillTag = 'A' | 'B' | 'C'
+// Up to four choices: trap questions use A–C, cloze / recall / recognition questions up to A–D.
+export type DrillTag = 'A' | 'B' | 'C' | 'D'
 export type DrillChoice = { tag: DrillTag; text: string }
 export type TrapResult =
   // 3 choices (A/B/C) normally, 2 (A/B) when only one trap could be made.

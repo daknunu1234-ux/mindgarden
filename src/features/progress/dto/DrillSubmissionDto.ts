@@ -5,7 +5,7 @@ import { z } from 'zod'
 export const DrillSubmissionDto = z.object({
   itemId: z.uuid('Invalid item id'),
   seed: z.string().regex(/^[0-9a-z]{1,16}$/, 'Invalid seed'),
-  tag: z.enum(['A', 'B', 'C']),
+  tag: z.enum(['A', 'B', 'C', 'D']),
   // Browser IANA timezone for the streak's calendar day; validated again on the server.
   timeZone: z.string().trim().max(64).optional(),
 })

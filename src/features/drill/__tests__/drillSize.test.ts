@@ -118,6 +118,8 @@ function tree(n: number) {
     correctStmt: `Chỉ số ${i} tăng khi trời nóng.`,
     trapRules: { negate: true },
     siblingStatements: [],
+    path: [`Gốc ${i}`],
+    ancestry: [`n${i}`],
   }))
   vi.mocked(listDrillItems).mockResolvedValue({
     success: true,
@@ -179,8 +181,9 @@ describe('buildDrillSession round size', () => {
     expect(res).toMatchObject({ success: true, data: { mode: 'tournament', includeMastered: false } })
     expect(res.success && res.data.questions).toHaveLength(5)
     expect(res.success && res.data.questions.map((q) => q.itemId)).not.toContain('i0')
-    // Answers are still graded on the server: questions carry choices + seed, never the answer.
-    expect(res.success && Object.keys(res.data.questions[0]).sort()).toEqual(['choices', 'itemId', 'nodeTitle', 'prompt', 'seed'])
+    // Answers are still graded on the server: questions carry choices + seed (and how to show
+    // them: kind, breadcrumb, prompt, instruction), never the answer.
+    expect(res.success && Object.keys(res.data.questions[0]).sort()).toEqual(['choices', 'context', 'instruction', 'itemId', 'kind', 'nodeTitle', 'prompt', 'seed'])
   })
 
   it('the same session id gives the same round (seeded), whatever the size', async () => {

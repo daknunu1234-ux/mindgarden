@@ -6,7 +6,7 @@ export const SubmitTournamentAnswerDto = z.object({
   deckId: z.uuid('Invalid tree'),
   itemId: z.uuid('Invalid item id'),
   seed: z.string().regex(/^[0-9a-z]{1,16}$/, 'Invalid seed'),
-  tag: z.enum(['A', 'B', 'C']),
+  tag: z.enum(['A', 'B', 'C', 'D']),
   // Browser IANA timezone: practice days are the contestant's local calendar days.
   timeZone: z.string().trim().max(64).optional(),
 })

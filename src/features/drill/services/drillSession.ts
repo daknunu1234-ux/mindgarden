@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDrillItems } from '@/features/decks/server'
-import { generateTraps } from '@/shared/lib/trapEngine'
+import { buildQuestion, prepareDeck, toDeckNote } from '@/shared/lib/questionEngine'
 import { canPractice, tournamentAccess, VISITOR_PRACTICE_MESSAGE } from '@/shared/lib/visitor'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
@@ -68,17 +68,20 @@ export async function buildDrillSession(
     focus = { nodeId: node.id, title: node.title }
   }
 
+  // The whole deck is the question engine's context (siblings, other roots' notes as distractors),
+  // even for a one-branch round: grading rebuilds each question from the same whole-deck context.
+  const deck = prepareDeck(res.data.items.map(toDeckNote))
   const drillable: DrillQuestion[] = []
   let skippedCount = 0
   for (const item of items) {
     const seed = drillSeed(item.id, sessionId)
-    // Items of the same node act as siblings: their subjects become the best traps.
-    const traps = generateTraps(item.correctStmt, item.trapRules, seed, item.siblingStatements)
-    if (!traps.ok) {
+    const built = buildQuestion(deck, item.id, seed)
+    if (!built.ok) {
       skippedCount += 1
       continue
     }
-    drillable.push({ itemId: item.id, nodeTitle: item.nodeTitle, prompt: item.prompt, seed, choices: traps.choices })
+    const { kind, context, prompt, instruction, choices } = built.question
+    drillable.push({ itemId: item.id, nodeTitle: item.nodeTitle, kind, context, prompt, instruction, seed, choices })
   }
 
   const levels = loadLevels && drillable.length > 0 ? await loadLevels(

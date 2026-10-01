@@ -1,12 +1,10 @@
-import { collectTrapCandidates, type TrapRules } from '@/shared/lib/trapEngine'
+import { isNoteDrillable } from '@/shared/lib/questionEngine'
+import type { TrapRules } from '@/shared/lib/trapEngine'
 
 // Authors only write the statement; traps come from the built-in dictionary + negation.
 export const DEFAULT_TRAP_RULES: TrapRules = { negate: true }
 
-// One trap is enough (2-choice question); with none, drill sessions skip the item.
-// `siblings` = the other true statements in the same root (sibling concept swaps).
-export const isDrillable = (
-  statement: string,
-  rules: TrapRules = DEFAULT_TRAP_RULES,
-  siblings: readonly string[] = [],
-) => collectTrapCandidates(statement, rules, siblings).length >= 1
+// Zero drop: the question engine can ask every note (cloze, recall, true/false, recognition, or at
+// worst "spot your exact note"), whatever its shape or its root's other notes. Only a note with no two
+// distinct words or letters (e.g. "aaa") can't be asked; the editor marks just those 💧.
+export const isDrillable = (statement: string): boolean => isNoteDrillable(statement)

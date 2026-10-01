@@ -2,12 +2,12 @@ import type { DrillTag } from '../types'
 
 export type ShortcutAction = { type: 'pick'; tag: DrillTag } | { type: 'next' }
 
-// 1/2/3 and A/B/C pick a choice; Enter/Space advance after feedback.
-const PICK_KEYS: Record<string, DrillTag> = { '1': 'A', '2': 'B', '3': 'C', a: 'A', b: 'B', c: 'C' }
+// 1–4 and A–D pick a choice (questions have 2–4); Enter/Space advance after feedback.
+const PICK_KEYS: Record<string, DrillTag> = { '1': 'A', '2': 'B', '3': 'C', '4': 'D', a: 'A', b: 'B', c: 'C', d: 'D' }
 
 export type ShortcutContext = {
   status: 'answering' | 'checking' | 'feedback' | 'error' | 'done'
-  // Tags present in this question (2-choice questions have no C).
+  // Tags present in this question (a 2-choice question has no C or D).
   tags: readonly DrillTag[]
   // The key was pressed inside something that handles it itself (input, button, link…).
   targetIsInteractive: boolean
@@ -35,5 +35,5 @@ export function shortcutFor(key: string, ctx: ShortcutContext): ShortcutAction |
   return null
 }
 
-// Shown next to each choice: A → 1, B → 2, C → 3.
-export const shortcutKeyFor = (tag: DrillTag): string => String('ABC'.indexOf(tag) + 1)
+// Shown next to each choice: A → 1, B → 2, C → 3, D → 4.
+export const shortcutKeyFor = (tag: DrillTag): string => String('ABCD'.indexOf(tag) + 1)

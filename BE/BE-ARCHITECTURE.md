@@ -20,7 +20,7 @@
 ## 2. System Overview
 
 - **Style**: Monolith. Next.js App Router is the whole backend; Supabase provides auth, the database and RLS
-- **Trap Engine**: deterministic, pure TypeScript utility run on the server; no DB, no network, no LaTeX
+- **Question Engine**: deterministic, pure TypeScript run on the server (`questionEngine` + `notePatterns` + `trapEngine`, Section 7); no DB, no network, no LaTeX
 
 ```
 Browser (React 19)
@@ -135,21 +135,54 @@ ActionResult<T> ──► Client receives { success, data, meta } or { success, 
 
 ---
 
-## 7. Plain-Text Trap Engine
+## 7. Question Engine (plain text)
 
-**Signature** (`shared/lib/trapEngine.ts`):
+Two pure, deterministic layers in `shared/lib/` (no `Math.random`, no `Date`, no DB, no network, no LaTeX; guarded by tests):
+
+| Module | Job |
+|--------|-----|
+| `notePatterns.ts` | Reads mindmap notes: implicit subject, `Key: Value` / `Key - Value` / `Key = Value`, definition markers, cloze targets, short phrases, `[author marks]` |
+| `questionEngine.ts` | Builds one multiple-choice question per note and seed, from the note and its deck (`prepareDeck` → `buildQuestion`) |
+| `trapEngine.ts` | The true/false "statement" question type: one-mutation traps (7a) |
+
+**Zero drop**: every note gets a question. Notes are fragments in a mindmap, so the engine never requires a full sentence.
+
+```
+DeckNote = { id, nodeId, statement, path /* root titles, top → own root */, ancestry /* their ids */, rules }
+prepareDeck(notes) ─► analyse every note once (sorted: DB order never matters)
+buildQuestion(deck, noteId, seed) ─► { kind, context (breadcrumb), prompt, instruction, choices (2–4, A–D), correctTag }
+```
+
+| Kind | When the note supports it | Prompt → choices |
+|------|---------------------------|------------------|
+| `cloze` | A cloze target has a wrong option. `[author marks]` make this the only kind | The note with one target blanked → the term + other notes' terms; numbers → plausible wrong numbers (a year stays a year, `%` and decimals kept) |
+| `recall-right` / `recall-left` | `Key: Value`, spaced `-` / `=`, or a definition (`là`, `nghĩa là`, `is defined as`, `refers to`, `means`, `is`…), and other pair notes exist | `Ty thể: ____` → values · `____: nhà máy năng lượng` → keys |
+| `statement` | `generateTraps` finds a trap in the note's **proposition** | "Which statement is true?" → the proposition + 1–2 traps |
+| `recognize` | A short phrase / bullet item (≤ 5 words, no sentence shape) | "Which note belongs under “Root”?" → the note + notes filed under other roots (never its own root or anything below it) |
+| fallback `recognize` | Nothing above fits | The same, for any note |
+| fallback `exact` | Alone in its deck | "Which is exactly your note?" → the note + copies with two words swapped / one dropped (one word: two letters swapped) |
+
+- **Contextual inheritance**: a predicate-only note ("compiles down to clean JavaScript", "sản sinh ATP", "is a superset of…": it starts with a predicate word, or it's a lower-case fragment with no subject) borrows its own root's title as subject, so the proposition is "TypeScript compiles down to clean JavaScript". Clauses (`khi`, `when`…), pairs and notes with their own subject are left alone. Every question carries its breadcrumb (`context`), shown as a badge.
+- **Choosing**: which kinds a note supports doesn't depend on the seed; the seed picks one (rounds vary) and shuffles the choices.
+- **Distractors**: closest notes first (shared breadcrumb); only from the note's own top-level subject when it has any there (fewer, plausible choices beat an obvious odd one out); never the answer, never text already in the note, never a title from the note's own breadcrumb, never a root title as a cloze filler.
+- **The only undrillable note**: one with no two distinct words or letters and nothing else in its deck (a lone "aaa"). `decks/lib/drillable.ts` `isDrillable` = `isNoteDrillable` (askable even alone): the editor's ✅ / 💧.
+- **Grading**: the client gets `kind`, `context`, `prompt`, `instruction`, `choices` and `seed`, never `correctTag`. `submitDrillResult` / `checkDrillAnswer` / `submitTournamentAnswer` rebuild the question from the seed and the **whole deck** (`decks/server` `findDrillItem` returns `deckItems`, the same rows `listDrillItems` gives the session), so a one-branch round grades against the same context (`drill/__tests__/questionConsistency.test.ts`). No self-graded cards: mastery and 🪙 come only from a server-checked pick.
+
+### 7a. Trap mutations (`trapEngine.ts`, the `statement` kind)
+
 ```typescript
 export type TrapRules = { swaps?: { from: string; to: string }[]; negate?: boolean }
-export type DrillChoice = { tag: 'A' | 'B' | 'C'; text: string }
+export type DrillTag = 'A' | 'B' | 'C' | 'D'          // traps use A–C
+export type DrillChoice = { tag: DrillTag; text: string }
 export type TrapResult =
-  | { ok: true; choices: DrillChoice[]; correctTag: DrillChoice['tag'] }   // 2 or 3 choices
+  | { ok: true; choices: DrillChoice[]; correctTag: DrillTag }   // 2 or 3 choices
   | { ok: false; reason: 'INSUFFICIENT_MUTATIONS' }
-// siblings = true statements of the other items in the same mindmap node
+// siblings = the propositions of the other notes in the same root
 export function generateTraps(correctStmt: string, rules: TrapRules, seed: string, siblings?: string[]): TrapResult
 ```
 
 ```
-correct_stmt + trap_rules + seed + sibling statements (same node)
+proposition + trap_rules + seed + sibling propositions (same root)
   ▼
 Tier 1 · context      sibling concept swaps  ("Ty thể | sản sinh ATP" + "Ribosome | …" → "Ribosome sản sinh ATP")
                       then trap_rules.swaps (legacy / seeded items)
@@ -157,11 +190,9 @@ Tier 2 · built-in     opposite pairs (tăng ↔ giảm, trước ↔ sau), then
 Tier 3 · negation     only if negate (is ↔ is not, là ↔ không phải là)
   ▼
 Dedupe across tiers; drop the original and any sibling's own statement (it is true)
-  ├── 0 candidates ──► { ok: false, reason: 'INSUFFICIENT_MUTATIONS' }
+  ├── 0 candidates ──► INSUFFICIENT_MUTATIONS (the question engine then uses another kind)
   ▼
-Pick up to 2 traps tier by tier (seeded shuffle inside each tier)
-  ├── 1 trap  ──► seeded shuffle, tag A / B     ──► { choices, correctTag }
-  └── 2 traps ──► seeded shuffle, tag A / B / C ──► { choices, correctTag }
+Pick up to 2 traps tier by tier (seeded shuffle inside each tier) ──► 2 or 3 choices
 ```
 
 | Source | Match rule | Example |
@@ -174,11 +205,8 @@ Pick up to 2 traps tier by tier (seeded shuffle inside each tier)
 
 - **One mutation per distractor**: each trap differs from the original in exactly one place (a sibling swap replaces only the subject)
 - **Unicode-safe boundaries**: `(?<!\p{L})…(?!\p{L})` with the `u` flag; `\b` breaks on Vietnamese diacritics
-- **Deterministic**: `seed = hash(itemId + sessionId)`; the engine only uses `seededRandom(seed)`. Siblings are NFC-normalized, deduped and sorted inside the engine, so their DB order doesn't matter
-- **Grading**: the client receives `choices` + `seed` (never `correctTag`); `submitDrillResult` / `checkDrillAnswer` re-run the engine with the same seed **and the same node siblings** (`decks/server` `findDrillItem`). If the node's statements change mid-round, an in-flight answer may be graded against the new pool
-- **Known limit**: a sibling swap can be accidentally true when two concepts share a property ("Ty thể" and "Lục lạp" both make ATP); an exact copy of a sibling statement is always dropped
-- **Choice count**: 3 choices when ≥ 2 traps exist, 2 (true vs. one trap) when only 1 does. A submitted `C` on a 2-choice question is simply wrong
-- **Insufficient mutations** (0 traps): drill sessions skip the item; the deck editor marks it 💧 and suggests adding a sibling statement or a flippable word (authors never edit trap rules)
+- **Deterministic**: `seed = hash(itemId + sessionId)`; the engines only use `seededRandom(seed)`. Inputs are NFC-normalized, deduped and sorted inside, so database order doesn't matter
+- **Known limits**: a sibling swap can be accidentally true when two concepts share a property ("Ty thể" and "Lục lạp" both make ATP); an exact copy of a sibling statement is always dropped. If the deck changes mid-round, an in-flight answer is graded against the new deck
 
 ---
 
