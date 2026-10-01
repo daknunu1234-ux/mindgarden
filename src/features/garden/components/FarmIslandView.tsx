@@ -13,6 +13,7 @@ import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
 import { getTreeStage } from '../hooks/useTreeStage'
+import { dropOutcome } from '../lib/dragGesture'
 import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
 import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
@@ -271,9 +272,9 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
 
   // Stable handlers for the (memoized) grid: they read the latest state through a ref, so camera
   // drags and zooms never re-render the grid's 256 tiles.
-  const latest = useRef({ build, place, chop })
+  const latest = useRef({ build, place, chop, farm, startMove, plotsByDeck })
   useLayoutEffect(() => {
-    latest.current = { build, place, chop }
+    latest.current = { build, place, chop, farm, startMove, plotsByDeck }
   })
   const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
   const onBuildCancel = useCallback(() => setBuild(null), [])
@@ -283,6 +284,41 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
     if (pointerType === 'mouse' || (current?.tile && current.tile.x === tile.x && current.tile.y === tile.y)) put(tile)
     else setBuild((b) => (b ? { ...b, tile } : b))
   }, [])
+  // Direct drag-and-drop (owner, outside build mode): a hold on a tree or item picks it up into Move
+  // mode (the camera lets go of that pointer), the ghost follows the pointer, and the release lands it
+  // through the same optimistic move as the ↔️ Move button (lib/dragGesture.ts).
+  const releasePointer = camera.release
+  const onDragStart = useCallback(
+    (placementId: string, pointerId: number) => {
+      const { farm: current, startMove: pickUp } = latest.current
+      const placement = current.find((p) => p.id === placementId)
+      if (!placement) return false
+      if (isPendingId(placement.id)) {
+        pickUp(placement) // says "still placing that"
+        return false
+      }
+      releasePointer(pointerId)
+      pickUp(placement)
+      return true
+    },
+    [releasePointer],
+  )
+  const onDragEnd = useCallback((tile: { x: number; y: number } | null) => {
+    const { build: current, place: put, farm: layout, plotsByDeck: trees } = latest.current
+    if (current?.request.kind !== 'move') return
+    const moving = current.request.placement
+    const outcome = dropOutcome(layout, moving.id, tile)
+    if (outcome === 'move' && tile) return put(tile)
+    setBuild(null)
+    // Released where it stood: that was a long tap, so open it as a tap would.
+    if (outcome === 'same') {
+      const tree = moving.itemType === 'tree' && moving.deckId ? trees.get(moving.deckId) : undefined
+      if (tree) setSelectedPlot(tree)
+      else if (moving.itemType !== 'tree') setSelectedItem(moving)
+      return
+    }
+    toast({ message: `${current.request.name} can't go there, so it stayed put`, icon: '↩️' })
+  }, [toast])
   const buildGhost = useMemo(
     () =>
       build
@@ -325,6 +361,9 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               onBuildCancel={onBuildCancel}
               onOpenPlot={setSelectedPlot}
               onOpenItem={setSelectedItem}
+              dragEnabled={isOwner && !build}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
             />
 
             {puffs.map((p) => (

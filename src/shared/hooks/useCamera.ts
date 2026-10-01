@@ -164,9 +164,19 @@ export function useCamera(
     }
   }
 
+  // Hand a pointer over to something else (the farm's drag-and-drop): the camera forgets it, so
+  // moving it no longer pans, and the click that ends it is swallowed.
+  const release = useCallback((pointerId: number) => {
+    pointers.current.delete(pointerId)
+    if (pan.current?.id === pointerId) pan.current = null
+    pinch.current = null
+    suppressClick.current = true
+  }, [])
+
   return {
     zoom,
     view,
+    release,
     zoomIn: () => zoomTo(live.current.zoom * ZOOM_STEP),
     zoomOut: () => zoomTo(live.current.zoom / ZOOM_STEP),
     resetView,

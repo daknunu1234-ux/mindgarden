@@ -1,8 +1,9 @@
 'use client'
 
-import { memo, useMemo, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { cn } from '@/shared/utils/cn'
 import { beachPalms, FARM_WORLD } from '../lib/diorama'
+import { holdMs, pressOutcome, tileAtPoint } from '../lib/dragGesture'
 import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
 import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
 import {
@@ -12,9 +13,10 @@ import {
   fenceLinks,
   footprintCenter,
   neighbourLinks,
-  screenToTile,
   streamLinks,
   TILE_H,
+  TILE_W,
+  tileToScreen,
   withMoved,
   type Footprint,
   type Placement,
@@ -68,7 +70,16 @@ type FarmIsometricGridProps = {
   onBuildCancel: () => void
   onOpenPlot: (plot: FarmPlotView) => void
   onOpenItem: (placement: Placement) => void
+  // Direct drag-and-drop (the owner's farm, outside build mode): hold a tree or item to pick it up
+  // (lib/dragGesture.ts). onDragStart answers whether it was picked up (it enters Move mode, and the
+  // ghost then follows onBuildHover); onDragEnd gets the tile under the release (null: off the island).
+  dragEnabled?: boolean
+  onDragStart?: (placementId: string, pointerId: number) => boolean
+  onDragEnd?: (tile: { x: number; y: number } | null) => void
 }
+
+// Marks the element that stands for a placement, so a press on it can pick it up.
+const PLACEMENT_ATTR = 'data-placement-id'
 
 // The farm's 16 × 16 isometric grid on a floating tropical island (FarmDiorama), with everything
 // placed on it. Screen position of tile (x, y): ((x − y) · TILE_W / 2, (x + y) · TILE_H / 2) from
@@ -78,19 +89,96 @@ type FarmIsometricGridProps = {
 // layers (ocean, island with its 256 tiles, palms, clouds) are memoized components, and every tree and
 // item is a memoized tile with stable or primitive props, so planting, moving or hovering a ghost only
 // re-renders what actually changed.
-function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHover, onBuildTap, onBuildCancel, onOpenPlot, onOpenItem }: FarmIsometricGridProps) {
+function FarmIsometricGridImpl({
+  placements,
+  plotsByDeck,
+  seed,
+  build,
+  onBuildHover,
+  onBuildTap,
+  onBuildCancel,
+  onOpenPlot,
+  onOpenItem,
+  dragEnabled = false,
+  onDragStart,
+  onDragEnd,
+}: FarmIsometricGridProps) {
   const worldRef = useRef<HTMLDivElement>(null)
   const pointerType = useRef('mouse')
   const origin = FARM_WORLD.origin
+  // The press that may become a drag, and the drag in progress (window listeners are removed by `stop`).
+  const gesture = useRef<{ stop: () => void; dragging: boolean } | null>(null)
+  useEffect(() => () => gesture.current?.stop(), [])
 
   // Pointer → tile. The world is scaled by the camera, so measure its on-screen box.
-  const tileAt = (e: ReactMouseEvent) => {
+  const tileAtClient = (clientX: number, clientY: number) => {
     const el = worldRef.current
-    if (!el) return null
-    const rect = el.getBoundingClientRect()
-    const wx = ((e.clientX - rect.left) * FARM_WORLD.w) / rect.width - origin.x
-    const wy = ((e.clientY - rect.top) * FARM_WORLD.h) / rect.height - origin.y
-    return screenToTile(wx, wy)
+    return el ? tileAtPoint({ x: clientX, y: clientY }, el.getBoundingClientRect(), FARM_WORLD) : null
+  }
+  const tileAt = (e: ReactMouseEvent) => tileAtClient(e.clientX, e.clientY)
+
+  // A press on one of your trees or items: a pan if it moves first, a pick-up if it holds still.
+  const startPress = (e: ReactPointerEvent) => {
+    if (!dragEnabled || build || !onDragStart || !onDragEnd || e.button !== 0 || gesture.current) return
+    const target = e.target instanceof Element ? e.target.closest(`[${PLACEMENT_ATTR}]`) : null
+    const placementId = target?.getAttribute(PLACEMENT_ATTR)
+    if (!placementId) return
+    const press = { pointerType: e.pointerType, x: e.clientX, y: e.clientY }
+    const pointerId = e.pointerId
+    const startedAt = performance.now()
+    let last = { x: e.clientX, y: e.clientY }
+    let dragging = false
+    let lastTile: { x: number; y: number } | null = null
+
+    const stop = () => {
+      clearTimeout(timer)
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onCancel, true)
+      window.removeEventListener('contextmenu', onContextMenu, true)
+      gesture.current = null
+    }
+    const hover = (x: number, y: number) => {
+      const tile = tileAtClient(x, y)
+      if (tile && (tile.x !== lastTile?.x || tile.y !== lastTile?.y)) {
+        lastTile = tile
+        onBuildHover(tile)
+      }
+    }
+    const timer = setTimeout(() => {
+      if (pressOutcome(press, last, performance.now() - startedAt) !== 'drag') return stop()
+      if (!onDragStart(placementId, pointerId)) return stop()
+      dragging = true
+      if (gesture.current) gesture.current.dragging = true
+      // A little buzz on phones that support it: "picked up".
+      if (press.pointerType !== 'mouse') navigator.vibrate?.(12)
+    }, holdMs(press.pointerType))
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      last = { x: ev.clientX, y: ev.clientY }
+      if (dragging) hover(ev.clientX, ev.clientY)
+      // Moved before the hold: it's a pan, the camera has it.
+      else if (pressOutcome(press, last, performance.now() - startedAt) === 'pan') stop()
+    }
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      const wasDragging = dragging
+      stop()
+      if (wasDragging) onDragEnd(tileAtClient(ev.clientX, ev.clientY))
+    }
+    const onCancel = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      const wasDragging = dragging
+      stop()
+      if (wasDragging) onDragEnd(null)
+    }
+    // A long press on Android / iOS opens the context menu; during a press it means nothing here.
+    const onContextMenu = (ev: Event) => ev.preventDefault()
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onCancel, true)
+    window.addEventListener('contextmenu', onContextMenu, true)
+    gesture.current = { stop, dragging: false }
   }
 
   const ghostX = build?.tile?.x ?? null
@@ -131,6 +219,8 @@ function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHo
         .filter(({ placement: p }) => p.id !== movingId)
         .map(({ placement: p }): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'tree', p) })),
       streams: others.filter((p) => p.itemType === 'stream').map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) })),
+      // Streams are painted as one network; each tile still gets its own (invisible) button.
+      streamHits: placements.filter((p) => p.itemType === 'stream' && p.id !== movingId),
       trees: trees.map(({ placement, plot }) => {
         const current = treeBuff(placement.x, placement.y, placements)
         const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
@@ -151,6 +241,7 @@ function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHo
       className="absolute inset-0"
       onPointerDown={(e) => {
         pointerType.current = e.pointerType
+        startPress(e)
       }}
       onPointerMove={(e) => {
         if (!build || e.pointerType !== 'mouse') return
@@ -163,8 +254,8 @@ function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHo
         if (tile) onBuildTap(tile, pointerType.current)
       }}
       onContextMenu={(e) => {
-        // Right-click cancels placement mode.
-        if (!build) return
+        // Right-click cancels placement mode (but a touch long-press that started a drag doesn't).
+        if (!build || gesture.current) return
         e.preventDefault()
         onBuildCancel()
       }}
@@ -187,6 +278,9 @@ function FarmIsometricGridImpl({ placements, plotsByDeck, seed, build, onBuildHo
         ))}
         {scene.items.map(({ placement, links }) => (
           <FarmItem key={placement.id} placement={placement} links={links} lifted={placement.id === movingId} onOpen={onOpenItem} />
+        ))}
+        {scene.streamHits.map((placement) => (
+          <StreamHit key={placement.id} placement={placement} onOpen={onOpenItem} />
         ))}
       </div>
 
@@ -282,7 +376,10 @@ const TreeTile = memo(function TreeTile({
   const next = { multiplier: 1, stream: bit(buffs, 2), house: bit(buffs, 3) }
   return (
     <>
-      <PlotButton geometry={ground} plot={plot} animate={animate} phase={phase} onOpen={onOpen} />
+      {/* display: contents: no box of its own, it only marks the tree so a hold can pick it up. */}
+      <div {...{ [PLACEMENT_ATTR]: placement.id }} className="contents">
+        <PlotButton geometry={ground} plot={plot} animate={animate} phase={phase} onOpen={onOpen} />
+      </div>
       <PlotLabels geometry={ground} plot={plot} onOpen={onOpen} />
       <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
     </>
@@ -336,6 +433,26 @@ function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: nu
 
 // A bought item standing on the farm: its drawing plus a button over it (name, buff, pick up).
 // Memoized: `links` is the fence's "nesw" key, so moving something elsewhere doesn't redraw it.
+// A stream tile's click target: the tile's diamond, invisible (the water is drawn by StreamNetwork).
+// Opens the item popover like any Shop item, and a hold picks it up.
+const StreamHit = memo(function StreamHit({ placement, onOpen }: { placement: Placement; onOpen: (placement: Placement) => void }) {
+  const top = tileToScreen(placement.x, placement.y)
+  const origin = FARM_WORLD.origin
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen(placement)
+      }}
+      aria-label="Stream"
+      {...{ [PLACEMENT_ATTR]: placement.id }}
+      className="absolute transition-colors [clip-path:polygon(50%_0,100%_50%,50%_100%,0_50%)] hover:bg-white/15 focus-visible:bg-yellow-200/40 focus-visible:outline-none"
+      style={{ left: origin.x + top.x - TILE_W / 2, top: origin.y + top.y, width: TILE_W, height: TILE_H, zIndex: Math.round(origin.y + top.y + TILE_H / 2) }}
+    />
+  )
+})
+
 const FarmItem = memo(function FarmItem({
   placement,
   links,
@@ -376,6 +493,7 @@ const FarmItem = memo(function FarmItem({
           onOpen(placement)
         }}
         aria-label={entry?.name ?? 'Farm item'}
+        {...{ [PLACEMENT_ATTR]: placement.id }}
         className="absolute rounded-3xl transition-colors hover:bg-white/10 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
         style={{ left: ground.x - box.w / 2, top: ground.y - box.h + (big ? TILE_H / 2 : 8), width: box.w, height: box.h, zIndex: z + 1 }}
       />

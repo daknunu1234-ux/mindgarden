@@ -166,6 +166,20 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
   checks ownership, keeps the footprint (1 × 1 / 2 × 2) inside the 16 × 16 grid, refuses overlaps with
   anything but itself, and locks the gardener's row like purchases. Players still can't UPDATE placements
   directly. Buffs need no recalculation: they are read from the current tiles at every payout.
+- **Drag-and-drop**: owners can also just grab things on the island. Hold a tree or any item (Farmer's
+  House, Woodshop, stream, fence, rockery, cow, pig) for a moment (150 ms with a mouse, 400 ms with a finger;
+  `garden/lib/dragGesture.ts`, tested) and it lifts into Move mode under the pointer: the green / red target
+  tile, the floating ghost, live retiling and buff previews are Move mode's. Release snaps it to the tile
+  under the pointer through the same optimistic `moveFarmPlacement` (0 ms, rolled back with a toast if the
+  server refuses); a blocked or off-island release puts it back, and a release where it stood opens it like
+  a tap. Moving before the hold completes is still a camera pan, so dragging across a busy farm keeps
+  panning (`useCamera` `release` hands the pointer over once a drag starts). Phones buzz on pick-up where
+  supported. Visitors can't drag. The ↔️ Move button stays (keyboard and small screens).
+- **Streams are clickable**: each stream tile has an invisible diamond button, so a stream opens its popover
+  (↔️ Move, 📦 Pick up) and can be dragged like any item; before, streams had no click target at all.
+- **One layout table**: `garden_placements` already is the island layout (`item_type`, `grid_x`, `grid_y`,
+  `width`, `height` for every placed tree and item), so drag-and-drop needed no migration. The island's
+  scenery (beach palms, islets, clouds) is fixed decor around the grid, not placements.
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
@@ -389,7 +403,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
+| (pending) | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
+| `956ef3d` | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
 | `88dc2e7` | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
 | `eed0080` | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
 | `b9195ed` | style(decks): statement rows start with their text; status moves to a trailing badge |
@@ -421,5 +436,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 70 files, 647 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 71 files, 657 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).
