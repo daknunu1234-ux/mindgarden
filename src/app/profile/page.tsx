@@ -10,7 +10,7 @@ import { GardenerCard, GardenStatsGrid, MightyShowcase, PlantedTreeList, type Pl
 
 export const metadata: Metadata = { title: 'Trophy Hall · MindGarden' }
 
-// The Gardener's Trophy & Record Hall. Composes auth (who), progress (stats, level) and garden
+// The Gardener's Trophy & Record Hall. Composes auth (who), progress (stats, coins) and garden
 // (tree pictures) into the UI-only user-profile feature.
 export default async function ProfilePage() {
   const userRes = await getCurrentUser()
@@ -31,7 +31,6 @@ export default async function ProfilePage() {
   }
 
   const [stats, hud] = await Promise.all([getGardenStats(), getFarmHud()])
-  const level = hud.success && hud.data ? hud.data.level : null
   const coins = hud.success && hud.data ? hud.data.coins : null
   const trees = stats.success ? stats.data.trees.map(toTreeView) : []
 
@@ -42,9 +41,6 @@ export default async function ProfilePage() {
           gardener={{ email: user.email, joinedAt: user.createdAt, name: user.displayName }}
           masteryPercent={stats.success ? stats.data.masteryPercent : 0}
           coins={coins}
-          level={
-            level && { level: level.level, title: level.title, xpIntoLevel: level.xpIntoLevel, xpForNextLevel: level.xpForNextLevel }
-          }
         />
         {/* The public name on boards and in other gardeners' lists (the pseudonym until chosen). */}
         <DisplayNameEditor current={user.displayName} fallback={neighborName(user.id)} />

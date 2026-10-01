@@ -141,15 +141,6 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
 
   const hud = hudRes.success ? hudRes.data : null
   const hudView: FarmHudView = {
-    level: hud
-      ? {
-          level: hud.level.level,
-          title: hud.level.title,
-          progress: hud.level.progress,
-          xpIntoLevel: hud.level.xpIntoLevel,
-          xpForNextLevel: hud.level.xpForNextLevel,
-        }
-      : null,
     streak: hud ? { current: hud.streak.current, practicedToday: hud.streak.practicedToday } : null,
     coins: hud ? hud.coins : null,
     coinsAsOf: hud?.coinsAsOf,

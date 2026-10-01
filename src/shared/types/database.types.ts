@@ -303,6 +303,40 @@ export type Database = {
           },
         ]
       }
+      // Migration 20261004000000_streak_rewards.sql. Players read their own rows; only
+      // award_streak_reward() (service role) writes.
+      streak_rewards: {
+        Row: {
+          user_id: string
+          day: string
+          streak: number
+          coins: number
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          day: string
+          streak: number
+          coins: number
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          day?: string
+          streak?: number
+          coins?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'streak_rewards_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       // Migration 20260928000900_mind_tournament.sql. Players read their own rows; only
       // record_tournament_answer() (service role) writes.
       deck_tournament_participants: {
@@ -538,6 +572,12 @@ export type Database = {
       award_mastery_coin: {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]
+      }
+      // Migration 20261004000000_streak_rewards.sql. Service role only: counts the streak ending on
+      // p_day itself and pays the milestone bonus (7, 30, every 100 days) once per day.
+      award_streak_reward: {
+        Args: { p_user_id: string; p_day: string }
+        Returns: { streak: number; coins_earned: number; total_coins: number }[]
       }
       // Migration 20260928000500_seed_economy.sql. Runs as the caller (auth.uid()); charges 100 🪙.
       plant_deck: {

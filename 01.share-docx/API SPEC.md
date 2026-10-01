@@ -114,7 +114,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `getFarmPlacements` | Action | A farm's placements: yours, or a neighbour's (items + public trees) | Optional |
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
-| Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
+| Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm's Shop items (no refund; trees are refused: move or chop them) | Required |
 | Progress | `harvestTreeFruit` | Action/POST | Collect today's fruit of a tree you practised yesterday: +2 🪙, once per tree per day | Required (owner) |
 | Decks | `chopDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress, farm tile; Woodshop refund), answers `{ id, refund, totalCoins }` (no redirect, no revalidate). The farm's 🪓 Chop and the deck page's Danger Zone | Required |
 | Drill | `getDrillQuestion` | Action/POST | Not built (superseded by `getDrillSession({ nodeId })`) | Optional |
@@ -124,7 +124,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Progress | `getProgressByDecks` | Action/GET | Mastery % per deck + level per item | Optional |
 | Progress | `getGardenStats` | Action | Profile totals over the player's own trees + current/best streak | Required |
 | Progress | `getStreak` | Action | Current/best streak for the header badge (null when signed out) | Optional |
-| Progress | `getFarmHud` | Action | Gardener level + streak for the Farm Island HUD (null when signed out) | Optional |
+| Progress | `getFarmHud` | Action | Streak + 🪙 coins for the header and the farm (null when signed out); read-only | Optional |
 
 Route mirrors: `GET /api/decks`, `GET /api/decks/[slug]`, `POST /api/decks`, `POST /api/drill/question`, `POST /api/progress/drill-result`, `GET /api/progress?deckIds=…`
 
@@ -241,7 +241,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```typescript
 // Input (CreateDeckDto): { title: string; description?: string; isPublic?: boolean; treeType?: 'oak' | 'pine' | 'birch' | 'cherry' | 'willow' | 'mystic' | 'palm' | 'citrus' | 'maple' | 'cactus' }
 // defaults (DATABASE.md): isPublic = false (private until shared), treeType = 'oak'
-// sharing later: updateDeck({ deckId, isPublic }), the Tree Workshop's "Share tree with community (Public link) 🌐" switch
+// sharing later: updateDeck({ deckId, isPublic }), the "🌐 Share" switch in the Tree Workshop's settings bar
 // slug: generated with shared/utils/slugify (diacritics stripped); on a unique clash → -2 … -5, then a random suffix; "new" is reserved
 // data: { deck /* same shape as a getDecks row */; remainingCoins: number /* purse after paying */ }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need 100 coins to buy a seed for a new tree!"), INTERNAL_ERROR
@@ -321,7 +321,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED (also: opening a private tree, "Share the tree with the community first"),
 //         AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), DECK_NOT_FOUND, INTERNAL_ERROR
 ```
-- Owner-only "🏆 Host Mind Tournament (Allow visitors to compete)" switch in the Tree Workshop (`TournamentHostToggle`). Closing keeps every result: the boards stay readable and graduates stay engraved; re-opening continues the same runs
+- Owner-only "🏆 Tournament" switch in the Tree Workshop's settings bar (`TournamentHostToggle`; Live / Closed, or "Share first" on a private tree). Closing keeps every result: the boards stay readable and graduates stay engraved; re-opening continues the same runs
 - `revalidatePath('/deck/<slug>')`
 
 ### `getTournamentSession` (drill)
@@ -428,6 +428,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   masteryLevel: 0 | 1 | 2 | 3 | 4 | 5; previousMasteryLevel: 0 | 1 | 2 | 3 | 4 | 5; mistakeCount: number;
   streakCount: number | null;    // current daily streak; null if it could not be saved (the answer still counts)
   coinsEarned: number;           // 🪙 paid by this answer: 1 on the item's first 5/5, else 0
+  streakReward: number;          // 🪙 streak bonus paid by this answer: 7 / 30 / the streak at every 100 days, on that day's first watering; else 0
   totalCoins: number | null }    // balance after this answer; null if it could not be read (the answer still counts)
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ITEM_NOT_FOUND, FORBIDDEN_VISITOR_PRACTICE (not the item's deck owner)
 ```
@@ -436,7 +437,8 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Mastery** (`nextMastery` in `progress/lib`, scale in `shared/lib/mastery.ts`): correct → `min(level + 1, 5)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`. A 5/5 item drops to 4/5 on a wrong answer (it can only get there in review mode)
 - **Write**: first answer inserts the `user_progress` row, later ones update `mastery_level`, `mistake_count`, `last_practiced_at = now()` (players can't rewrite the row's user/item, DATABASE.md "Gold coins")
 - **Gold** (admin client, `progress/services/coins.ts`): if the answer leaves the item at 5/5 and it was never paid (`coin_awarded_at` NULL), `award_mastery_coin` pays 1 🪙 atomically. Once per item ever: re-mastering after a drop, or answering a mastered item again, pays 0. A coin failure never fails the answer (`coinsEarned: 0`, `totalCoins: null`). The client pushes `totalCoins` into `shared/stores/CoinsProvider` so the farm HUD updates without a reload. There's no `revalidatePath` because it would re-render the drill route and restart the round
-- **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak")
+- **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak"). This is the **only** thing that grows the streak: opening the game doesn't. The day is inserted once (watering more trees that day changes nothing); after a missed day the next answer starts at 1
+- **Streak reward** (admin client, `progress/services/coins.ts` `claimStreakReward`): when the streak after this answer is 7, 30 or a multiple of 100, `award_streak_reward(user, day)` pays 7 / 30 / the streak in 🪙, once that day (DATABASE.md "Streak rewards"). `streakReward` is what this answer paid and `totalCoins` includes it; other days make no call and pay 0. The drill shows a toast ("🌱 Tree watered today! 7-day streak: +7 🪙") and counts it in the round's coins. A failure never fails the answer
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it gives the engine the same whole-deck context as `getDrillSession` (one deck load per graded answer)
 - **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"). Statements reach players only through `getDeckEditor` (owner) and `getDeckReader` (public trees, read-only); `trap_rules` and the correct tag never do
 
@@ -489,7 +491,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - `placeFarmItem` calls `purchase_and_place_item()`: the database charges its own catalogue price (no price or size is sent), refuses overlaps / off-grid tiles, and inserts in one transaction. Trees are free. No `revalidatePath` (in a Server Action it re-renders the whole farm page before answering, which took seconds): the farm shows the item optimistically and the page is dynamic, so the next visit is fresh; the farm pushes `remainingCoins` into `CoinsProvider`
 - `moveFarmPlacement` calls `move_garden_placement()` (migration 14): the caller's own placement only, the whole footprint on the grid and clear of every other placement (the moved one aside), under the same row lock as purchases. No `revalidatePath` (the farm applies the move optimistically). Buffs and stream / fence auto-tiling follow from the new tiles; nothing else is stored
-- `removeFarmPlacement`: no refund, no `revalidatePath` (optimistic on the farm). A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
+- `removeFarmPlacement`: Shop items only; no refund, no `revalidatePath` (optimistic on the farm). A **tree is refused** (`AUTH_FORBIDDEN`, the delete filters `item_type <> 'tree'`): once planted, a tree is moved (`moveFarmPlacement`) or chopped (`chopDeck`, which pays the Woodshop refund). The tree popover has no "Store / Remove from farm" action
 - UI (`garden`): the farm's 🏪 Shop (`FarmShopModal`, tabs 🌳 Trees · 🏗️ Structures · 🌊 Landscape · 🪵 Decorations · 🐮 Animals) → placement mode on `FarmIsometricGrid` (green / red ghost; click to place, tap twice on touch; Esc, right-click or Cancel leaves without paying)
 
 ### `harvestTreeFruit` (progress)
@@ -505,11 +507,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ### `getFarmHud` (progress)
 ```typescript
 // Input: none
-// data: { level: { level; title; xp; xpIntoLevel; xpForNextLevel; progress /* 0–1 */ };
-//         streak: { current; best; practicedToday; lastDay };
+// data: { streak: { current; best; practicedToday; lastDay };
 //         coins: number; coinsAsOf: number } | null                      // null when signed out
 ```
-- XP = 10 × Σ `mastery_level` over all of the player's `user_progress` rows; level L → L + 1 costs 50 + 25 × (L − 1)
+- Read-only, and loaded once per request (the root layout's header pills and the page share it): opening the game never grows the streak. The gardener level / XP was removed
 - Coins = the stored 🪙 gold balance `users.coins` (starts at 300; +1 per item mastered for the first time; −100 per seed, −min(100 + statements, 150) per clone; 0 if the coins migration hasn't run). `coinsAsOf` = when it was read (epoch ms), so the HUD keeps the newer of this and a live value from an action. Coins are the only currency: the HUD shows 🔥 streak and 🪙 coins (no gems)
 
 ### `getGardenStats` (progress)

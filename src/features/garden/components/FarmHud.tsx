@@ -2,62 +2,20 @@
 
 import Link from 'next/link'
 import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
-import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, LevelCrest, PodShadow, ResourcePill } from '@/shared/components/game'
-import { SEED_PRICE_COINS } from '@/shared/lib/economy'
-import { useCoinShop } from '@/shared/stores/CoinShopProvider'
-import { useDisplayedCoins } from '@/shared/stores/CoinsProvider'
+import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, PodShadow } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
-import type { FarmHudView } from '../types'
 
 // Floating game HUD for the farm. The overlay around these pieces is pointer-events-none so drags
 // and clicks reach the world; every piece re-enables pointer events.
 
-// Top-left: level crest + XP capsule. Signed out: a gentle sign-in invite.
-function LevelBadge({ level }: { level: FarmHudView['level'] }) {
+// The streak and coins live in the site header (progress' StreakBadge, CoinsBadge). Signed out, the farm keeps a gentle sign-in invite under its banner.
+function SignInInvite() {
   const { open } = useLoginDialog()
-  if (!level) {
-    return (
-      <GameButton tone="cream" size="md" onClick={open} className="pointer-events-auto">
-        🧑‍🌾 Sign in to start farming
-      </GameButton>
-    )
-  }
-  return <LevelCrest level={level.level} title={level.title} xpIntoLevel={level.xpIntoLevel} xpForNextLevel={level.xpForNextLevel} />
-}
-
-// Top-right: streak flame and gold coins (coins are the only currency).
-function Counters({ hud }: { hud: FarmHudView }) {
-  const streak = hud.streak
-  // The newer of the server's balance and the latest one an action reported this visit.
-  const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
-  const { open: openShop } = useCoinShop()
-  const signedIn = hud.level !== null
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-      <ResourcePill
-        icon={streak?.practicedToday ? 'flame' : 'sprout'}
-        tone={streak?.practicedToday ? 'fire' : 'leaf'}
-        value={streak?.current ?? 0}
-        label="Daily streak"
-        hint={
-          streak
-            ? streak.practicedToday
-              ? 'Watered today: your streak is growing'
-              : 'Practise today to keep your streak'
-            : 'Sign in to keep a streak'
-        }
-      />
-      <ResourcePill
-        icon="coin"
-        tone="gold"
-        value={coins ?? 0}
-        label="Gold coins"
-        hint={`A tree seed costs ${SEED_PRICE_COINS} coins. Earn 1 the first time you master a statement (5/5)`}
-        onAdd={signedIn ? openShop : undefined}
-        addLabel="Open the Coin Shop"
-      />
-    </div>
+    <GameButton tone="cream" size="sm" onClick={open} className="pointer-events-auto">
+      🧑‍🌾 Sign in to start farming
+    </GameButton>
   )
 }
 
@@ -231,4 +189,4 @@ function BuffPills({ summary, hint }: { summary: FarmBuffSummary; hint: boolean 
   )
 }
 
-export { BuffPills, Counters, FarmDock, GardenBanner, LevelBadge, ViewToggle, ZoomControls }
+export { BuffPills, FarmDock, GardenBanner, SignInInvite, ViewToggle, ZoomControls }

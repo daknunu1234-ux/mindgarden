@@ -74,7 +74,7 @@ function UprootForm({ deckId, deckTitle, onCancel, onChop }: { deckId: string; d
         </span>
         <p>
           This will <strong>permanently</strong> remove <strong className="font-game text-base">“{deckTitle}”</strong>, all of its root
-          concepts, statements, and your accumulated mastery XP. This can&apos;t be undone.
+          concepts, statements, and your accumulated mastery. This can&apos;t be undone.
         </p>
       </div>
 

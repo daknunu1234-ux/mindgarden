@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { GameButton } from '@/shared/components/game'
 import { cn } from '@/shared/utils/cn'
 import { updateDeck } from '../actions/updateDeck'
 
@@ -42,47 +41,56 @@ function DeckShareToggle({ deckId, slug, isPublic: initial }: DeckShareTogglePro
     }
   }
 
+  const hint = isPublic
+    ? 'Shared: anyone with the link can open it read-only and clone it to practise.'
+    : 'Private: only you can see and practise this tree.'
+
+  // A compact pill for the Tree Workshop's settings bar; the full explanation is the tooltip.
   return (
-    <div className="rounded-[20px] border-[2.5px] border-[#6cc48a] bg-gradient-to-b from-[#f4fdee] to-[#dcf7cb] p-3.5 text-emerald-950 shadow-[inset_0_2px_0_#fff,0_4px_0_#4fa56d]">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="min-w-0 text-emerald-950">
+      <div className="flex flex-wrap items-center gap-2" title={hint}>
         <button
           type="button"
           role="switch"
           aria-checked={isPublic}
           aria-labelledby="deck-share-label"
+          aria-describedby="deck-share-hint"
           onClick={toggle}
           disabled={isPending}
           className={cn(
-            'relative h-8 w-14 shrink-0 rounded-full border-[3px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] transition-colors focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none disabled:opacity-60',
+            'relative h-6 w-10 shrink-0 rounded-full border-2 shadow-[inset_0_2px_3px_rgba(0,0,0,0.2)] transition-colors focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none disabled:opacity-60',
             isPublic ? 'border-emerald-700 bg-emerald-500' : 'border-stone-400 bg-stone-300',
           )}
         >
           <span
             aria-hidden
             className={cn(
-              'absolute top-0.5 size-5 rounded-full border-2 border-white bg-gradient-to-b from-white to-stone-100 shadow-[0_2px_0_rgba(0,0,0,0.25)] transition-[left] duration-200 ease-[cubic-bezier(.34,1.56,.64,1)]',
-              isPublic ? 'left-[26px]' : 'left-0.5',
+              'absolute top-0.5 size-4 rounded-full bg-white shadow-[0_1px_0_rgba(0,0,0,0.25)] transition-[left] duration-200 ease-[cubic-bezier(.34,1.56,.64,1)]',
+              isPublic ? 'left-[18px]' : 'left-0.5',
             )}
           />
         </button>
-        <div className="min-w-0 flex-1">
-          <p id="deck-share-label" className="font-game text-base font-extrabold">
-            Share tree with community (Public link) 🌐
-          </p>
-          <p className="text-sm text-emerald-900/70">
-            {isPublic
-              ? 'Shared: anyone with the link can open it read-only and clone it to practise.'
-              : 'Private: only you can see and practise this tree.'}
-          </p>
-        </div>
+        <p id="deck-share-label" className="font-game text-xs font-bold">
+          🌐 Share<span className="sr-only"> tree with community (Public link)</span>
+        </p>
+        <span className={cn('rounded-full px-1.5 text-[10px] leading-4 font-bold', isPublic ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700')}>
+          {isPublic ? 'Public' : 'Private'}
+        </span>
+        <span id="deck-share-hint" className="sr-only">
+          {hint}
+        </span>
         {isPublic && (
-          <GameButton type="button" tone="cream" size="sm" onClick={copyLink}>
+          <button
+            type="button"
+            onClick={copyLink}
+            className="rounded-full border-2 border-emerald-700/30 bg-white px-2 text-[11px] leading-5 font-bold text-emerald-900 hover:bg-emerald-50 focus-visible:ring-3 focus-visible:ring-yellow-300 focus-visible:outline-none"
+          >
             {copied ? 'Copied! ✓' : '🔗 Copy link'}
-          </GameButton>
+          </button>
         )}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-sm font-semibold text-amber-900">
+        <p role="alert" className="mt-1 text-xs font-semibold text-amber-900">
           {error}
         </p>
       )}

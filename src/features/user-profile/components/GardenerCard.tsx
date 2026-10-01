@@ -1,20 +1,18 @@
 import { CalendarDays, Mail } from 'lucide-react'
-import { GameIcon, GamePanel, GameProgressBar, Ribbon } from '@/shared/components/game'
+import { GameIcon, GamePanel, Ribbon } from '@/shared/components/game'
 import { GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
 import { formatJoined, gardenerName } from '../lib/format'
-import type { GardenerLevelView, GardenerView } from '../types'
+import type { GardenerView } from '../types'
 
 type GardenerCardProps = {
   gardener: GardenerView
   masteryPercent: number
-  level?: GardenerLevelView | null
   // 🪙 stored gold balance (users.coins); hidden when unknown.
   coins?: number | null
 }
 
-// The hall's nameplate: a carved wooden board with a gold-framed portrait, the level gauge and the
-// gardener's gold.
-function GardenerCard({ gardener, masteryPercent, level, coins }: GardenerCardProps) {
+// The hall's nameplate: a carved wooden board with a gold-framed portrait and the gardener's gold.
+function GardenerCard({ gardener, masteryPercent, coins }: GardenerCardProps) {
   const name = gardener.name?.trim() || gardenerName(gardener.email)
   return (
     <GamePanel tone="wood" className="text-amber-50">
@@ -26,18 +24,12 @@ function GardenerCard({ gardener, masteryPercent, level, coins }: GardenerCardPr
           >
             {name.charAt(0)}
           </div>
-          {level && (
-            <span className="absolute -right-1 -bottom-1 flex size-10 items-center justify-center rounded-full border-[3px] border-amber-700 bg-gradient-to-b from-yellow-200 to-amber-400 font-game text-lg font-extrabold text-amber-900 shadow-[0_3px_0_#78350f]">
-              <span className="sr-only">Level </span>
-              {level.level}
-            </span>
-          )}
         </div>
         <div className="w-full min-w-0 flex-1 text-center sm:text-left">
           <p className="font-game text-sm font-bold tracking-wide text-amber-200/80 uppercase">Gardener&apos;s Trophy Hall</p>
           <h1 className="truncate font-game text-3xl leading-tight font-extrabold [text-shadow:0_2px_0_rgba(69,26,3,0.6)]">{name}</h1>
           <div className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2 sm:justify-start">
-            <Ribbon tone="leaf">🧑‍🌾 {level ? level.title : 'Gardener'}</Ribbon>
+            <Ribbon tone="leaf">🧑‍🌾 Gardener</Ribbon>
             {masteryPercent >= GOLDEN_BLOOM_PERCENT && <Ribbon tone="gold">✨ Golden garden</Ribbon>}
             {coins !== undefined && coins !== null && (
               <span
@@ -50,17 +42,6 @@ function GardenerCard({ gardener, masteryPercent, level, coins }: GardenerCardPr
               </span>
             )}
           </div>
-          {level && (
-            <GameProgressBar
-              value={level.xpIntoLevel}
-              max={level.xpForNextLevel}
-              tone="gold"
-              size="lg"
-              label={`Level ${level.level} experience`}
-              caption={`Lv ${level.level} · ${level.xpIntoLevel} / ${level.xpForNextLevel} XP`}
-              className="mt-4 border-amber-950/40"
-            />
-          )}
           <dl className="mt-3 flex flex-col items-center gap-1 text-sm text-amber-100/80 sm:flex-row sm:gap-5">
             <div className="flex min-w-0 items-center gap-1.5">
               <dt>

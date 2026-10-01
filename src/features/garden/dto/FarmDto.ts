@@ -13,7 +13,7 @@ export const PlaceFarmItemDto = z.discriminatedUnion('item', [
   z.object({ item: z.enum(['farmer_house', 'woodshop', 'stream', 'fence', 'rockery', 'cow', 'pig']), x: tile, y: tile }),
 ])
 
-// Pick an item up again (a tree goes back to the Shop's Trees tab). No refund.
+// Pick a Shop item up again (never a tree: those are moved or chopped). No refund.
 export const RemoveFarmPlacementDto = z.object({ placementId: z.uuid('Invalid item') })
 
 // Move one of your trees or items to a new top tile (its footprint stays the same).

@@ -3,7 +3,9 @@
 // Local calendar days live in shared/lib/localDay.ts (the tournament counts days the same way).
 export { localDay, resolveTimeZone } from '@/shared/lib/localDay'
 
-export const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 365] as const
+// The streak grows only by watering a tree: a saved practice answer marks the player's local day
+// (services/streak.ts recordPracticeDay), once per day however many trees are watered. Opening the
+// game marks nothing. A missed day ends the run: the next watering starts again at 1.
 
 export type Streaks = {
   // Consecutive days ending today or yesterday (a streak survives until a whole day is missed).
@@ -47,13 +49,20 @@ export function computeStreaks(days: readonly string[], today: string): Streaks 
   }
 }
 
-// Highest milestone reached (3, 7, 14, …), or null below the first.
-export function streakMilestone(days: number): number | null {
-  const reached = STREAK_MILESTONES.filter((m) => days >= m)
-  return reached.length > 0 ? reached[reached.length - 1] : null
+// 🪙 bonus paid on the day the streak reaches `streak` days: 7 → 7, 30 → 30, every 100 days
+// (100, 200, 300…) → as many coins as days; any other day 0. The database applies the same rule
+// (award_streak_reward, migration 20261004000000_streak_rewards.sql; a test keeps them equal).
+export function streakReward(streak: number): number {
+  if (!Number.isInteger(streak) || streak <= 0) return 0
+  if (streak === 7) return 7
+  if (streak === 30) return 30
+  if (streak >= 100 && streak % 100 === 0) return streak
+  return 0
 }
 
-// The next milestone to aim for, or null past the last one.
-export function nextStreakMilestone(days: number): number | null {
-  return STREAK_MILESTONES.find((m) => m > days) ?? null
+// The next streak length that pays a bonus (always one: the hundreds never end).
+export function nextStreakReward(streak: number): { streak: number; coins: number } {
+  const days = Math.max(0, Math.floor(streak))
+  const next = days < 7 ? 7 : days < 30 ? 30 : (Math.floor(days / 100) + 1) * 100
+  return { streak: next, coins: streakReward(next) }
 }

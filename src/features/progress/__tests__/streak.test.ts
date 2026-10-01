@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeStreaks, localDay, nextStreakMilestone, resolveTimeZone, streakMilestone } from '../lib/streak'
+import { computeStreaks, localDay, resolveTimeZone, streakReward } from '../lib/streak'
 
 const TODAY = '2026-09-28'
 
@@ -50,19 +50,8 @@ describe('computeStreaks', () => {
     expect(days.at(-1)).toBe(TODAY)
     const s = computeStreaks(days, TODAY)
     expect(s).toMatchObject({ current: 30, best: 30 })
-    expect(streakMilestone(s.current)).toBe(30)
-    expect(nextStreakMilestone(s.current)).toBe(50)
-  })
-})
-
-describe('milestones', () => {
-  it('returns the highest milestone reached and the next one', () => {
-    expect(streakMilestone(2)).toBeNull()
-    expect(streakMilestone(3)).toBe(3)
-    expect(streakMilestone(13)).toBe(7)
-    expect(nextStreakMilestone(0)).toBe(3)
-    expect(nextStreakMilestone(7)).toBe(14)
-    expect(nextStreakMilestone(365)).toBeNull()
+    // The 🪙 bonus for it is tested in streakRewards.test.ts.
+    expect(streakReward(s.current)).toBe(30)
   })
 })
 

@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Droplets, Network, PencilLine } from 'lucide-react'
+import { Droplets, Network } from 'lucide-react'
 import { GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
 import { FRUIT_COINS } from '@/shared/lib/economy'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
 import { isImmune } from '@/shared/lib/treeVitality'
+import { cn } from '@/shared/utils/cn'
 import { useTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
 import { GrowthBar } from './GrowthBar'
@@ -17,31 +18,33 @@ type FarmPlotDialogProps = {
   onOpenChange: (open: boolean) => void
   // Owners only: ask to chop (delete) this tree. The page wires it to the decks feature.
   onUproot?: (plot: FarmPlotView) => void
-  // Owners only: take the tree off the farm (back to the Shop's Trees tab, nothing deleted).
-  onRemoveFromFarm?: (plot: FarmPlotView) => void
   // Owners only: pick the tree up and move it to another tile (Move mode on the farm).
   onMove?: (plot: FarmPlotView) => void
   // Owners only: harvest today's fruit (practised yesterday).
   onHarvest?: (plot: FarmPlotView) => void
 }
 
-// Tree popover: 💧 water (practise), 🔍 roots (mindmap), edit, ↔️ move, 📦 remove from the farm and 🪓 chop, all
-// owner only. Visitors (strict read-only mode) explore the roots, clone to practise, and ⚔️ compete
-// while the owner hosts a Mind Tournament.
-function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm, onMove, onHarvest }: FarmPlotDialogProps) {
+// One segment of the owner's compact action row.
+const TOOL =
+  'flex h-9 flex-1 items-center justify-center gap-1.5 px-3 font-game text-sm font-bold whitespace-nowrap text-amber-950 transition-colors hover:bg-amber-100 focus-visible:bg-amber-100 focus-visible:ring-3 focus-visible:ring-yellow-300 focus-visible:outline-none focus-visible:ring-inset'
+
+// Tree popover: 💧 water (practise), then one compact row for the owner: roots (the tree's page:
+// mindmap + Workshop), ↔️ move and 🪓 chop (a planted tree can't go back to the Shop). Visitors (strict read-only
+// mode) explore the roots, clone to practise, and ⚔️ compete while the owner hosts a Mind Tournament.
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onMove, onHarvest }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} onMove={onMove} onHarvest={onHarvest} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onMove={onMove} onHarvest={onHarvest} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm' | 'onMove' | 'onHarvest'> & { plot: FarmPlotView }
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onMove' | 'onHarvest'> & { plot: FarmPlotView }
 
-function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove, onHarvest }: PlotDetailsProps) {
+function PlotDetails({ plot, onUproot, onMove, onHarvest }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -135,37 +138,31 @@ function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove, onHarvest }: Pl
             <Droplets aria-hidden /> Nothing to water yet
           </GameButton>
         )}
-        <div className="flex gap-3">
-          <GameButton asChild tone="wood" className="flex-1">
-            <Link href={`/deck/${plot.slug}`}>
-              <Network aria-hidden /> Roots
+        {/* Owner's secondary actions: one compact pill row. Roots opens the tree's page, where the
+            mindmap and the Tree Workshop are (there is no separate Edit). */}
+        {plot.isOwner && (
+          <div
+            role="group"
+            aria-label="Tree actions"
+            className="flex flex-wrap justify-center divide-x-2 divide-amber-900/15 overflow-hidden rounded-2xl border-[2.5px] border-[#dcb98c] bg-gradient-to-b from-white to-[#fff6e6] shadow-[0_3px_0_#d2ac7c]"
+          >
+            <Link href={`/deck/${plot.slug}`} className={TOOL} title="Open the roots: view the mindmap and edit statements">
+              <Network aria-hidden className="size-4" /> Roots
             </Link>
-          </GameButton>
-          {/* Owner's edit menu: edit + a small uproot (delete) badge. */}
-          {plot.isOwner && (
-            <GameButton asChild tone="cream" className="flex-1">
-              <Link href={`/deck/${plot.slug}#grow-heading`}>
-                <PencilLine aria-hidden /> Edit
-              </Link>
-            </GameButton>
-          )}
-        </div>
-        {plot.isOwner && onMove && plot.placementId && (
-          <GameButton type="button" tone="sky" className="w-full" onClick={() => onMove(plot)} title="Pick the tree up and put it on another tile">
-            ↔️ Move
-          </GameButton>
-        )}
-        {plot.isOwner && (onRemoveFromFarm || onUproot) && (
-          <div className="flex gap-3">
-            {onRemoveFromFarm && plot.placementId && (
-              <GameButton type="button" tone="cream" className="flex-1" onClick={() => onRemoveFromFarm(plot)} title="Back to the Shop's Trees tab: nothing is deleted">
-                📦 Remove from farm
-              </GameButton>
+            {onMove && plot.placementId && (
+              <button type="button" className={TOOL} onClick={() => onMove(plot)} title="Pick the tree up and put it on another tile">
+                <span aria-hidden>↔️</span> Move
+              </button>
             )}
             {onUproot && (
-              <GameButton type="button" tone="danger" className="flex-1" onClick={() => onUproot(plot)} title="Delete this tree (a Woodshop refunds 25% of its statements)">
-                🪓 Chop
-              </GameButton>
+              <button
+                type="button"
+                className={cn(TOOL, 'text-red-700 hover:bg-red-50')}
+                onClick={() => onUproot(plot)}
+                title="Delete this tree (a Woodshop refunds 25% of its statements)"
+              >
+                <span aria-hidden>🪓</span> Chop
+              </button>
             )}
           </div>
         )}

@@ -45,7 +45,7 @@
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
-| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
+| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit), `award_streak_reward` (streak milestones) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
 | coin_carry | NUMERIC(6,3) | NOT NULL, DEFAULT 0, 0 ≤ x < 1 | Fraction of a coin carried between buffed mastery payouts (migration `20260930000000`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
@@ -195,7 +195,7 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | No free items | Players have **no** INSERT/UPDATE on `garden_placements` (SELECT and DELETE only); the function is the only writer. It charges `coins >= price` and inserts in one transaction (`INSUFFICIENT_COINS`) |
 | No overlaps, nothing off the grid, one tile per deck | Checked in the function under a lock on the owner's `users` row (`TILE_UNAVAILABLE`, `TREE_ALREADY_PLACED`); CHECKs + unique constraints as the last guard |
 | Buffs are real payouts | `public.farm_coin_multiplier(user, deck)` (service role) → `award_mastery_coin` pays `floor(1 × multiplier + users.coin_carry)` and keeps the fraction in `users.coin_carry` (0 ≤ x < 1), so ×1.2 isn't lost to rounding. Still once per item ever |
-| Chopping never profits | `public.uproot_deck(deck_id)` (owner = `auth.uid()`) deletes the deck and, with a Woodshop placed, refunds at most 50 🪙 (half a seed). Picking a tree up (back to the Shop) is **not** chopping and pays nothing, so place/remove can't be looped for coins |
+| Chopping never profits | `public.uproot_deck(deck_id)` (owner = `auth.uid()`) deletes the deck and, with a Woodshop placed, refunds at most 50 🪙 (half a seed). The app no longer picks trees up (a planted tree is moved or chopped; `removeFarmPlacement` filters `item_type <> 'tree'`). ⚠️ The table's DELETE policy still lets an owner delete their own tree placement straight through the API: that only puts the tree back in the Shop's Trees tab and pays nothing, so it can't be looped for coins; a migration would be needed to forbid it in the database |
 | Visitors see only what is shared | RLS "read own or public": your farm in full; someone else's items and their **public** trees only. Delete: own rows |
 
 Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 per row, up to 49); newer trees wait in the Shop's Trees tab until planted.
@@ -269,7 +269,28 @@ Written by `recordDrillResult` (service role, `progress/services/fruit.ts`) afte
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | *(user_id, day)* | — | PK | First answer of the day inserts, later ones change nothing |
 
-⚠️ `user_progress.last_practiced_at` is overwritten on every answer (one row per item), so past active days cannot be rebuilt from it. Streaks are computed from `practice_days` (`progress/lib/streak.ts`); `users.streak_count` / `last_active_at` mirror the current value.
+⚠️ `user_progress.last_practiced_at` is overwritten on every answer (one row per item), so past active days cannot be rebuilt from it. Streaks are computed from `practice_days` (`progress/lib/streak.ts`); `users.streak_count` / `last_active_at` mirror the current value. The only writer is `recordPracticeDay` (service role), called when a practice answer is saved ("watering a tree"): opening the game writes nothing, and a missed day restarts the run at 1.
+
+**streak_rewards** — *Streak bonus ledger (migration `20261004000000_streak_rewards.sql`): one row per player per local day that paid a milestone bonus*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
+| day | DATE | NOT NULL | The watered day that reached the milestone (player's local day) |
+| streak | INT | NOT NULL, CHECK > 0 | The streak length that day (7, 30, 100, 200, …) |
+| coins | INT | NOT NULL, CHECK > 0 | 🪙 paid |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(user_id, day)* | — | PK | A day pays once, however many trees are watered |
+
+**Streak rewards** (`public.award_streak_reward(user, day)`, `SECURITY DEFINER`, EXECUTE for **service_role only**; called by `progress/services/coins.ts` `claimStreakReward` after a saved answer on a milestone day): under a lock on the player's `users` row it counts the run of consecutive `practice_days` ending on `day` itself (the app's streak is never trusted; 0 if that day wasn't practised), applies the rule, inserts the ledger row (`ON CONFLICT DO NOTHING`) and adds the coins in the same transaction. Returns `streak, coins_earned, total_coins` (`coins_earned = 0` on a non-milestone day or a repeat). The same rule lives in `progress/lib/streak.ts` `streakReward`; a test checks the SQL:
+
+| Streak that day | Bonus |
+|-----------------|-------|
+| 7 | 7 🪙 |
+| 30 | 30 🪙 |
+| 100, 200, 300, … (≥ 100 and a multiple of 100) | as many 🪙 as days |
+| anything else | 0 |
+
+A streak that breaks and reaches 7 (or 30) again pays again, on its new day. The streak's calendar day comes from the browser's timezone, as for `practice_days`.
 
 ---
 
@@ -367,6 +388,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | garden_placements | Owner; others: items + public trees | ✗ direct; only via `purchase_and_place_item()` | ✗ | Owner |
 | deck_practice_days | Owner | ✗ (service role: `recordDrillResult`) | ✗ | ✗ (cascades only) |
 | tree_harvests | Owner | ✗ (service role: `harvest_tree_fruit()`) | ✗ | ✗ (cascades only) |
+| streak_rewards | Owner | ✗ (service role: `award_streak_reward()`) | ✗ | ✗ (cascades only) |
 | deck_tournament_participants | Owner (boards through the two board functions) | ✗ (service role: `record_tournament_answer`) | ✗ (same) | ✗ (cascades only) |
 | deck_tournament_item_progress | Owner (through the participant) | ✗ (service role) | ✗ (service role) | ✗ (cascades only) |
 
@@ -457,6 +479,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 16 | `20261004000000_streak_rewards.sql` | `streak_rewards` (RLS: read own; server writes only), `award_streak_reward()` (service role: streak milestone coins at 7, 30 and every 100 days, once per day, streak counted in the database) |
   | 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement(p_placement_id, p_new_x, p_new_y)`: owner-only move of a farm placement (bounds with its own footprint, overlaps excluding itself, row lock); still no UPDATE grant on `garden_placements` |
   | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
@@ -469,6 +492,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 16** can run any time after file 15, before or after the deploy. Until it runs, answers and streaks still save; a milestone day just pays no bonus (the log names the migration) and can't be claimed later
 - **File 15** can run any time after file 14. Until it runs, saved answers still count (the tree practice day is just logged as missing), no tree shows fruit and harvesting answers "Could not harvest this tree" (the log names the migration). Withering needs no migration
 - **File 12** can run any time after file 11. Until it runs, the farm is empty (the log names the migration), the Shop can't place anything, chopping falls back to the plain delete (no refund) and coins pay ×1
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected

@@ -40,9 +40,8 @@ export type FarmPlotView = {
   fruitReady?: boolean
 }
 
-// Farm HUD. level/streak/coins are null when signed out.
+// Farm HUD. streak/coins are null when signed out.
 export type FarmHudView = {
-  level: { level: number; title: string; progress: number; xpIntoLevel: number; xpForNextLevel: number } | null
   streak: { current: number; practicedToday: boolean } | null
   // 🪙 the stored gold balance (the only currency).
   coins: number | null

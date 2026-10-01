@@ -365,6 +365,28 @@
   .mg-cloud, .mg-bubble, .mg-sheen, .mg-swell { display: none; }
 }
 
+/* Distant karsts (garden/FarmDiorama): mist drifts across the ridges, water runs down the falls,
+   foam ripples out from the rocks' feet. Transform / opacity only; still for reduced motion. */
+@keyframes mg-mist {
+  0%, 100% { transform: translateX(-34px); opacity: 0.3; }
+  50% { transform: translateX(34px); opacity: 0.7; }
+}
+@keyframes mg-cascade {
+  0% { transform: translateY(0); opacity: 0; }
+  15%, 80% { opacity: 0.9; }
+  100% { transform: translateY(var(--mg-drop, 80px)); opacity: 0; }
+}
+@keyframes mg-shorefoam {
+  0% { transform: scale(0.94); opacity: 0; }
+  30% { opacity: 0.7; }
+  100% { transform: scale(1.14); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-mist { animation: mg-mist var(--mg-dur, 24s) ease-in-out var(--mg-delay, 0s) infinite; }
+  .mg-cascade { animation: mg-cascade 1.8s linear var(--mg-delay, 0s) infinite; }
+  .mg-shorefoam { animation: mg-shorefoam 5.2s ease-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
+}
+
 /* ── Living trees (garden/FarmTree, TreeStageSvg) ────────────────────────────
    The whole tree sways about its trunk base (±1.5deg) and breathes (a little taller and slimmer twice
    per sway). Its crown (`.mg-foliage`) follows a beat later for a bouncy, toy-like lag. Each tree

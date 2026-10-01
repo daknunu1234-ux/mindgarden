@@ -4,9 +4,6 @@ import type { ReactNode } from 'react'
 // name: the chosen Garden Name (null = fall back to the email's name part on this private page).
 export type GardenerView = { email: string; joinedAt: string; name?: string | null }
 
-// Gardener level (from progress.getFarmHud); optional on the card.
-export type GardenerLevelView = { level: number; title: string; xpIntoLevel: number; xpForNextLevel: number }
-
 export type GardenStatsView = {
   treeCount: number
   itemCount: number

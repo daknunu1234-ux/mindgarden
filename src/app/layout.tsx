@@ -3,7 +3,7 @@ import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
-import { getStreak, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
+import { CoinsBadge, getFarmHud, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
 import { CoinShopModal, GameButton } from "@/shared/components/game";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
 import { StreakProvider } from "@/shared/stores/StreakProvider";
@@ -35,9 +35,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [res, streakRes] = await Promise.all([getCurrentUser(), getStreak()]);
+  // Streak and coins for the header (one load per request, shared with the page). Reading them
+  // never grows the streak: only watering a tree does.
+  const [res, hudRes] = await Promise.all([getCurrentUser(), getFarmHud()]);
   const user = res.success ? res.data : null;
-  const streak = streakRes.success && streakRes.data ? streakRes.data : null;
+  const hud = hudRes.success ? hudRes.data : null;
+  const streak = hud?.streak ?? null;
 
   return (
     <html
@@ -50,23 +53,31 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <CoinsProvider>
           <CoinShopProvider>
           <StreakProvider initial={streak && { current: streak.current, best: streak.best, practicedToday: streak.practicedToday }}>
-          {/* Wooden top bar: carved logo, plant button, streak capsule, gardener badge. */}
+          {/* Wooden top bar: carved logo, plant button, then the player's stats (🔥 streak, 🪙 coins)
+              next to the gardener badge. */}
           <header className="relative z-40 border-b-[3px] border-amber-950/60 bg-gradient-to-b from-amber-700 to-amber-800 shadow-[inset_0_2px_0_rgba(255,255,255,0.15),0_4px_0_rgba(69,26,3,0.35)]">
-            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-2 sm:gap-3 sm:px-6">
               <Link
                 href="/"
-                className="flex items-center gap-1.5 rounded-xl font-game text-xl font-extrabold tracking-tight text-amber-50 [text-shadow:0_2px_0_rgba(69,26,3,0.7)] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
+                aria-label="MindGarden"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl font-game text-xl font-extrabold tracking-tight text-amber-50 [text-shadow:0_2px_0_rgba(69,26,3,0.7)] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
               >
                 <span aria-hidden className="text-2xl">
                   🌳
                 </span>
-                MindGarden
+                {/* Signed in on a phone, the stats need the room: the tree alone is the logo. */}
+                <span className={user ? "hidden sm:inline" : undefined}>MindGarden</span>
               </Link>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <GameButton asChild tone="leaf" size="sm" className="hidden sm:inline-flex">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <GameButton asChild tone="leaf" size="sm" className="hidden md:inline-flex">
                   <Link href="/deck/new">Plant a Tree 🌱</Link>
                 </GameButton>
-                {user && <StreakBadge />}
+                {user && hud && (
+                  <>
+                    <StreakBadge />
+                    <CoinsBadge coins={hud.coins} coinsAsOf={hud.coinsAsOf} />
+                  </>
+                )}
                 <ProfileButton user={user} />
               </div>
             </div>

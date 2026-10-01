@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { cn } from '@/shared/utils/cn'
 import { GameIcon, type GameIconName } from './GameIcon'
-import { GameProgressBar } from './GameProgressBar'
 
 // Floating HUD pods for game screens: chunky toy slabs hovering over a soft ground shadow, with a
 // chubby icon medallion bursting out of the left end. Server-safe; the overlay that holds them
@@ -15,51 +14,6 @@ function PodShadow({ className }: { className?: string }) {
 // Glossy cream slab with a golden rim line inside its chunky border.
 const POD =
   'relative rounded-[20px] border-[3px] border-[#a8702a] bg-gradient-to-b from-white via-[#fffaf0] to-[#f6e3c3] shadow-[inset_0_0_0_2px_rgba(255,206,84,0.75),inset_0_3px_0_rgba(255,255,255,0.95),inset_0_-4px_0_rgba(185,138,90,0.3),0_5px_0_#8a5a1f,0_9px_14px_rgba(0,0,0,0.18)]'
-
-// Top-left: level shield + title + XP juice-bar in one pod.
-function LevelCrest({
-  level,
-  title,
-  xpIntoLevel,
-  xpForNextLevel,
-  className,
-}: {
-  level: number
-  title: string
-  xpIntoLevel: number
-  xpForNextLevel: number
-  className?: string
-}) {
-  return (
-    <div className={cn('pointer-events-auto relative flex items-center pb-1', className)}>
-      <PodShadow />
-      <div aria-hidden className="relative z-10 size-[68px] shrink-0 drop-shadow-[0_5px_0_#8a4a0c]">
-        <svg viewBox="0 0 64 64" className="size-full overflow-visible">
-          <path d="M32 3 L58 12 Q59 41 32 62 Q5 41 6 12 Z" fill="#3b1d0b" />
-          <path d="M32 6 L55 14 Q55 39 32 58 Q9 39 9 14 Z" fill="#f59e0b" />
-          <path d="M32 6 L55 14 Q55 25 50 34 Q40 22 12 22 Q10 18 9 14 Z" fill="#fde047" />
-          <path d="M32 58 Q49 45 54 26 Q52 42 32 58 Z" fill="#c2410c" opacity="0.45" />
-          <path d="M15 16 Q24 11 31 11" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" fill="none" opacity="0.85" />
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center pb-1.5 font-game text-[26px] font-extrabold text-[#5a2a02] [text-shadow:0_2px_0_rgba(255,255,255,0.7)]">
-          {level}
-        </span>
-      </div>
-      <div className={cn(POD, '-ml-5 min-w-0 py-1.5 pr-3 pl-7')}>
-        <p className="truncate font-game text-sm leading-tight font-extrabold text-[#4a2511]">{title}</p>
-        <GameProgressBar
-          value={xpIntoLevel}
-          max={xpForNextLevel}
-          tone="leaf"
-          size="md"
-          label={`Level ${level} experience`}
-          caption={`${xpIntoLevel} / ${xpForNextLevel} XP`}
-          className="mt-1 w-32 sm:w-44"
-        />
-      </div>
-    </div>
-  )
-}
 
 type PillTone = 'fire' | 'gold' | 'leaf'
 
@@ -187,4 +141,4 @@ function DockOrb({ children, badge, tone, big = false, sheen = false }: { childr
   )
 }
 
-export { ActionDock, DOCK_BUTTON, DockOrb, LevelCrest, PodShadow, ResourcePill }
+export { ActionDock, DOCK_BUTTON, DockOrb, PodShadow, ResourcePill }

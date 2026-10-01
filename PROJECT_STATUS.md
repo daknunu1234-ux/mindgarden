@@ -48,6 +48,22 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Shop item | −1 to −50 (catalogue below) | `purchase_and_place_item()` |
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
+| Streak milestone (first watering that day) | +7 at 7 days, +30 at 30, +N at every 100 (100, 200, …) | `award_streak_reward()` |
+
+### Daily streak and its rewards
+
+- **Only watering counts**: the streak grows when the player waters a tree, i.e. saves a practice
+  answer (right or wrong). Opening the game, the farm or the header never marks a day (the HUD load is
+  read-only; a test fails if it writes).
+- **Once per day**: the first watering of the player's local day inserts the day
+  (`practice_days`, insert-if-absent); watering more trees that day changes nothing.
+- **Missed day**: the run ends; the next watering starts again at 1 (the best streak is kept).
+- **Milestone coins** (`progress/lib/streak.ts` `streakReward`, mirrored by SQL, tested): 7 days → +7 🪙,
+  30 → +30, every 100 (100, 200, 300…) → as many coins as days; every other day +0. Paid on that
+  day's watering by `award_streak_reward()` (migration 16, service role), which counts the streak
+  itself from `practice_days` and keeps a ledger (`streak_rewards`) so a day pays once. The purse
+  updates at once and a toast says "🌱 Tree watered today! N-day streak: +N 🪙". A streak that restarts
+  and reaches 7 again pays again.
 
 ## Sign-in
 
@@ -73,14 +89,21 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 - **Tree Workshop outline** (deck page, owner only, the section under the mindmap): the roots are edited
   as a compact connected outline, with no dialogs. The mindmap canvas above and its 💧 Drill / ⚔️ Compete
   triggers are unchanged.
+  - **Layout: writing first**: the outline is the first thing in the Workshop. Under it, one slim
+    wrapping **Tree settings** bar holds the secondary controls: the species as a row of ten small round
+    icon buttons, a "🌐 Share" switch (Public / Private, with a small copy-link button while public) and a
+    "🏆 Tournament" switch (Live / Closed, "Share first" on a private tree). Their full explanations moved
+    to tooltips and screen-reader hints. The three bulky cards above the editor are gone; the Danger Zone
+    stays last. Same actions and optimistic behaviour as before.
   - **Root selector**: one chip per top-level root (with its branch's statement count). The selected
     root is shown below as an outline: 13 px roots, 12 px statements, joined
     by connector lines (a rail down each child list, an elbow into each row). Only roots and sub-roots
     carry leading markers (▾ / ▸, 🌱 / 🌿); a statement row starts with its text (aligned with the inline
     input, which has no leading icon for statements either), and its status is a subtle trailing
     micro-badge: ⏳ saving and 💧 not drillable always show, ✅ ready only on hover / focus.
-  - **＋ Add Root** is pinned to the bottom of the screen while the Workshop is in view (`sticky`), so
-    there's no scrolling back up; the new root is typed in the selector's last chip.
+  - **＋ Add root** is the last chip of the root selector row (a compact dashed pill, wrapping with the
+    chips on narrow screens); clicking it turns it into the input the new root is typed in. The button
+    pinned to the bottom of the screen is gone.
   - **Collapse / expand**: ▾ / ▸ next to every root and sub-root that has children. Collapsed, its whole
     branch (rows and connector lines) hides and a `+N items` pill counts what's tucked away (statements +
     sub-roots, at any depth; click it to expand). View state only (no server call, outside the deck
@@ -191,7 +214,14 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
 - **One layout table**: `garden_placements` already is the island layout (`item_type`, `grid_x`, `grid_y`,
   `width`, `height` for every placed tree and item), so drag-and-drop needed no migration. The island's
   scenery (beach palms, islets, clouds) is fixed decor around the grid, not placements.
-- **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
+- **Tree popover, compact**: under the big 💧 Water button (and 🍎 Harvest when fruit is ready), the
+  owner's other actions are one pill row with dividers: Roots · ↔️ Move · 🪓 Chop, each with a
+  tooltip. Roots opens the tree's page (mindmap, with the Tree Workshop below); the duplicate Edit
+  button is gone. Visitors keep "Explore & clone" (their separate Roots button led to the same page).
+- **Picking up** a Shop item gives no refund. **Trees can't be picked up**: once planted, a tree is only
+  moved (↔️ Move or drag) or chopped (🪓, with the confirmation and the Woodshop refund). The "Store /
+  Remove from farm" action is gone, and `removeFarmPlacement` refuses a tree (`AUTH_FORBIDDEN`). Trees
+  not planted yet still wait in the Shop's Trees tab.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
 
 ## Tree vitality: withering, evergreen trees and fruit
@@ -280,6 +310,15 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   a wet / dry sand beach with a foam rim, saturated emerald / lime checkered grass with seeded tufts and
   flowers, and swaying palms. Four distant islets bob in the ocean corners; clouds drift in the world and
   sail across the screen at two speeds for parallax.
+- **Distant karsts** (`distantKarsts` in `lib/diorama.ts`, tested; drawn by `DistantKarsts` in
+  `FarmDiorama.tsx`): three Ha Long Bay style limestone formations in the ocean behind the island (twin
+  peaks back-left, a tall tower back-right, a small far ridge behind the back corner). Lit and shaded rock
+  faces, strata, mossy summits with palm silhouettes, thin waterfalls, sea haze dissolving their feet. No
+  ink outlines and a per-karst opacity (0.9 / 0.82 / 0.6) keep them fainter than the farm. Ambient motion:
+  mist drifting across the ridges (`.mg-mist`), water running down the falls (`.mg-cascade`), foam
+  rippling from the rock bases (`.mg-shorefoam`); transform / opacity only, gradients instead of blur
+  filters, still for reduced motion. Decorative only (`pointer-events: none`, in the ocean layer under
+  the island): they are not placements and touch no grid, drag or harvest logic.
 - **Palette**: emerald / lime grass, turquoise water, citrus sand, terracotta soil and roofs, coral
   flowers; thick dark-brown outlines (`#3b1f0e`), lit left faces and shaded right faces (sun upper left).
 - **Chunky toy sprites** (`FarmStructures.tsx`):
@@ -303,9 +342,19 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 - **Placement feedback**: the item floats over a free footprint with a glowing green outline, or throbs
   comic red with "✖ Blocked!". Placing a stream or Farmer's House previews its aura and pulses in the
   "+20% 🪙" / "+50% 🪙" tags it would add. Placed buffs show as floating glossy tags over each tree.
-- **HUD**: a top bar with the level crest, the island's Garden Name on a wooden banner with gold trim,
-  pills for the active buffs (how many trees each boosts, Woodshop refund on), and the streak and coin
-  pods (gold rim). The dock's 🏪 Shop is a hero orb that hops, with a gloss sheen and a red "SHOP" label.
+- **Player stats in the site header** (every page, signed in; `progress` `StreakBadge`, `CoinsBadge`,
+  next to the gardener badge): only a 🔥 / 🌱 streak pill (count only, links to the profile; its tooltip
+  names the next 🪙 bonus) and a 🪙 coins pill (opens the Coin Shop). The root layout loads them with
+  `getFarmHud` (one load per request, shared with the page through React `cache`; read-only). Both
+  update live from actions. On phones the wordmark hides (the 🌳 stays); "Plant a Tree" shows from `md`
+  up.
+- **No level / XP system**: the gardener level, its titles and the XP bar were removed everywhere
+  (header, profile card, farm; `lib/gardenerLevel.ts`, `LevelCrest`). Progress is shown by mastery,
+  the streak and coins.
+- **Farm HUD**: the island's Garden Name on a wooden banner with gold trim and pills for the active
+  buffs (how many trees each boosts, Woodshop refund on), centred at the top. The streak / coin pods
+  are in the header, not on the farm; signed out, a "Sign in to start
+  farming" button sits under the banner. The dock's 🏪 Shop is a hero orb that hops, with a gloss sheen and a red "SHOP" label.
 - **Game kit** (`shared/components/game`, every screen): `GameButton` has deeper bottom borders and
   bold white labels with a thick dark outline; dock captions are outlined too.
 - **Shop** (`FarmShopModal`): a wooden frame with a coin purse chip and chunky tabs. Items are trading
@@ -315,7 +364,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   `.mg-throb`, `.mg-hop`, `.mg-sheen`, `.mg-sway` in `globals.css`, transform / opacity only. All of them
   are off for `prefers-reduced-motion`.
 - **Responsive**: the camera still drags / pinches / zooms; on phones the island banner and buff pills
-  wrap under the level crest and purse, and Shop cards stack in one column.
+  wrap, and Shop cards stack in one column.
 
 ## Performance: instant edits and a smooth grid
 
@@ -422,6 +471,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 13 | `20261001000000_ten_tree_species.sql` | Retired species → successor, `decks_tree_type_check` (the ten ids). Run **after** deploying the code |
 | 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement()`: owner-only move, bounds + overlap checks, row lock |
 | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days`, `tree_harvests`, `harvest_tree_fruit()` (service role: +2 🪙 once per tree per day after practice the day before) |
+| 16 | `20261004000000_streak_rewards.sql` | `streak_rewards` ledger, `award_streak_reward()` (service role: streak milestone coins at 7, 30 and every 100 days, once per day) |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -434,6 +484,11 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | feat(progress): streak milestone coins (7, 30, every 100 days) on the day's first watering; level / XP system removed |
+| (pending) | style(progress): coins and streak pills in the site header; farm HUD keeps only the banner and buffs |
+| (pending) | style(garden): tree popover drops the duplicate Edit button; Roots, Move and Chop in one compact pill row; planted trees can no longer be stored back in the Shop |
+| (pending) | style(decks): Tree Workshop puts the outline editor first; species, share and tournament in one compact settings bar; Add root inline in the root selector |
+| (pending) | feat(garden): distant karst islands with waterfalls, mist and shore foam behind the farm |
 | (pending) | feat(auth): Google 1-click sign-in in the login dialog |
 | `12f6cb3` | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
 | `3e31e55` | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
@@ -469,5 +524,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 73 files, 680 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 73 files, 688 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

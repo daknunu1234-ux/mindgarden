@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Plus, X } from 'lucide-react'
-import { GameButton, GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
+import { GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { toTreeTypeId } from '@/shared/lib/treeSkins'
 import { useToast } from '@/shared/stores/ToastProvider'
 import { cn } from '@/shared/utils/cn'
@@ -33,34 +33,38 @@ import type { DeckEditor as DeckEditorData, EditorItem } from '../types'
 const DRILL_TIP =
   'Not drillable yet. Add another statement about a sibling concept in this root (e.g. "Ribosome tổng hợp protein."), or use a word the engine can flip, like tăng/giảm, trước/sau, là or is.'
 
-type DeckEditorProps = { editor: DeckEditorData }
+// `settings`: the page's other tree switches (share, tournament), shown in the bar after the species.
+type DeckEditorProps = { editor: DeckEditorData; settings?: ReactNode }
 
 // What is being edited in place: a root's title or a statement's text.
 type Editing = { kind: 'node' | 'item'; id: string } | null
 
-// Owner-only Tree Workshop: the species, then the roots as a compact connected outline. A selector
-// switches between top-level roots; ＋ Add Root stays pinned at the bottom of the area while it's on
-// screen. Everything is typed inline (no dialogs): hover a root for ＋📜 / ＋🌿, ✏️ or double-click to
+// Owner-only Tree Workshop: the roots as a compact connected outline first (writing is the main job),
+// then one slim settings bar (species, plus the page's share / tournament switches). A selector
+// switches between top-level roots; ＋ Add root is the last chip of that row and turns into the
+// new root's input. Everything is typed inline (no dialogs): hover a root for ＋📜 / ＋🌿, ✏️ or double-click to
 // edit, then Enter (next sibling), Tab (child), Shift+Tab (up a level), Esc (close). Every change goes
 // through the deck draft, so it shows at 0 ms and saves in the background. Only deletes confirm.
 // Trap rules are never shown; statements get { negate: true } on the server.
-function DeckEditor({ editor }: DeckEditorProps) {
+function DeckEditor({ editor, settings }: DeckEditorProps) {
   return (
-    <div className="space-y-5">
-      <SpeciesForm treeType={editor.treeType} />
+    <div className="space-y-3">
       <RootsOutline editor={editor} />
+      <TreeSettingsBar treeType={editor.treeType}>{settings}</TreeSettingsBar>
     </div>
   )
 }
 
-// Change the tree species: the whole page (tree sprite, ribbon, mindmap roots) switches at once
-// through the deck draft, and the server catches up in the background (rolled back with a toast).
-function SpeciesForm({ treeType }: { treeType: string }) {
+// The secondary controls in one wrapping row under the outline. Changing the species switches the
+// whole page (tree sprite, ribbon, mindmap roots) at once through the deck draft, and the server
+// catches up in the background (rolled back with a toast).
+function TreeSettingsBar({ treeType, children }: { treeType: string; children?: ReactNode }) {
   const { changeSpecies } = useDeckDraftActions()
   return (
-    <GameSlab className="p-4 text-amber-950">
+    <GameSlab role="group" aria-label="Tree settings" className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-amber-950">
       {/* A retired species (e.g. 'sakura') shows as its successor, the one it renders as. */}
-      <TreeSpeciesPicker value={toTreeTypeId(treeType)} onChange={changeSpecies} legend="Tree species" />
+      <TreeSpeciesPicker compact value={toTreeTypeId(treeType)} onChange={changeSpecies} legend="Species" />
+      {children}
     </GameSlab>
   )
 }
@@ -235,7 +239,8 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
               </li>
             )
           })}
-          {liveSlot?.kind === 'root' && (
+          {/* The row's last chip: "Add root", which turns into the input the new root is typed in. */}
+          {liveSlot?.kind === 'root' ? (
             <li className="min-w-48 flex-1 sm:max-w-72">
               <InlineInput
                 placeholder="New root…"
@@ -246,11 +251,21 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
                 onClose={() => setSlot(null)}
               />
             </li>
+          ) : (
+            <li>
+              <button
+                type="button"
+                onClick={() => open({ kind: 'root' })}
+                className="flex h-7 items-center gap-1 rounded-full border-2 border-dashed border-emerald-600/60 px-2.5 text-xs font-semibold text-emerald-800 transition-colors hover:border-emerald-600 hover:bg-emerald-50 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
+              >
+                <Plus aria-hidden className="size-3.5" strokeWidth={3} /> Add root
+              </button>
+            </li>
           )}
         </ul>
       </nav>
 
-      <div className="mt-3 min-h-16">
+      <div className="mt-3 min-h-32">
         {selected ? (
           <OutlineBranch node={selected} top {...branchProps} />
         ) : (
@@ -258,13 +273,6 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
             <p className="py-4 text-center text-sm text-amber-900/65">No roots yet. Add the first concept this tree will grow 🌱</p>
           )
         )}
-      </div>
-
-      {/* Pinned to the bottom of the screen while this area is in view: no scrolling back up to add a root. */}
-      <div className="pointer-events-none sticky bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] z-10 mt-3 flex justify-end">
-        <GameButton tone="leaf" size="sm" className="pointer-events-auto" onClick={() => open({ kind: 'root' })}>
-          <Plus className="size-4" strokeWidth={3} /> Add Root
-        </GameButton>
       </div>
 
       <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />

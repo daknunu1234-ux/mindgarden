@@ -6,6 +6,7 @@ import { submitTournamentAnswer, type TournamentAnswer } from '@/features/tourna
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useStreak } from '@/shared/stores/StreakProvider'
+import { useToast } from '@/shared/stores/ToastProvider'
 import type { ErrorCode } from '@/shared/types/errors'
 import { checkDrillAnswer } from '../actions/checkDrillAnswer'
 import { autoAdvanceDelay } from '../lib/feedbackAdvance'
@@ -24,7 +25,7 @@ export type RoundStats = {
   // Items whose saved mastery went up this round, and items that reached Mighty Root.
   improved: number
   mastered: number
-  // 🪙 gold paid this round (first mastery of an item, once per item ever).
+  // 🪙 gold paid this round (first mastery of an item, once per item ever, plus a streak bonus).
   coinsEarned: number
 }
 
@@ -39,6 +40,7 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean,
   const { open: openLogin } = useLoginDialog()
   const { streak, setStreak } = useStreak()
   const { setCoins } = useCoins()
+  const { toast } = useToast()
   const [index, setIndex] = useState(0)
   const [state, setState] = useState<DrillState>({ status: 'answering' })
   const [stats, setStats] = useState<RoundStats>({ correct: 0, improved: 0, mastered: 0, coinsEarned: 0 })
@@ -58,6 +60,8 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean,
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
       let answer: DrillAnswer
       let progress: DrillProgress | null = null
+      // 🪙 streak bonus paid by this answer (the round's total counts it with the mastery coins).
+      let streakBonus = 0
 
       if (tournament) {
         const res = await submitTournamentAnswer({ ...input, deckId: tournament.deckId, timeZone })
@@ -87,12 +91,16 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean,
           previousMasteryLevel: saved.data.previousMasteryLevel,
           coinsEarned: saved.data.coinsEarned,
         }
+        streakBonus = saved.data.streakReward
         // Update the farm HUD's 🪙 balance in place (same reason as the streak below).
         if (saved.data.totalCoins !== null) setCoins(saved.data.totalCoins)
         if (saved.data.streakCount !== null) {
           // Update the header badge in place; a page refresh would restart the round.
           const current = saved.data.streakCount
           setStreak({ current, best: Math.max(streak?.best ?? 0, current), practicedToday: true })
+          // The day's first watering on a milestone streak (7, 30, every 100 days) paid a bonus.
+          const reward = saved.data.streakReward
+          if (reward > 0) toast({ message: `🌱 Tree watered today! ${current}-day streak: +${reward} 🪙`, icon: '🔥', tone: 'amber' })
         }
       } else if (saved && saved.error.code !== 'AUTH_UNAUTHORIZED') {
         setState({ status: 'error', picked: tag, error: saved.error })
@@ -115,7 +123,7 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean,
         correct: s.correct + (answer.isCorrect ? 1 : 0),
         improved: s.improved + (leveledUp(progress) ? 1 : 0),
         mastered: s.mastered + (becameMighty(progress) ? 1 : 0),
-        coinsEarned: s.coinsEarned + (progress?.coinsEarned ?? 0),
+        coinsEarned: s.coinsEarned + (progress?.coinsEarned ?? 0) + streakBonus,
       }))
       setState({ status: 'feedback', picked: tag, answer, progress })
     })

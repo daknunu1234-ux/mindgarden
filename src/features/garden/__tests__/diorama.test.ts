@@ -6,6 +6,8 @@ import {
   CLIFF_DEPTH,
   cliffFaces,
   distantIslets,
+  distantKarsts,
+  KARST_HEIGHT,
   FARM_WORLD,
   grassDetails,
   islandCorners,
@@ -90,6 +92,28 @@ describe('scatter', () => {
       expect(i.x).toBeLessThan(FARM_WORLD.w)
       expect(i.y).toBeGreaterThan(0)
       expect(i.y).toBeLessThan(FARM_WORLD.h)
+    }
+  })
+
+  it('stands the distant karsts in the ocean: whole inside the world, clear of the island, fainter than it', () => {
+    const karsts = distantKarsts(FARM_WORLD)
+    expect(karsts.length).toBeGreaterThanOrEqual(2)
+    expect(karsts.length).toBeLessThanOrEqual(3)
+    const cy = (GRID_SIZE * TILE_H) / 2
+    for (const k of karsts) {
+      const half = 130 * k.scale // the widest drawing's half width
+      expect(k.x - half).toBeGreaterThan(0)
+      expect(k.x + half).toBeLessThan(FARM_WORLD.w)
+      expect(k.y - KARST_HEIGHT * k.scale).toBeGreaterThan(0)
+      expect(k.y).toBeLessThan(FARM_WORLD.h)
+      // Both ends of its waterline are outside the beach's outer diamond (same measure as the palms).
+      for (const x of [k.x - half, k.x, k.x + half]) {
+        const sx = x - FARM_WORLD.origin.x
+        const sy = k.y - FARM_WORLD.origin.y
+        expect(Math.abs(sx) / (TILE_W / 2) + Math.abs(sy - cy) / (TILE_H / 2)).toBeGreaterThan(GRID_SIZE + 2 * BEACH_TILES)
+      }
+      expect(k.haze).toBeGreaterThan(0)
+      expect(k.haze).toBeLessThan(1)
     }
   })
 })

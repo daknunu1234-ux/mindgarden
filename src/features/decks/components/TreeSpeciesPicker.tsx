@@ -8,11 +8,45 @@ type TreeSpeciesPickerProps = {
   onChange: (treeType: TreeTypeId) => void
   disabled?: boolean
   legend?: string
+  // One row of small round species buttons (the Tree Workshop's settings bar) instead of seed packets.
+  compact?: boolean
+}
+
+// The same radio group as a single pill row: an icon per species, its name as tooltip and label.
+function CompactSpeciesPicker({ value, onChange, disabled, legend }: Required<Omit<TreeSpeciesPickerProps, 'compact'>>) {
+  return (
+    <fieldset disabled={disabled} className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <legend className="sr-only">{legend}</legend>
+      <span aria-hidden className="mr-0.5 font-game text-xs font-bold text-amber-950">
+        {legend}
+      </span>
+      {TREE_SPECIES.map((species) => {
+        const picked = value === species.id
+        return (
+          <label
+            key={species.id}
+            title={species.label}
+            className={cn(
+              'flex size-8 cursor-pointer items-center justify-center rounded-full border-2 text-base leading-none transition-transform duration-150',
+              'has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-yellow-300 has-[:disabled]:cursor-default has-[:disabled]:opacity-60',
+              picked ? 'scale-110 border-yellow-400 shadow-[0_2px_0_#ca8a04,0_0_0_2px_rgba(250,204,21,0.35)]' : 'border-white opacity-75 hover:scale-105 hover:opacity-100',
+            )}
+            style={{ background: `radial-gradient(circle at 35% 30%, ${species.skin.canopyLight}, ${species.skin.canopyDark})` }}
+          >
+            <input type="radio" name="treeType" value={species.id} checked={picked} onChange={() => onChange(species.id)} className="sr-only" />
+            <span aria-hidden>{species.icon}</span>
+            <span className="sr-only">{species.label}</span>
+          </label>
+        )
+      })}
+    </fieldset>
+  )
 }
 
 // Seed-packet tiles for every species in the shared catalog (radio group: Tab in, arrows to move).
 // Each tile is tinted with the species' own canopy colours; the picked one lifts with a gold frame.
-function TreeSpeciesPicker({ value, onChange, disabled = false, legend = 'Tree' }: TreeSpeciesPickerProps) {
+function TreeSpeciesPicker({ value, onChange, disabled = false, legend = 'Tree', compact = false }: TreeSpeciesPickerProps) {
+  if (compact) return <CompactSpeciesPicker value={value} onChange={onChange} disabled={disabled} legend={legend} />
   return (
     <fieldset className="space-y-2" disabled={disabled}>
       <legend className="mb-2 font-game text-sm font-bold text-amber-950">{legend}</legend>

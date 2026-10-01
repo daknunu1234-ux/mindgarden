@@ -4,9 +4,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
+import { streakReward, type Streaks } from '../lib/streak'
 
 // 🪙 Gold coins live in public.users.coins (migration 20260928000300_user_coins). Players read
-// their own balance with their session; only award_mastery_coin (service role) changes it.
+// their own balance with their session; here only award_mastery_coin, award_streak_reward and
+// dev_grant_coins (service role) change it.
 
 const MISSING = new Set(['42703', '42883', 'PGRST202', 'PGRST204'])
 
@@ -35,6 +37,33 @@ export async function awardMasteryCoin(userId: string, itemId: string): Promise<
   }
   const row = Array.isArray(data) ? data[0] : data
   return ok({ coinsEarned: row?.coins_earned ?? 0, totalCoins: row?.total_coins ?? 0 })
+}
+
+export type StreakAward = { streak: number; coinsEarned: number; totalCoins: number }
+
+// Claims the streak bonus for the day a tree was just watered, but only when the streak the app
+// computed is a milestone (lib/streak.ts streakReward): other days make no call at all.
+// award_streak_reward() counts the streak again from practice_days, pays once per day and returns
+// what it paid (0 on a repeat). Never fails the answer: null when nothing was claimed or on error.
+export async function claimStreakReward(userId: string, streak: Pick<Streaks, 'current' | 'practicedToday'>, day: string): Promise<StreakAward | null> {
+  if (!streak.practicedToday || streakReward(streak.current) === 0) return null
+  const admin = createAdminClient()
+  if (!admin) {
+    console.error('[progress] claimStreakReward: SUPABASE_SERVICE_ROLE_KEY is not set, streak bonus not paid')
+    return null
+  }
+  const { data, error } = await admin.rpc('award_streak_reward', { p_user_id: userId, p_day: day })
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883' || error.code === '42P01') {
+      console.error('[progress] claimStreakReward: run supabase/migrations/20261004000000_streak_rewards.sql')
+    } else {
+      logCoinError('claimStreakReward', error)
+    }
+    return null
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) return null
+  return { streak: row.streak, coinsEarned: row.coins_earned, totalCoins: row.total_coins }
 }
 
 // Test top-up for the Coin Shop's dev mode (no payment yet). The action refuses it in production;

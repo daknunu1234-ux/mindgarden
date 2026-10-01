@@ -119,6 +119,22 @@ export function distantIslets(world: { w: number; h: number }): { x: number; y: 
   ]
 }
 
+export type KarstKind = 'twin' | 'tower' | 'far'
+
+// Tallest karst drawing above its waterline, at scale 1 (px).
+export const KARST_HEIGHT = 240
+
+// Distant limestone karsts (Ha Long Bay style) in the ocean behind the island. (x, y) = the centre
+// of each one's waterline. `haze` is its opacity: the farther, the fainter, so the farm stays the
+// focus. Purely decorative: they stand in the ocean layer, behind everything on the island.
+export function distantKarsts(world: { w: number; h: number }): { kind: KarstKind; x: number; y: number; scale: number; haze: number; delay: number }[] {
+  return [
+    { kind: 'twin', x: world.w * 0.27, y: world.h * 0.18, scale: 1, haze: 0.9, delay: 0 },
+    { kind: 'tower', x: world.w * 0.74, y: world.h * 0.15, scale: 0.8, haze: 0.82, delay: -2.5 },
+    { kind: 'far', x: world.w * 0.47, y: world.h * 0.085, scale: 0.5, haze: 0.6, delay: -5 },
+  ]
+}
+
 // World box of the farm canvas: the island plus ocean all round, sky above for tall trees at the
 // back, and room below for the cliff and the floating island's underside.
 const SIDE = 150

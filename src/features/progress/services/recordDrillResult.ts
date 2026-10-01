@@ -7,7 +7,7 @@ import type { DrillSubmission } from '../dto/DrillSubmissionDto'
 import { shouldAwardMasteryCoin } from '../lib/coins'
 import { nextMastery, toMasteryLevel } from '../lib/masteryRules'
 import type { DrillResult } from '../types'
-import { awardMasteryCoin, readCoins } from './coins'
+import { awardMasteryCoin, claimStreakReward, readCoins } from './coins'
 import { localDay, resolveTimeZone } from '@/shared/lib/localDay'
 import { recordDeckPracticeDay } from './fruit'
 import { gradeWithTree } from './grading'
@@ -74,9 +74,10 @@ export async function recordDrillResult(
 
   // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes. It also logs
   // the tree's own practice day, so tomorrow the tree bears fruit (tree_fruit migration).
+  const today = localDay(new Date(), resolveTimeZone(submission.timeZone))
   const [streak, , coins] = await Promise.all([
     recordPracticeDay(supabase, userId, submission.timeZone),
-    recordDeckPracticeDay(userId, gradedWithTree.data.deckId, localDay(new Date(), resolveTimeZone(submission.timeZone))),
+    recordDeckPracticeDay(userId, gradedWithTree.data.deckId, today),
     !coinsReady
       ? Promise.resolve(fail('INTERNAL_ERROR', 'Coins are not set up yet'))
       : shouldAwardMasteryCoin({ previous: previousMasteryLevel, next: masteryLevel, alreadyAwarded: current?.coin_awarded_at != null })
@@ -84,6 +85,10 @@ export async function recordDrillResult(
         : readCoins(supabase, userId).then((r) => (r.success ? ok({ coinsEarned: 0, totalCoins: r.data }) : r)),
   ])
   const streakCount = streak.success ? streak.data.current : null
+
+  // Watering on a milestone day (7, 30, every 100) pays the streak bonus, once that day. It runs
+  // after the mastery coin, so its total is the newest balance.
+  const bonus = streak.success && coinsReady ? await claimStreakReward(userId, streak.data, today) : null
 
   // Coins never block the answer: on failure the player sees 0 earned and an unknown total.
   return ok({
@@ -93,6 +98,7 @@ export async function recordDrillResult(
     mistakeCount,
     streakCount,
     coinsEarned: coins.success ? coins.data.coinsEarned : 0,
-    totalCoins: coins.success ? coins.data.totalCoins : null,
+    streakReward: bonus?.coinsEarned ?? 0,
+    totalCoins: bonus ? bonus.totalCoins : coins.success ? coins.data.totalCoins : null,
   })
 }

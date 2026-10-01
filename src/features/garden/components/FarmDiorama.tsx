@@ -9,10 +9,13 @@ import {
   BEACH_TILES,
   cliffFaces,
   distantIslets,
+  distantKarsts,
   grassDetails,
   islandCorners,
+  KARST_HEIGHT,
   undersidePoints,
   type CliffBandId,
+  type KarstKind,
   type Pt,
 } from '../lib/diorama'
 import { GRID_SIZE } from '../lib/farmGrid'
@@ -65,6 +68,8 @@ function OceanLayerImpl({ world, origin }: { world: { w: number; h: number }; or
           <stop offset="100%" stopColor="#5b566b" />
         </linearGradient>
       </defs>
+      {/* Farthest first: the karsts stand behind the lagoon's glow. */}
+      <DistantKarsts world={world} />
       {/* Shallow lagoon: a soft bright halo round the island. */}
       <polygon points={pts(grown(BEACH_TILES + 3.2), origin)} fill="url(#mg-lagoon)" strokeLinejoin="round" />
       <Waves width={world.w} height={world.h} />
@@ -120,6 +125,191 @@ function Islet() {
       </g>
       <circle cx={34} cy={4} r={9} fill="#ff6b6b" stroke={TROPIC.ink} strokeWidth={2} />
       <circle cx={46} cy={-4} r={6} fill="#ffd23f" stroke={TROPIC.ink} strokeWidth={2} />
+    </g>
+  )
+}
+
+// ── Distant karsts ───────────────────────────────────────────────────────────
+
+// Soft, hazy palette: no ink outlines and less contrast than the farm island, so they read as far away.
+const KARST = {
+  lit: '#a9bfc6',
+  shade: '#6c8a9a',
+  strata: '#557585',
+  moss: '#5fae7c',
+  mossLight: '#93d6a0',
+  palm: '#2f7d68',
+  haze: '#d3f6f7',
+} as const
+
+type KarstShape = {
+  half: number // half the width at the waterline
+  body: string
+  shade: string // the right (shaded) faces, clipped to the body
+  strata: string[]
+  caps: [cx: number, cy: number, rx: number, ry: number][]
+  palms: [x: number, y: number, scale: number][]
+  fall?: { x: number; top: number } // a waterfall from a ledge down to the sea
+  mist: [cx: number, cy: number, rx: number][]
+}
+
+// Local (0, 0) = the centre of the waterline; the rock rises towards −y.
+const KARSTS: Record<KarstKind, KarstShape> = {
+  twin: {
+    half: 130,
+    body: 'M -130 0 C -128 -40 -118 -70 -104 -110 C -96 -150 -80 -188 -58 -200 C -36 -208 -22 -186 -14 -150 C -8 -128 2 -118 14 -122 C 26 -150 40 -168 58 -166 C 80 -160 92 -128 100 -92 C 110 -56 124 -30 130 0 Q 0 14 -130 0 Z',
+    shade: 'M -56 -215 L -46 -130 L -56 -70 L -38 10 L 6 10 L 10 -215 Z M 60 -180 L 70 -110 L 62 -50 L 76 10 L 140 10 L 140 -180 Z',
+    strata: ['M -122 -40 q 40 -9 84 -1', 'M -104 -104 q 30 -7 56 0', 'M 22 -70 q 34 -8 74 0', 'M 34 -128 q 20 -5 46 1'],
+    caps: [[-58, -194, 34, 17], [58, -161, 30, 14], [-102, -102, 16, 8], [98, -88, 14, 7]],
+    palms: [[-66, -206, 1], [-44, -202, 0.8], [62, -172, 0.9]],
+    fall: { x: 6, top: -116 },
+    mist: [[-30, -120, 84], [50, -52, 70]],
+  },
+  tower: {
+    half: 90,
+    body: 'M -90 0 C -88 -30 -80 -60 -70 -84 C -62 -100 -50 -104 -40 -110 C -34 -150 -26 -200 -4 -224 C 14 -236 30 -214 36 -180 C 42 -150 46 -128 56 -112 C 70 -96 80 -60 90 0 Q 0 12 -90 0 Z',
+    shade: 'M 0 -240 L 10 -150 L 2 -80 L 16 10 L 100 10 L 100 -240 Z',
+    strata: ['M -82 -36 q 36 -8 80 0', 'M -30 -150 q 24 -6 50 0', 'M 18 -74 q 26 -6 58 0'],
+    caps: [[2, -219, 26, 13], [-58, -101, 20, 9], [62, -105, 14, 7]],
+    palms: [[-8, -229, 1], [14, -224, 0.8], [-66, -107, 0.8]],
+    fall: { x: -52, top: -94 },
+    mist: [[-6, -146, 68], [28, -58, 62]],
+  },
+  far: {
+    half: 110,
+    body: 'M -110 0 C -104 -30 -92 -70 -74 -84 C -58 -92 -48 -70 -38 -64 C -28 -100 -14 -132 6 -136 C 24 -134 32 -104 40 -80 C 50 -84 62 -96 76 -90 C 94 -78 104 -36 110 0 Q 0 10 -110 0 Z',
+    shade: 'M 8 -145 L 16 -80 L 10 -40 L 22 10 L 120 10 L 120 -145 Z',
+    strata: ['M -98 -34 q 40 -8 90 0', 'M 30 -50 q 30 -6 66 0'],
+    caps: [[-72, -81, 20, 9], [6, -131, 22, 10], [76, -88, 18, 8]],
+    palms: [[2, -140, 0.9]],
+    mist: [[0, -74, 96]],
+  },
+}
+
+// A palm reduced to a silhouette: a bent trunk and four fronds.
+function TinyPalm({ x, y, scale }: { x: number; y: number; scale: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`} stroke={KARST.palm} strokeWidth={2.4} strokeLinecap="round" fill="none">
+      <path d="M 0 0 q 1 -11 6 -18" />
+      <path d="M 6 -18 q -8 -5 -14 1 M 6 -18 q -4 -9 -11 -9 M 6 -18 q 6 -8 13 -5 M 6 -18 q 8 -2 12 6" />
+    </g>
+  )
+}
+
+// One karst: mirrored shore foam and a soft reflection, the lit and shaded rock, strata, mossy
+// summits with palm silhouettes, a thin waterfall, sea haze climbing its foot and mist drifting
+// across its ridges. Its still parts fade with `haze`; only small pieces move (transform / opacity).
+function Karst({ kind, haze, delay }: { kind: KarstKind; haze: number; delay: number }) {
+  const k = KARSTS[kind]
+  const clip = `mg-karst-clip-${kind}`
+  return (
+    <g>
+      <g opacity={haze}>
+        <ellipse cx={0} cy={10} rx={k.half * 1.05} ry={16} fill="#064e6e" opacity={0.16} />
+        <ellipse cx={0} cy={3} rx={k.half + 9} ry={11} fill={TROPIC.foam} opacity={0.5} />
+        <clipPath id={clip}>
+          <path d={k.body} />
+        </clipPath>
+        <path d={k.body} fill={KARST.lit} />
+        <g clipPath={`url(#${clip})`}>
+          <path d={k.shade} fill={KARST.shade} opacity={0.7} />
+          <g stroke={KARST.strata} strokeWidth={2.5} strokeLinecap="round" fill="none" opacity={0.4}>
+            {k.strata.map((d) => (
+              <path key={d} d={d} />
+            ))}
+          </g>
+          {/* Sea haze: the foot of the rock dissolves into the bright water. */}
+          <rect x={-k.half} y={-KARST_HEIGHT} width={k.half * 2} height={KARST_HEIGHT + 14} fill="url(#mg-karst-haze)" />
+        </g>
+        {k.palms.map(([x, y, s]) => (
+          <TinyPalm key={`${x}:${y}`} x={x} y={y} scale={s} />
+        ))}
+        {k.caps.map(([cx, cy, rx, ry]) => (
+          <g key={`${cx}:${cy}`}>
+            <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={KARST.moss} />
+            <ellipse cx={cx - rx * 0.2} cy={cy - ry * 0.3} rx={rx * 0.6} ry={ry * 0.5} fill={KARST.mossLight} opacity={0.8} />
+          </g>
+        ))}
+        {k.fall && (
+          <path
+            d={`M ${k.fall.x - 2.5} ${k.fall.top} L ${k.fall.x + 2.5} ${k.fall.top} L ${k.fall.x + 5} 2 L ${k.fall.x - 5} 2 Z`}
+            fill={TROPIC.foam}
+            opacity={0.75}
+          />
+        )}
+      </g>
+      {k.fall &&
+        [0, 1, 2].map((i) => (
+          <rect
+            key={i}
+            x={k.fall!.x - 1.5 + (i - 1) * 2}
+            y={k.fall!.top}
+            width={2.5}
+            height={16}
+            rx={1.25}
+            fill={TROPIC.foam}
+            opacity={0}
+            className="mg-cascade"
+            style={{ '--mg-drop': `${-k.fall!.top - 14}px`, '--mg-delay': `${delay - i * 0.6}s` } as Vars}
+          />
+        ))}
+      {k.fall && (
+        <ellipse cx={k.fall.x} cy={2} rx={15} ry={5} fill={TROPIC.foam} opacity={haze * 0.8} className="mg-shorefoam" style={{ '--mg-delay': `${delay}s` } as Vars} />
+      )}
+      {/* Foam rippling out from the rock's foot. */}
+      {[0, 2.6].map((d) => (
+        <ellipse
+          key={d}
+          cx={0}
+          cy={4}
+          rx={k.half + 6}
+          ry={10}
+          fill="none"
+          stroke={TROPIC.foam}
+          strokeWidth={3}
+          opacity={0}
+          className="mg-shorefoam"
+          style={{ '--mg-delay': `${delay - d}s` } as Vars}
+        />
+      ))}
+      {k.mist.map(([cx, cy, rx], i) => (
+        <ellipse
+          key={i}
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={rx * 0.2}
+          fill="url(#mg-karst-mist)"
+          opacity={0.55}
+          className="mg-mist"
+          style={{ '--mg-dur': `${22 + i * 9}s`, '--mg-delay': `${delay - i * 7}s` } as Vars}
+        />
+      ))}
+    </g>
+  )
+}
+
+// The karsts behind the island. Decorative only: never a pointer target.
+function DistantKarsts({ world }: { world: { w: number; h: number } }) {
+  return (
+    <g pointerEvents="none">
+      <defs>
+        <linearGradient id="mg-karst-haze" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="55%" stopColor={KARST.haze} stopOpacity="0" />
+          <stop offset="100%" stopColor={KARST.haze} stopOpacity="0.85" />
+        </linearGradient>
+        {/* Mist is a soft gradient, not a blur filter: it moves, and a filter would repaint each frame. */}
+        <radialGradient id="mg-karst-mist">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+          <stop offset="60%" stopColor="#ffffff" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      {distantKarsts(world).map((karst) => (
+        <g key={karst.kind} transform={`translate(${karst.x.toFixed(1)} ${karst.y.toFixed(1)}) scale(${karst.scale})`}>
+          <Karst kind={karst.kind} haze={karst.haze} delay={karst.delay} />
+        </g>
+      ))}
     </g>
   )
 }

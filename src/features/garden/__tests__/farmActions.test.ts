@@ -13,9 +13,10 @@ const DECK = '22222222-2222-4222-8222-222222222222'
 const ITEM = '33333333-3333-4333-8333-333333333333'
 
 // Fake purchase_and_place_item(): records the call and answers like the SQL (catalogue prices).
-function fakeSupabase(viewer: string | null, { coins = 100, taken = false, owned = true } = {}) {
+function fakeSupabase(viewer: string | null, { coins = 100, taken = false, owned = true, isTree = false } = {}) {
   const calls: Record<string, unknown>[] = []
   const deletes: unknown[] = []
+  const excluded: [string, unknown][] = []
   const prices: Record<string, number> = { tree: 0, farmer_house: 50, woodshop: 50, stream: 5, fence: 1, rockery: 2, animal: 5 }
   const client = {
     auth: { getUser: async () => ({ data: { user: viewer ? { id: viewer } : null } }) },
@@ -34,7 +35,12 @@ function fakeSupabase(viewer: string | null, { coins = 100, taken = false, owned
           if (col === 'id') deletes.push(value)
           return q
         },
-        select: async () => ({ data: owned ? [{ id: ITEM }] : [], error: null }),
+        neq: (col: string, value: unknown) => {
+          excluded.push([col, value])
+          return q
+        },
+        // Like the database: a tree row never matches the delete's item_type filter.
+        select: async () => ({ data: owned && !(isTree && excluded.some(([c, v]) => c === 'item_type' && v === 'tree')) ? [{ id: ITEM }] : [], error: null }),
       }
       return q
     },
@@ -97,6 +103,11 @@ describe('removeFarmPlacement', () => {
     const { deletes } = fakeSupabase(ME)
     expect(await removeFarmPlacement({ placementId: ITEM })).toEqual({ success: true, data: { id: ITEM } })
     expect(deletes).toEqual([ITEM])
+  })
+
+  it('never takes a planted tree off the farm: trees are moved or chopped', async () => {
+    fakeSupabase(ME, { isTree: true })
+    expect(await removeFarmPlacement({ placementId: ITEM })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
   })
 
   it("refuses someone else's item (0 rows) and signed-out players", async () => {

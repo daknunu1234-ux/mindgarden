@@ -22,7 +22,7 @@ import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollba
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
-import { BuffPills, Counters, FarmDock, GardenBanner, LevelBadge, ZoomControls, type FarmBuffSummary } from './FarmHud'
+import { BuffPills, FarmDock, GardenBanner, SignInInvite, ZoomControls, type FarmBuffSummary } from './FarmHud'
 import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
 import { FarmItemDialog } from './FarmItemDialog'
 import { FarmPlotDialog } from './FarmPlotDialog'
@@ -231,7 +231,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
     })
   }
 
-  // Takes a placement off the farm at once (a tree goes back to the Shop's Trees tab).
+  // Takes a Shop item off the farm at once. Trees can't be picked up: they are moved or chopped.
   const pickUp = (placement: Placement, message: string, icon: string) => {
     if (isPendingId(placement.id)) return
     const key = `op${nextKey.current++}`
@@ -243,12 +243,6 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         failed(res.error.message)
       }
     })
-  }
-
-  const removeFromFarm = (plot: FarmPlotView) => {
-    const placement = farm.find((p) => p.id === plot.placementId)
-    setSelectedPlot(null)
-    if (placement) pickUp(placement, `“${plot.title}” is back in the Shop's Trees tab`, '📦')
   }
 
   // 🪓 Chop, confirmed: the tree vanishes in a puff at once, the Woodshop refund is credited
@@ -428,11 +422,11 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
       />
       <SkyClouds />
 
-      {/* HUD top bar: a soft sea-blue wash for contrast, then level · island banner + buffs · purse. */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#053b57]/45 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-x-2 gap-y-1 p-2 sm:flex-nowrap sm:p-4">
-        <LevelBadge level={hud.level} />
-        <div className="pointer-events-auto order-last flex w-full flex-col items-center gap-1.5 sm:order-none sm:w-auto sm:min-w-0">
+      {/* HUD top: a soft sea-blue wash for contrast, then the island banner + buffs. The level,
+          streak and coins are in the site header. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#053b57]/45 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2 sm:p-4">
+        <div className="pointer-events-auto flex min-w-0 flex-col items-center gap-1.5">
           {visitor ? (
             <>
               <GardenBanner name={`${visitor.name}'s Garden`} />
@@ -446,12 +440,11 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           ) : (
             <>
               <GardenBanner name={gardenName ?? 'MindGarden Island'} />
-              {signedIn && <BuffPills summary={buffs} hint={placements.length > 0} />}
+              {signedIn ? <BuffPills summary={buffs} hint={placements.length > 0} /> : <SignInInvite />}
               {topCenter}
             </>
           )}
         </div>
-        <Counters hud={hud} />
       </div>
       {leftEdge && !build && <div className="pointer-events-none absolute top-1/2 left-0 z-10 -translate-y-1/2">{leftEdge}</div>}
       <div className="pointer-events-none absolute bottom-24 left-2 sm:bottom-6 sm:left-4">
@@ -519,7 +512,6 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
       <FarmPlotDialog
         plot={selectedPlot}
         onOpenChange={(open) => !open && setSelectedPlot(null)}
-        onRemoveFromFarm={isOwner ? removeFromFarm : undefined}
         onHarvest={isOwner && onHarvest ? harvest : undefined}
         onMove={
           isOwner

@@ -5,8 +5,8 @@ import { fail, type ActionResult } from '@/shared/types/result'
 import { RemoveFarmPlacementDto } from '../dto/FarmDto'
 import { removePlacement } from '../services/placements'
 
-// Auth: Required. Picks one of your farm items up again (no refund). A tree goes back to the Shop's
-// Trees tab, unchanged: only chopping (deleting) a tree pays the Woodshop refund.
+// Auth: Required. Picks one of your Shop items up again (no refund). Trees are refused
+// (AUTH_FORBIDDEN): a planted tree is moved (moveFarmPlacement) or chopped (decks' chopDeck).
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, INTERNAL_ERROR.
 export async function removeFarmPlacement(input: unknown): Promise<ActionResult<{ id: string }>> {
   const parsed = RemoveFarmPlacementDto.safeParse(input)

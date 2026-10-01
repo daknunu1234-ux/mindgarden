@@ -64,12 +64,19 @@ export async function placeItem(supabase: Client, input: PlaceFarmItemInput): Pr
 
 // Picks an item up (RLS "delete own"; 0 rows = not yours). A tree goes back to the Trees tab.
 export async function removePlacement(supabase: Client, userId: string, { placementId }: RemoveFarmPlacementInput): Promise<ActionResult<{ id: string }>> {
-  const { data, error } = await supabase.from('garden_placements').delete().eq('id', placementId).eq('user_id', userId).select('id')
+  // Never a tree: once planted, a tree is moved or chopped (decks' chopDeck), not put back in the Shop.
+  const { data, error } = await supabase
+    .from('garden_placements')
+    .delete()
+    .eq('id', placementId)
+    .eq('user_id', userId)
+    .neq('item_type', 'tree')
+    .select('id')
   if (error) {
     console.error('[garden] removePlacement failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not pick that up')
   }
-  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'That is not on your farm')
+  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'That is not an item you can pick up')
   return ok({ id: placementId })
 }
 
