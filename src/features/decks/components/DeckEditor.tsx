@@ -400,7 +400,6 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
                 placeholder="New statement…"
                 label={`New statement under ${node.title}`}
                 maxLength={OUTLINE_LIMITS.statement}
-                icon="📜"
                 onKey={onSlotKey}
                 onClose={onCloseSlot}
               />
@@ -450,27 +449,37 @@ function StatementRow({ item, editing, isPending, onEdit, onEditKey, onDeleteSta
         initial={item.statement}
         label="Edit statement"
         maxLength={OUTLINE_LIMITS.statement}
-        icon="📜"
         onKey={onEditKey}
         onClose={(text) => onEditKey('escape', text)}
         onBlurSave={(text) => onEditKey('blur', text)}
       />
     )
   }
+  // Status sits at the end of the row, never before the text: ⏳ saving and 💧 not drillable always
+  // show (they need attention); ✅ ready only on hover / focus (it's the normal state).
+  const status = pending
+    ? { icon: '⏳', label: 'Saving…', always: true }
+    : item.drillable
+      ? { icon: '✅', label: 'Ready to drill', always: false }
+      : { icon: '💧', label: DRILL_TIP, always: true }
   return (
-    <div className="group flex min-h-6 items-start gap-1.5 rounded-md py-0.5 pr-1 hover:bg-amber-100/60">
-      <span
-        aria-label={pending ? 'Saving' : item.drillable ? 'Ready to drill' : 'Not drillable yet'}
-        title={pending ? 'Saving…' : item.drillable ? 'Ready to drill' : DRILL_TIP}
-        className="pt-px text-[10px] leading-4"
-      >
-        {pending ? '⏳' : item.drillable ? '✅' : '💧'}
-      </span>
+    <div className="group flex min-h-6 items-start gap-1.5 rounded-md py-0.5 pr-1 pl-2 hover:bg-amber-100/60">
       <span
         className={cn('min-w-0 flex-1 text-xs leading-4 whitespace-pre-wrap', pending && 'text-amber-900/60')}
         onDoubleClick={() => !pending && onEdit('item', item.id)}
       >
         {item.statement}
+      </span>
+      <span
+        role="img"
+        aria-label={pending ? 'Saving' : item.drillable ? 'Ready to drill' : 'Not drillable yet'}
+        title={status.label}
+        className={cn(
+          'shrink-0 pt-px text-[9px] leading-4 opacity-70',
+          !status.always && 'opacity-0 transition-opacity group-focus-within:opacity-70 group-hover:opacity-70',
+        )}
+      >
+        {status.icon}
       </span>
       {/* Still saving: no edit / delete until it has its server id. */}
       {!pending && (
@@ -488,7 +497,8 @@ type InlineInputProps = {
   placeholder?: string
   label: string
   maxLength: number
-  icon: string
+  // Roots and sub-roots only (🌱 / 🌿); statement fields start with the text.
+  icon?: string
   onKey: (key: OutlineKey, text: string) => void
   // Esc or ✕ (with the text as it stands).
   onClose: (text: string) => void
@@ -524,9 +534,11 @@ function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey,
 
   return (
     <div className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md border-2 border-dashed border-emerald-500 bg-emerald-50 pr-0.5 pl-1.5 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]">
-      <span aria-hidden className="text-[11px]">
-        {icon}
-      </span>
+      {icon && (
+        <span aria-hidden className="text-[11px]">
+          {icon}
+        </span>
+      )}
       <input
         ref={ref}
         value={value}

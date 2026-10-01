@@ -63,8 +63,11 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   as a compact connected outline, with no dialogs. The mindmap canvas above and its 💧 Drill / ⚔️ Compete
   triggers are unchanged.
   - **Root selector**: one chip per top-level root (with its branch's statement count). The selected
-    root is shown below as an outline: 13 px roots, 12 px statements, ⏳ / ✅ / 💧 micro-badges, joined
-    by connector lines (a rail down each child list, an elbow into each row).
+    root is shown below as an outline: 13 px roots, 12 px statements, joined
+    by connector lines (a rail down each child list, an elbow into each row). Only roots and sub-roots
+    carry leading markers (▾ / ▸, 🌱 / 🌿); a statement row starts with its text (aligned with the inline
+    input, which has no leading icon for statements either), and its status is a subtle trailing
+    micro-badge: ⏳ saving and 💧 not drillable always show, ✅ ready only on hover / focus.
   - **＋ Add Root** is pinned to the bottom of the screen while the Workshop is in view (`sticky`), so
     there's no scrolling back up; the new root is typed in the selector's last chip.
   - **Collapse / expand**: ▾ / ▸ next to every root and sub-root that has children. Collapsed, its whole
@@ -337,7 +340,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
+| (pending) | style(decks): statement rows start with their text; status moves to a trailing badge |
+| `89e737f` | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
 | `7d77fdb` | feat(decks): inline outline editor in the Tree Workshop; mindmap canvas restored |
 | `92092dd` | feat(mindmap): fast-entry authoring on the canvas, root switcher and a compact layout (canvas part reverted by the next commit) |
 | `91af687` | perf(decks): instant statement deletes and a lighter tree uproot |
