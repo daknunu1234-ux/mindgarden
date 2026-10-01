@@ -25,7 +25,7 @@ export default async function NewDeckPage({ searchParams }: PageProps<'/deck/new
         {signedIn ? (
           <GamePanel tone="parchment" ribbon="leaf" title="🌱 Plant a Tree" titleAs="h1">
             <p className="mb-6 text-center text-sm text-amber-900/70">
-              Buy a seed for {SEED_PRICE_COINS} 🪙 and name your deck. You&apos;ll add its roots and statements next.
+              Buy a seed (from {SEED_PRICE_COINS} 🪙) and name your deck. You&apos;ll add its roots and statements next.
             </p>
             <CreateDeckForm coins={purse?.coins ?? null} coinsAsOf={purse?.coinsAsOf} initialTreeType={initialTreeType} />
           </GamePanel>

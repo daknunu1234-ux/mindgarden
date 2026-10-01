@@ -61,7 +61,8 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest }: PlotDetailsProps) {
       </p>
 
       <GameSlab className="flex items-center gap-4 p-3">
-        <div className="relative shrink-0 rounded-2xl bg-gradient-to-b from-sky-100 to-lime-100 p-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.12)]">
+        {/* pt-5: headroom, so a surreal tree (drawn bigger than its box) stays inside the frame. */}
+        <div className="relative shrink-0 overflow-hidden rounded-2xl bg-gradient-to-b from-sky-100 to-lime-100 px-2 pt-5 pb-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.12)]">
           <TreeStageSvg stage={stage} treeType={plot.treeType} label={`${name} ${species.label}`} className="size-24" />
         </div>
         <div className="min-w-0 flex-1 space-y-2 text-sm">

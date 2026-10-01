@@ -76,7 +76,7 @@ function toTreeView(tree: GardenTree): PlantedTreeView {
     masteryPercent: tree.masteryPercent,
     mightyRoots: tree.mightyRoots,
     illustration: (
-      <TreeStageSvg stage={stage} treeType={tree.treeType} label={`${TREE_STAGES[stage].name} tree`} className="size-full" />
+      <TreeStageSvg stage={stage} treeType={tree.treeType} label={`${TREE_STAGES[stage].name} tree`} fit className="size-full" />
     ),
   }
 }

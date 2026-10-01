@@ -3,7 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
-import { SEED_PRICE_COINS } from '@/shared/lib/economy'
+import { seedPrice, speciesUpgradeCost } from '@/shared/lib/treeSkins'
 import { slugify } from '@/shared/utils/slugify'
 import type { CloneDeckInput } from '../dto/CloneDeckDto'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
@@ -43,7 +43,8 @@ function* slugCandidates(title: string) {
 
 export type PlantedDeck = { deck: Deck; remainingCoins: number }
 
-// Plants a tree for SEED_PRICE_COINS through plant_deck() (migration 20260928000500), which charges
+// Plants a tree for its species' seed price (treeSkins seedPrice: 100 🪙, or 180 for a surreal
+// species) through plant_deck() (migration 20261006000000_species_seed_prices.sql), which charges
 // the signed-in player and inserts the deck in one transaction. A slug collision (23505) rolls the
 // charge back, so trying the next slug never charges twice. Players can't INSERT into decks
 // directly, so the fee can't be skipped.
@@ -60,7 +61,7 @@ export async function plantDeck(supabase: Client, input: CreateDeckInput): Promi
     if (error) {
       if (error.code === UNIQUE_VIOLATION) continue
       if (error.message?.includes('INSUFFICIENT_COINS')) {
-        return fail('INSUFFICIENT_COINS', `You need ${SEED_PRICE_COINS} coins to buy a seed for a new tree!`)
+        return fail('INSUFFICIENT_COINS', `You need ${seedPrice(input.treeType)} coins to buy a seed for this tree!`)
       }
       if (error.message?.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to plant a tree')
       // PGRST202 / 42883: plant_deck is missing (run 20260928000500_seed_economy.sql).
@@ -88,7 +89,8 @@ export async function plantDeck(supabase: Client, input: CreateDeckInput): Promi
 export type ClonedDeck = { deck: Deck; remainingCoins: number; cost: number }
 
 // Clones another gardener's shared tree through clone_deck() (migration 20260928000700), which
-// charges min(100 + statements, 150) 🪙 and deep-copies roots + statements in one transaction.
+// charges the species' seed price + min(statements, 50) 🪙 (economy cloneCost: 100–150 for a standard
+// tree, 180–230 for a surreal one) and deep-copies roots + statements in one transaction.
 // Like plantDeck, a slug collision (23505) rolls the charge back, so the next slug never
 // double-charges. Progress is never copied: the cloner starts every statement at 0/5.
 export async function cloneSharedDeck(supabase: Client, { deckId }: CloneDeckInput): Promise<ActionResult<ClonedDeck>> {
@@ -349,15 +351,21 @@ async function flattenDeckStatements(supabase: Client, deckId: string, treeType:
   return ok({ deckId, treeType, nodes: flat })
 }
 
+// `remainingCoins`: the purse after a species change that cost coins; null when nothing was charged.
+export type UpdatedDeck = Deck & { remainingCoins: number | null }
+
 // Owner-only settings change (title, description, species, visibility). RLS "decks: update own"
-// is the final guard; the owner check gives AUTH_FORBIDDEN instead of a silent no-op.
+// is the final guard; the owner check gives AUTH_FORBIDDEN instead of a silent no-op. Changing to a
+// pricier species (a standard tree → a surreal one) charges the difference in the database
+// (decks_charge_species_upgrade, migration 20261006000000): a short purse refuses the change.
 export async function updateDeckSettings(
   supabase: Client,
   userId: string,
   { deckId, title, description, treeType, isPublic }: UpdateDeckInput,
-): Promise<ActionResult<Deck>> {
+): Promise<ActionResult<UpdatedDeck>> {
   const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
+  const upgrade = treeType === undefined ? 0 : speciesUpgradeCost(owner.data.treeType, treeType)
 
   const { data, error } = await supabase
     .from('decks')
@@ -372,10 +380,18 @@ export async function updateDeckSettings(
     .single()
 
   if (error) {
+    if (error.message?.includes('INSUFFICIENT_COINS')) {
+      return fail('INSUFFICIENT_COINS', `You need ${upgrade} coins to change this tree to that species!`)
+    }
     console.error('[decks] updateDeckSettings failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not update this tree')
   }
-  return ok(toDeck(data))
+  if (upgrade === 0) return ok({ ...toDeck(data), remainingCoins: null })
+
+  // The upgrade was charged: read the purse back so the header shows it at once.
+  const purse = await supabase.from('users').select('coins').eq('id', userId).maybeSingle()
+  if (purse.error) console.error('[decks] updateDeckSettings purse read failed', purse.error.code, purse.error.message)
+  return ok({ ...toDeck(data), remainingCoins: purse.data?.coins ?? null })
 }
 
 // Owner-only: open or close the tree's Mind Tournament. Opening needs a shared (public) tree:

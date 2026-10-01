@@ -129,6 +129,7 @@ async function VisitorPracticeLocked({ slug, message, signedIn }: { slug: string
                 deckId={deck.id}
                 deckTitle={deck.title}
                 statementCount={statementCount}
+                treeType={deck.treeType}
                 coins={purse?.coins ?? null}
                 coinsAsOf={purse?.coinsAsOf}
                 signedIn={signedIn}

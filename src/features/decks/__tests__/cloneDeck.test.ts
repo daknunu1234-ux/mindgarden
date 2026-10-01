@@ -18,14 +18,16 @@ const SOURCE = '33333333-3333-4333-8333-333333333333'
 type DeckRow = { id: string; user_id: string; title: string; slug: string; description: string | null; is_public: boolean; tree_type: string; created_at: string }
 
 // In-memory stand-in for clone_deck() with the migration's semantics: public-only, not your own,
-// charge min(100 + n, 150) only if the purse has it, roll everything back on a duplicate slug.
+// charge the species' seed price + min(n, 50) (migration 20261006000000) only if the purse has it,
+// roll everything back on a duplicate slug.
 function fakeSupabase({
   userId,
   coins,
   statements,
   isPublic = true,
   takenSlugs = [],
-}: { userId: string | null; coins: number; statements: number; isPublic?: boolean; takenSlugs?: string[] }) {
+  treeType = 'sakura',
+}: { userId: string | null; coins: number; statements: number; isPublic?: boolean; takenSlugs?: string[]; treeType?: string }) {
   const source: DeckRow = {
     id: SOURCE,
     user_id: OWNER,
@@ -33,7 +35,7 @@ function fakeSupabase({
     slug: 'sinh-hoc-te-bao',
     description: 'Ty thể, lục lạp',
     is_public: isPublic,
-    tree_type: 'sakura',
+    tree_type: treeType,
     created_at: '2026-09-01T00:00:00Z',
   }
   const db = { coins, decks: [source] as DeckRow[], taken: new Set([source.slug, ...takenSlugs]), rpcCalls: 0 }
@@ -46,7 +48,8 @@ function fakeSupabase({
       const src = db.decks.find((d) => d.id === args.p_source_deck_id)
       if (!src || !src.is_public) return { data: null, error: { code: 'P0002', message: 'DECK_NOT_FOUND' } }
       if (src.user_id === userId) return { data: null, error: { code: 'P0001', message: 'CANNOT_CLONE_OWN_DECK' } }
-      const cost = Math.min(100 + statements, 150)
+      const seed = ['crystal_flora', 'cosmic_nebula', 'chrono_willow'].includes(src.tree_type) ? 180 : 100
+      const cost = seed + Math.min(statements, 50)
       if (db.coins < cost) {
         return { data: null, error: { code: 'P0001', message: 'INSUFFICIENT_COINS', hint: `Cloning this tree costs ${cost} coins` } }
       }
@@ -98,6 +101,15 @@ describe('cloneCost / canPractice', () => {
     expect(cloneCost(Number.NaN)).toBe(100)
   })
 
+  it('starts from the seed price of the species: a surreal tree costs 180 + statements, up to 230', () => {
+    expect(cloneCost(0, 180)).toBe(180)
+    expect(cloneCost(12, 180)).toBe(192)
+    expect(cloneCost(50, 180)).toBe(230)
+    expect(cloneCost(400, 180)).toBe(230)
+    // Never cheaper than planting it.
+    expect(cloneCost(0, 180)).toBeGreaterThanOrEqual(180)
+  })
+
   it('only the owner may practise', () => {
     expect(canPractice(OWNER, OWNER)).toBe(true)
     expect(canPractice(OWNER, VISITOR)).toBe(false)
@@ -120,6 +132,16 @@ describe('cloneDeck', () => {
     // The copy is the cloner's, so they can practise it (from 0/5: see the drill queue tests).
     if (res.success) expect(canPractice(res.data.deck.userId, VISITOR)).toBe(true)
     expect(vi.mocked(revalidatePath).mock.calls.map(([p]) => p)).toEqual(['/', '/profile'])
+  })
+
+  it('charges the surreal seed price when cloning a surreal tree', async () => {
+    const db = fakeSupabase({ userId: VISITOR, coins: STARTING_COINS, statements: 12, treeType: 'chrono_willow' })
+    expect(await cloneDeck({ deckId: SOURCE })).toMatchObject({ success: true, data: { cost: 192, remainingCoins: 108, deck: { treeType: 'chrono_willow' } } })
+    expect(db.coins).toBe(108)
+
+    const short = fakeSupabase({ userId: VISITOR, coins: 150, statements: 0, treeType: 'crystal_flora' })
+    expect(await cloneDeck({ deckId: SOURCE })).toEqual({ success: false, error: { code: 'INSUFFICIENT_COINS', message: 'You need 180 coins to clone this tree!' } })
+    expect(short.coins).toBe(150)
   })
 
   it('caps the fee at 150 for a big tree', async () => {

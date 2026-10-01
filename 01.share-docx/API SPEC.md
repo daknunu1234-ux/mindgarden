@@ -66,7 +66,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
 | `DRILL_NO_ITEMS` | 422 | The deck / branch has no askable statement (an empty root; since the zero-drop question engine, only a lone note like "aaa" can't be asked) |
-| `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs 100 🪙 (`createDeck`), cloning one costs min(100 + statements, 150) 🪙 (`cloneDeck`) |
+| `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs its species' seed price, 100 🪙 or 180 🪙 for a surreal species (`createDeck`); cloning one costs that seed price + min(statements, 50) 🪙 (`cloneDeck`); changing a tree to a pricier species costs the difference (`updateDeck`); Shop items (`placeFarmItem`) |
 | `FORBIDDEN_VISITOR_PRACTICE` | 403 | Practising or grading a tree you don't own (strict read-only visitor mode, signed out included). Message: "You must clone this tree to your garden to practice it!" (`getDrillSession`, `checkDrillAnswer`, `submitDrillResult`) |
 | `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
 | `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved in the Hall of Fame); your run is frozen |
@@ -244,9 +244,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // sharing later: updateDeck({ deckId, isPublic }), the "🌐 Share" switch in the Tree Workshop's settings bar
 // slug: generated with shared/utils/slugify (diacritics stripped); on a unique clash → -2 … -5, then a random suffix; "new" is reserved
 // data: { deck /* same shape as a getDecks row */; remainingCoins: number /* purse after paying */ }
-// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need 100 coins to buy a seed for a new tree!"), INTERNAL_ERROR
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need <price> coins to buy a seed for this tree!"), INTERNAL_ERROR
 ```
-- **Price**: 100 🪙 per tree (`SEED_PRICE_COINS`, `shared/lib/economy.ts`). New gardeners start with 300 (3 seeds)
+- **Price**: the species' seed price (`shared/lib/treeSkins.ts` `seedPrice`): 100 🪙 (`SEED_PRICE_COINS`), or **180 🪙** (`SURREAL_SEED_PRICE_COINS`) for `crystal_flora`, `cosmic_nebula`, `chrono_willow`. The client never sends a price: `plant_deck()` charges `seed_price(tree_type)`. New gardeners start with 300
+- **Price tags**: every species card in the planting form and every packet in the Shop's seed gallery shows its price (`SeedPricePill`), dimmed red with a tooltip when the purse is short; the Plant button is disabled until the purse covers the species picked
 - **Atomic**: each slug candidate calls `plant_deck()` (DATABASE.md "Seed economy"), which charges and inserts in one transaction. A slug clash rolls the charge back before the next candidate, so a tree is paid exactly once
 - On success: `revalidatePath('/')` and `'/profile'`. The form pushes `remainingCoins` into `shared/stores/CoinsProvider` (HUD) and navigates to the new tree
 
@@ -257,7 +258,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need <cost> coins to clone this tree!"),
 //         DECK_NOT_FOUND (private, deleted, or unknown), AUTH_FORBIDDEN (it's already your tree), INTERNAL_ERROR
 ```
-- **Price**: `min(100 + statements, 150)` 🪙 (`cloneCost`, `shared/lib/economy.ts`; the database computes the same with `least(100 + n, 150)`). The button shows it: `🌱 Clone to Garden (N 🪙)`
+- **Price**: the tree's species seed price + `min(statements, 50)` 🪙 (`cloneCost(n, seedPrice(treeType))`, `shared/lib/economy.ts`; the database computes `seed_price(tree_type) + least(n, 50)`): 100–150 for a standard tree as before, 180–230 for a surreal one, so cloning is never cheaper than planting. The button shows it: `🌱 Clone to Garden (N 🪙)`
 - **Atomic**: `clone_deck()` (DATABASE.md "Cloning") charges and deep-copies the deck, every root (same hierarchy and order) and every statement with its trap rules in one transaction. Slug from the title like `createDeck`; a clash rolls everything back before the next candidate, so the fee is paid once
 - **Fresh start**: progress is never copied. The cloner owns the copy, so editing and practice are unlocked, and every statement starts at 0/5 (with its 🪙 mastery coin still to earn)
 - On success: `revalidatePath('/')` and `'/profile'`. The button pushes `remainingCoins` into `CoinsProvider` and navigates to `/deck/<new slug>`
@@ -445,9 +446,12 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ### `updateDeck` (decks)
 ```typescript
 // Input (UpdateDeckDto): { deckId: string; title?: string; description?: string | null; treeType?: TreeTypeId; isPublic?: boolean }  // at least one field
-// data: the updated deck (getDecks row shape) · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
+// data: the updated deck (getDecks row shape) + remainingCoins: number | null   // the purse after a paid species change; null when nothing was charged
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND,
+//         INSUFFICIENT_COINS ("You need <difference> coins to change this tree to that species!"), INTERNAL_ERROR
 ```
 - The slug never changes, so links stay stable
+- **Species change**: to a species with a higher seed price (a standard tree → a surreal one) it costs the difference (`speciesUpgradeCost`, 80 🪙), charged in the database by the `decks_charge_species_upgrade` trigger in the same UPDATE; a short purse refuses the change. To a cheaper or equal species it is free and refunds nothing. The Tree Workshop shows "+80" on such species and asks before paying; the deck draft rolls the species back with a toast on `INSUFFICIENT_COINS` and pushes `remainingCoins` into `CoinsProvider`
 
 ### `updateMindmapNode` / `updateKnowledgeItem` / `deleteMindmapNode` / `deleteKnowledgeItem` / `deleteRootBranch` (decks)
 ```typescript

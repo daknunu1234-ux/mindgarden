@@ -6,8 +6,8 @@ import { fail, type ActionResult } from '@/shared/types/result'
 import { CreateDeckDto } from '../dto/CreateDeckDto'
 import { plantDeck, type PlantedDeck } from '../services/authoring'
 
-// Auth: Required. Plants a tree for 100 🪙 (SEED_PRICE_COINS): INSUFFICIENT_COINS when the purse
-// is short. The slug is generated from the title (collisions get -2, -3, …). Returns the deck
+// Auth: Required. Plants a tree for its species' seed price (100 🪙, or 180 for a surreal species;
+// treeSkins seedPrice, charged by plant_deck()): INSUFFICIENT_COINS when the purse is short. The slug is generated from the title (collisions get -2, -3, …). Returns the deck
 // and the purse after paying.
 export async function createDeck(input: unknown): Promise<ActionResult<PlantedDeck>> {
   const parsed = CreateDeckDto.safeParse(input)

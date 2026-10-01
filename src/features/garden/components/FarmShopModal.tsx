@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { GameButton, GameDialog, GameDialogContent, GameIcon, GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger } from '@/shared/components/game'
-import { SEED_PRICE_COINS } from '@/shared/lib/economy'
+import { GameButton, GameDialog, GameDialogContent, GameIcon, GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger, SeedPricePill } from '@/shared/components/game'
+import { seedPriceTag } from '@/shared/lib/economy'
 import { getTreeSizeTier, TREE_SPECIES } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
@@ -96,7 +96,7 @@ function FarmShopModal({ open, onOpenChange, coins, unplacedTrees, onPlantTree, 
                 ))}
               </ul>
             )}
-            <SeedGallery />
+            <SeedGallery coins={coins} />
           </GameTabsContent>
 
           {SHOP_TABS.filter((t): t is { id: Exclude<ShopTab, 'trees'>; label: string } => t.id !== 'trees').map((t) => (
@@ -131,7 +131,8 @@ function UnplacedTree({ tree, onPlant }: { tree: FarmPlotView; onPlant: () => vo
       <header className={cn('bg-gradient-to-b from-[#4ade80] to-[#15803d] px-3 py-1.5 [--edge:#14532d]', OUTLINE)}>
         <h3 className="truncate font-game text-base font-extrabold text-white">{tree.title}</h3>
       </header>
-      <div className={cn('relative flex h-28 items-end justify-center', STAGE_BG)}>
+      {/* h-32: headroom for the bigger surreal trees above the 96 px sprite. */}
+      <div className={cn('relative flex h-32 items-end justify-center overflow-hidden', STAGE_BG)}>
         <span aria-hidden className="absolute bottom-3 h-5 w-24 rounded-[50%] border-[3px] border-[#3b1f0e] bg-gradient-to-b from-[#f0955a] to-[#c9622b]" />
         <TreeStageSvg stage={stage} treeType={tree.treeType} label="" ground={false} className="relative mb-4 size-24" />
         <span className="absolute top-2 right-2 rounded-full border-2 border-[#3b1f0e] bg-white/90 px-2 py-0.5 font-game text-[11px] font-extrabold text-[#3b1f0e]">
@@ -150,28 +151,36 @@ function UnplacedTree({ tree, onPlant }: { tree: FarmPlotView; onPlant: () => vo
   )
 }
 
-// "Plant a New Seed": the ten species as seed packets, each a young tree on a soil pedestal. Picking
-// one opens the planting form with that species chosen (the seed is paid there).
-function SeedGallery() {
+// "Plant a New Seed": every species (the surreal ones included) as seed packets, each a young tree
+// on a soil pedestal, then its name and, in the packet's footer, its seed price (dimmed red, with a
+// tooltip, when the purse is short; the whole packet dims too). Nothing overlays the tree. Picking one opens the planting form with that
+// species chosen (the seed is paid there, and the form says what is missing).
+export function SeedGallery({ coins }: { coins: number | null }) {
   return (
     <section aria-labelledby="seed-gallery" className="rounded-[20px] border-[3px] border-dashed border-[#c9955e] bg-white/60 p-3">
       <h3 id="seed-gallery" className="mb-2 text-center font-game text-base font-extrabold text-amber-950">
-        🌱 Plant a New Seed · {SEED_PRICE_COINS} 🪙
+        🌱 Plant a New Seed
       </h3>
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {TREE_SPECIES.map((species) => (
           <li key={species.id}>
             <Link
               href={`/deck/new?species=${species.id}`}
-              className="group/seed flex h-full flex-col items-center gap-1 rounded-[16px] border-[2.5px] border-[#3b1f0e] bg-gradient-to-b from-white to-[#fff3dc] px-1.5 pt-1.5 pb-2 text-center shadow-[inset_0_2px_0_#fff,0_4px_0_#3b1f0e] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:translate-y-1 active:shadow-[inset_0_2px_0_#fff]"
+              className={cn(
+                'group/seed flex h-full flex-col items-center gap-1 rounded-[16px] border-[2.5px] border-[#3b1f0e] bg-gradient-to-b from-white to-[#fff3dc] px-1.5 pt-1.5 pb-2 text-center shadow-[inset_0_2px_0_#fff,0_4px_0_#3b1f0e] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:translate-y-1 active:shadow-[inset_0_2px_0_#fff]',
+                seedPriceTag(species.price, coins).short && 'opacity-70',
+              )}
             >
-              <span className={cn('relative flex h-20 w-full items-end justify-center overflow-hidden rounded-[12px]', STAGE_BG)}>
+              {/* h-24: headroom above the 68 px sprite, so the bigger surreal trees (and the hover zoom) stay inside the frame. */}
+              <span className={cn('relative flex h-24 w-full items-end justify-center overflow-hidden rounded-[12px]', STAGE_BG)}>
                 <span aria-hidden className="absolute bottom-1.5 h-3.5 w-16 rounded-[50%] border-2 border-[#3b1f0e] bg-gradient-to-b from-[#f0955a] to-[#c9622b]" />
                 <TreeStageSvg stage={4} treeType={species.id} label="" ground={false} className="relative mb-2.5 size-[68px] transition-transform duration-200 group-hover/seed:scale-110" />
               </span>
               <span className="font-game text-xs leading-tight font-extrabold text-amber-950">
                 {species.icon} {species.label}
               </span>
+              {/* Footer: pinned to the bottom of the packet, so tags line up across a row whatever the name's length. */}
+              <SeedPricePill price={species.price} coins={coins} className="mt-auto" />
             </Link>
           </li>
         ))}

@@ -11,7 +11,8 @@ export type ErrorCode =
   | 'DRILL_NO_ITEMS'
   // Every drillable item is at 5/5 and review mode is off: the tree is fully cultivated.
   | 'DRILL_ALL_MASTERED'
-  // Planting a tree costs SEED_PRICE_COINS (shared/lib/economy.ts) and the purse is short.
+  // The purse is short for a seed (its species' price, treeSkins seedPrice), a clone, a pricier
+  // species or a Shop item.
   | 'INSUFFICIENT_COINS'
   // Practising / grading a tree you don't own: visitors are read-only (clone it to practise).
   | 'FORBIDDEN_VISITOR_PRACTICE'

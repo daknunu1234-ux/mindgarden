@@ -28,6 +28,8 @@ function TreeCard({ deck }: TreeCardProps) {
           stage={stage}
           treeType={deck.treeType}
           label={`${name} tree`}
+          // This window clips: a surreal tree stays inside its box here.
+          fit
           className="relative size-28 transition-transform duration-300 group-hover:scale-110"
         />
         <span

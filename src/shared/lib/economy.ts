@@ -3,18 +3,38 @@
 
 // Every new gardener's purse: 3 tree seeds.
 export const STARTING_COINS = 300
-// Price of one tree seed (planting a new deck).
+// Price of one tree seed (planting a new deck) of a standard species.
 export const SEED_PRICE_COINS = 100
+// Price of a surreal species' seed (Crystal Flora, Cosmic Nebula, Chrono Willow). Which species
+// costs what is in the catalogue (shared/lib/treeSkins.ts `price`, `seedPrice`); the database charges
+// the same through seed_price() (migration 20261006000000_species_seed_prices.sql; a test checks).
+export const SURREAL_SEED_PRICE_COINS = 180
 // A tree you drilled yesterday bears fruit at your midnight: harvest it once that day for this much
 // (migration 20261003000000 harvest_tree_fruit() pays the same; a test checks).
 export const FRUIT_COINS = 2
 
-// Cloning someone else's shared tree: a seed plus 1 🪙 per statement, capped at 150.
-export const CLONE_COST_CAP = 150
-export const cloneCost = (statementCount: number): number =>
-  Math.min(SEED_PRICE_COINS + Math.max(0, Math.floor(Number.isFinite(statementCount) ? statementCount : 0)), CLONE_COST_CAP)
+// Cloning someone else's shared tree: the seed of its species plus 1 🪙 per statement, at most 50
+// statements' worth. A standard tree: 100–150 (CLONE_COST_CAP); a surreal one: 180–230.
+export const CLONE_STATEMENT_CAP = 50
+export const CLONE_COST_CAP = SEED_PRICE_COINS + CLONE_STATEMENT_CAP
+export const cloneCost = (statementCount: number, seedPrice: number = SEED_PRICE_COINS): number =>
+  seedPrice + Math.min(Math.max(0, Math.floor(Number.isFinite(statementCount) ? statementCount : 0)), CLONE_STATEMENT_CAP)
 
-export const canAffordSeed =(coins: number | null | undefined): boolean => coins != null && coins >= SEED_PRICE_COINS
+// `price`: the seed of the species being planted (treeSkins seedPrice); a standard seed by default.
+export const canAffordSeed = (coins: number | null | undefined, price: number = SEED_PRICE_COINS): boolean => coins != null && coins >= price
+
+// A price tag for a seed card: how it reads and whether the purse covers it. An unknown purse
+// (signed out, unreadable) never shows as short: the server decides at purchase.
+export type SeedPriceTag = { price: number; label: string; short: boolean; title: string }
+export function seedPriceTag(price: number, coins: number | null | undefined): SeedPriceTag {
+  const short = coins != null && coins < price
+  return {
+    price,
+    label: `🪙 ${price}`,
+    short,
+    title: short ? `Not enough coins: you need ${price - coins!} more 🪙` : `Seed price: ${price} coins`,
+  }
+}
 
 // How many seeds a purse buys.
 export const seedsAffordable = (coins: number | null | undefined): number => (coins == null || coins < 0 ? 0 : Math.floor(coins / SEED_PRICE_COINS))

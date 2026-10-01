@@ -401,8 +401,73 @@
 /* A withered tree (shared/lib/treeVitality) stands still: its crown, aura and sparkles stop too. */
 .mg-withered .mg-foliage,
 .mg-withered .mg-aura,
-.mg-withered .mg-sparkle {
+.mg-withered .mg-sparkle,
+.mg-withered .mg-core,
+.mg-withered .mg-mote,
+.mg-withered .mg-nebula,
+.mg-withered .mg-star,
+.mg-withered .mg-sand,
+.mg-withered .mg-prism,
+.mg-withered .mg-fringe,
+.mg-withered .mg-rune,
+.mg-withered .mg-ring {
   animation: none;
+}
+
+/* Surreal species (TreeStageSvg: Crystal Flora, Cosmic Nebula, Chrono Willow). The crystal's core
+   pulses and motes drift up round it; the nebula's arms turn in their disc and stars twinkle; the
+   willow's light-sand falls from its thread tips to the tile and fades (--mg-drop = the fall, in the
+   sprite's own units). Transform / opacity only, no filters; still for reduced motion. */
+@keyframes mg-core {
+  0%, 100% { opacity: 0.55; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes mg-mote {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: 0.95; }
+  100% { transform: translate(var(--mg-mx, 3px), -14px); opacity: 0; }
+}
+@keyframes mg-nebula {
+  to { transform: rotate(360deg); }
+}
+@keyframes mg-star {
+  0%, 100% { opacity: 0.3; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes mg-sand {
+  0% { transform: translateY(0); opacity: 0; }
+  12%, 80% { opacity: 1; }
+  100% { transform: translateY(var(--mg-drop, 20px)); opacity: 0; }
+}
+/* Rainbow effects. Hues shift without hue-rotate (opacity only): the crystal's two rainbow
+   sweeps cross-fade (.mg-prism, the second half a cycle behind), the nebula's emerald fringe turns
+   against its arms, the willow's runes pulse and prismatic rings spread from where the sand lands. */
+@keyframes mg-prism {
+  0%, 100% { opacity: 0.06; }
+  50% { opacity: 0.4; }
+}
+@keyframes mg-fringe {
+  to { transform: rotate(-360deg); }
+}
+@keyframes mg-rune {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes mg-ring {
+  0% { transform: scale(0.35); opacity: 0; }
+  20% { opacity: 0.85; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-core { animation: mg-core 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-mote { animation: mg-mote var(--mg-dur, 4s) ease-out var(--mg-delay, 0s) infinite; }
+  .mg-nebula { animation: mg-nebula 28s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-star { animation: mg-star var(--mg-dur, 2.4s) ease-in-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-sand { animation: mg-sand var(--mg-dur, 2.6s) linear var(--mg-delay, 0s) infinite; }
+  .mg-prism { animation: mg-prism 5.2s ease-in-out var(--mg-delay, 0s) infinite; }
+  .mg-fringe { animation: mg-fringe 46s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-rune { animation: mg-rune 2.8s ease-in-out var(--mg-delay, 0s) infinite; }
+  .mg-ring { animation: mg-ring 3.3s ease-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
 }
 
 @keyframes mg-foliage {

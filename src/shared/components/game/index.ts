@@ -9,6 +9,7 @@ export { ActionDock, DOCK_BUTTON, DockOrb, PodShadow, ResourcePill } from './Gam
 export { GameIcon, type GameIconName } from './GameIcon'
 export { HOVER_REVEAL, HoverActionButton, HoverActions } from './HoverActions'
 export { ParticleBurst } from './ParticleBurst'
+export { SeedPricePill } from './SeedPricePill'
 export { CoinShopModal } from './CoinShopModal'
 export { gaugePercent, notchOffsets } from './gauge'
 export { burstParticles } from './particles'

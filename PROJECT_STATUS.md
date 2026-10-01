@@ -42,13 +42,32 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Flow | Amount | Where |
 |------|--------|-------|
 | Starting purse | 300 | `shared/lib/economy.ts`, migration 6 |
-| Plant a seed (new tree) | −100 | `plant_deck()` |
-| Clone a shared tree | −min(100 + statements, 150) | `clone_deck()` |
+| Plant a seed (new tree) | −100; −180 for a surreal species (Crystal Flora, Cosmic Nebula, Chrono Willow) | `plant_deck()` → `seed_price()` |
+| Clone a shared tree | −(the species' seed price + min(statements, 50)): 100–150, or 180–230 for a surreal tree | `clone_deck()` |
+| Change a planted tree to a pricier species (Tree Workshop) | −the price difference (standard → surreal: 80); cheaper or equal: free, no refund | trigger `decks_charge_species_upgrade` |
 | Statement mastered (first 5/5) | +1 × farm buff, fraction carried | `award_mastery_coin()` |
 | Shop item | −1 to −50 (catalogue below) | `purchase_and_place_item()` |
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
 | Streak milestone (first watering that day) | +7 at 7 days, +30 at 30, +N at every 100 (100, 200, …) | `award_streak_reward()` |
+
+### Seed prices and price tags
+
+- **Prices live in the species registry** (`shared/lib/treeSkins.ts` `price`, `seedPrice`; the numbers
+  `SEED_PRICE_COINS` = 100 and `SURREAL_SEED_PRICE_COINS` = 180 in `shared/lib/economy.ts`). The
+  database charges the same through `seed_price()` (migration 18); a test keeps them equal.
+- **Price tags everywhere a seed is picked** (`shared/components/game` `SeedPricePill`, "🪙 180"): in
+  the footer of every species card of the planting form and of every packet of the Shop's seed
+  gallery: under the name, pinned to the card's bottom edge, never over the tree picture.
+  A seed the purse can't pay shows its tag dimmed red with a tooltip ("Not enough coins: you need N
+  more 🪙"), and its Shop packet dims.
+- **Planting form**: the "Seed Cost" plaque and the Plant button follow the species picked; the button
+  is disabled while the purse is short and "Get More Coins" opens the Coin Shop.
+- **Tree Workshop**: species that cost more than the tree's current one carry a "+80" badge. Picking
+  one asks in place ("Change this tree to … for 80 🪙?") before paying; the server charges the
+  difference, the header purse updates, and a short purse rolls the change back with a toast.
+- **Server-enforced**: `plant_deck()`, `clone_deck()` and the species-upgrade trigger charge inside
+  the database, so neither cloning nor the Workshop is a cheaper way to a surreal tree.
 
 ### Daily streak and its rewards
 
@@ -243,10 +262,11 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
   and pays in one transaction; "today" comes from the server clock. Optimistic on the farm: the fruit
   goes and the purse grows at once, rolled back with a toast if refused.
 
-## Tree species: 10 × 5 = 50 sprites
+## Tree species: 13 × 5 = 65 sprites
 
-`decks.tree_type` is one of ten species (`shared/lib/treeSkins.ts`, validated by Zod, and by a database
-check after migration 13), each drawn by its own function in `garden/components/TreeStageSvg.tsx`:
+`decks.tree_type` is one of thirteen species (`shared/lib/treeSkins.ts`, validated by Zod, and by a
+database check: migration 13 for the ten natural ones, widened to all thirteen by migration 17), each
+drawn by its own function in `garden/components/TreeStageSvg.tsx`. Ten natural species:
 
 | Species | Look |
 |---------|------|
@@ -260,6 +280,34 @@ check after migration 13), each drawn by its own function in `garden/components/
 | 🍊 Citrus Grove | Round green crown dotted with oversized glossy oranges (3 / 6 / 9 by stage) |
 | 🍁 Autumn Maple | Bold cut-out five-point leaves in coral and crimson |
 | 🌵 Desert Cactus | Plump saguaro with rounded arms and pink blooms on the tips |
+
+Three **surreal** species (`SURREAL_FORMS`, `isSurrealForm`), drawn in light instead of leaves. They
+are cosmetic like the rest: same seed price, same planting, moving, chopping, drilling and Workshop.
+
+| Species (id) | Look | Effect (CSS class) |
+|--------------|------|--------------------|
+| 💠 Crystal Flora (`crystal_flora`) | A crystal stalk fanning into faceted shards in saturated jewel tones, each in its own hue pair (vivid lit facet, deep shaded facet): neon cyan, electric magenta, radiant amber gold, royal amethyst; small crystals at the base | A prismatic radial backglow breathing behind the crown (`.mg-core`); two faint rainbow sweeps cross-fading over the facets (`.mg-prism`); a cross-sparkle on every facet peak (`.mg-star`); dense rainbow motes drifting up (`.mg-mote`) |
+| 🌌 Cosmic Nebula (`cosmic_nebula`) | An obsidian bonsai trunk with a silver vein, holding a tilted high-contrast vortex over deep space: blazing solar-gold core, hot magenta, cosmic indigo, azure, a vivid emerald aurora rim | A gold-to-magenta backglow (`.mg-core`); magenta, violet and azure arms turning in their disc (`.mg-nebula`, 28 s); the emerald fringe drifting the other way (`.mg-fringe`); cross-sparkles on the rim nodes and gold, cyan and pink star dust (`.mg-star`) |
+| ⏳ Chrono Willow (`chrono_willow`) | A bronze fossil trunk with rings, verdigris and brightly glowing platinum-and-gold runes; optic threads running sunset copper → molten gold → turquoise → celestial violet from root to tip, each ending in a bead of light | A warm golden backglow (`.mg-core`); runes pulsing in turn (`.mg-rune`); cross-sparkles at the thread ends (`.mg-star`); drifting motes (`.mg-mote`); rainbow grains of light-sand falling to the tile (`.mg-sand`) into spreading prismatic rings (`.mg-ring`) |
+
+- **Bigger than natural trees**: every surreal sprite is drawn `SURREAL_SCALE` = 1.18× (`speciesScale`,
+  `treeScale` = size tier × species, `shared/lib/treeSkins.ts`), scaled about the trunk base, so the
+  trunk stays on the centre of its tile. On the farm the bubbles and shadows follow the bigger crown;
+  the deck scene grows its tree box by the same factor. Frames that clip make room or opt out
+  (`TreeStageSvg` `fit`): the Shop's seed packets and tree cards and the tree popover got headroom,
+  the grid-view cards and profile thumbnails keep the tree inside its box.
+
+- Their effects are a handful of small SVG shapes inside the sprite, animated with transform /
+  opacity only, in groups with `pointer-events: none` so the tree stays the click and drag target. Off
+  for reduced motion (rotations freeze; sand and rings are not shown) and for withered trees.
+- **No filters, so no `hue-rotate`**: the flowing hue shift is two gradients cross-fading by opacity,
+  which keeps the farm's rule that nothing moving uses a CSS filter.
+- The multi-colour fills are SVG linear / radial gradients whose ids come from React `useId`, so any
+  number of trees share a page without clashing. Every growth stage adds shards / arms / threads,
+  runes, sparkles and motes.
+- No bees or falling leaves on surreal trees (`FarmAmbience`): the effects above replace them.
+- Stage 1 is the species' own drawing in miniature in the soil heap; stage 5 gets the same golden
+  halo, aura and sparkles as every species.
 
 - **Stages**: 1 Sprout (a plump seedling with the species' seed cap and cotyledons; pine tuft, sprouting
   coconut, round baby cactus), 2 Sapling (thick stem, mini crown), 3 Adolescent (the recognisable
@@ -290,13 +338,15 @@ check after migration 13), each drawn by its own function in `garden/components/
   on the bed, so none of them jitter; bees and falling leaves ride with the crown.
 - **On the farm**: every species grows from the same trunk base on the tile centre, so it stands on the
   full-tile garden bed with its stage sign, bees, popovers and buff tags unchanged.
-- **Picking a species**: the planting form and the Tree Workshop's picker show all ten; the Shop's 🌳
+- **Picking a species**: the planting form and the Tree Workshop's picker show all thirteen; the Shop's 🌳
   Trees tab has a seed gallery (each species as a young tree) that opens `/deck/new?species=<id>`.
 - **Retired species**: sakura → cherry, saguaro → cactus, apple → citrus, bamboo → palm
   (`LEGACY_TREE_TYPES`). Old rows render as their successor; migration 13 rewrites them and adds the check.
-- Tests (`garden/__tests__/treeSprites.test.ts`): all 50 render with no bad numbers, all 50 differ, gold
+- Tests (`garden/__tests__/treeSprites.test.ts`): all 65 render with no bad numbers, all 65 differ, gold
   only at stage 5, mature trees paint more than saplings and sprouts, retired ids draw like their successor,
-  and the migration's ids and renames match the catalogue.
+  and both species migrations' ids and renames match the catalogue. Surreal species: in the registry
+  with label and icon, each draws its own effect, sand falls exactly to the ground, particles take no
+  pointer events, and their keyframes animate only transform / opacity inside a motion media block.
 
 ## Visual system: tropical island diorama
 
@@ -472,6 +522,8 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement()`: owner-only move, bounds + overlap checks, row lock |
 | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days`, `tree_harvests`, `harvest_tree_fruit()` (service role: +2 🪙 once per tree per day after practice the day before) |
 | 16 | `20261004000000_streak_rewards.sql` | `streak_rewards` ledger, `award_streak_reward()` (service role: streak milestone coins at 7, 30 and every 100 days, once per day) |
+| 17 | `20261005000000_surreal_tree_species.sql` | `decks_tree_type_check` widened to thirteen ids (adds `crystal_flora`, `cosmic_nebula`, `chrono_willow`). Run **before or with** deploying the code |
+| 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (180 for the three surreal ids, else 100); `plant_deck()` and `clone_deck()` charge by species; trigger `decks_charge_species_upgrade` charges the difference when a tree changes to a pricier species. Run **with** the deploy |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -484,12 +536,10 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(progress): streak milestone coins (7, 30, every 100 days) on the day's first watering; level / XP system removed |
-| (pending) | style(progress): coins and streak pills in the site header; farm HUD keeps only the banner and buffs |
-| (pending) | style(garden): tree popover drops the duplicate Edit button; Roots, Move and Chop in one compact pill row; planted trees can no longer be stored back in the Shop |
-| (pending) | style(decks): Tree Workshop puts the outline editor first; species, share and tournament in one compact settings bar; Add root inline in the root selector |
-| (pending) | feat(garden): distant karst islands with waterfalls, mist and shore foam behind the farm |
-| (pending) | feat(auth): Google 1-click sign-in in the login dialog |
+| (pending) | feat(decks): surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
+| (pending) | feat(garden): three surreal tree species (Crystal Flora, Cosmic Nebula, Chrono Willow) with their own light effects, in prismatic / rainbow palettes |
+| `a896a62` | feat(streak): streak milestone coins (7, 30, every 100 days) on the day's first watering; level / XP system removed. The same commit also carries: coins and streak pills in the site header; the compact tree popover (no Edit, no Store); the Tree Workshop layout (editor first, settings bar, inline Add root); the distant karst islands |
+| `eb884e1` | feat(auth): Google 1-click sign-in in the login dialog |
 | `12f6cb3` | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
 | `3e31e55` | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
 | `956ef3d` | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
@@ -524,5 +574,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 73 files, 688 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 75 files, 721 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

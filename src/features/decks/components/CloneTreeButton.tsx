@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameButton, GameDialog, GameDialogContent, GameIcon } from '@/shared/components/game'
 import { cloneCost } from '@/shared/lib/economy'
+import { seedPrice } from '@/shared/lib/treeSkins'
 import { useCoinShop } from '@/shared/stores/CoinShopProvider'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
@@ -15,6 +16,8 @@ type CloneTreeButtonProps = {
   deckId: string
   deckTitle: string
   statementCount: number
+  // The tree's species: its seed price is part of the fee (a surreal tree costs more to clone).
+  treeType: string
   // The visitor's purse from the server (null when signed out or unknown) and when it was read.
   coins: number | null
   coinsAsOf?: number
@@ -24,13 +27,13 @@ type CloneTreeButtonProps = {
 }
 
 // "🌱 Clone to Garden (N 🪙)": the only way for a visitor to practise someone else's shared tree.
-// Opens a confirm dialog with the fee (min(100 + statements, 150), cloneCost) and the purse; a short
-// purse offers the Coin Shop, a signed-out visitor gets the sign-in dialog. On success the HUD purse
-// updates and the player lands on their own copy, where editing and practice are unlocked.
-function CloneTreeButton({ deckId, deckTitle, statementCount, coins: serverCoins, coinsAsOf, signedIn, size = 'md', className }: CloneTreeButtonProps) {
+// Opens a confirm dialog with the fee (the species' seed + min(statements, 50), cloneCost) and the
+// purse; a short purse offers the Coin Shop, a signed-out visitor gets the sign-in dialog. On success
+// the HUD purse updates and the player lands on their own copy, where editing and practice are unlocked.
+function CloneTreeButton({ deckId, deckTitle, statementCount, treeType, coins: serverCoins, coinsAsOf, signedIn, size = 'md', className }: CloneTreeButtonProps) {
   const { open: openLogin } = useLoginDialog()
   const [open, setOpen] = useState(false)
-  const cost = cloneCost(statementCount)
+  const cost = cloneCost(statementCount, seedPrice(treeType))
 
   return (
     <>

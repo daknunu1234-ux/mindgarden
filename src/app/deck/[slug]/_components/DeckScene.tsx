@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
-import { getTreeSizeTier, getTreeSpecies } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, getTreeSpecies, treeScale } from '@/shared/lib/treeSkins'
 import { DisplayNameEditor } from '@/features/auth'
 import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchContext } from '@/features/drill'
 import {
@@ -74,7 +74,8 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
   // The scene reserves sky above the surface box, so here the box itself grows (from the trunk
   // base), rather than scaling inside a fixed box. Base point = box × TREE_BASE_RATIO either way,
   // so the root conduit still attaches exactly at the trunk.
-  const treeBox = Math.round(TREE_SIZE * size.scale)
+  // Surreal species are bigger still (treeScale = tier × species), so the drawing below fills the box (`fit`).
+  const treeBox = Math.round(TREE_SIZE * treeScale(deck.treeType, itemCount))
   const levels: ItemLevels = Object.fromEntries(progress?.items.map((i) => [i.itemId, i.masteryLevel]) ?? [])
   const masteredCount = progress?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0
   // Statement texts for the mindmap: the owner's from the editor (their own tree, a clone included),
@@ -89,6 +90,7 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
         deckId={deck.id}
         deckTitle={deck.title}
         statementCount={itemCount}
+        treeType={deck.treeType}
         coins={visitor.coins}
         coinsAsOf={visitor.coinsAsOf}
         signedIn={visitor.signedIn}
@@ -238,6 +240,7 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
                   treeType={deck.treeType}
                   label={`${name} ${size.name.toLowerCase()} tree`}
                   ground={false}
+                  fit
                   className="size-full transition-opacity duration-700"
                 />
               ),

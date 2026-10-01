@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { FRUIT_COINS } from '@/shared/lib/economy'
-import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT, treeScale } from '@/shared/lib/treeSkins'
 import { treeLook } from '@/shared/lib/treeVitality'
 import { usePrefetchOnIntent } from '@/shared/hooks/usePrefetchOnIntent'
 import { cn } from '@/shared/utils/cn'
@@ -49,7 +49,9 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
   const look = treeLook(plot.withered === true)
   const splash = useWateredSplash(plot.id, plot.wateredDay)
   const size = getTreeSizeTier(plot.itemCount)
-  const sprite = plotSprite(geometry.x, geometry.y, size.scale)
+  // What the tree is really drawn at: the size tier × the species' presence (surreal trees are bigger).
+  const drawn = treeScale(plot.treeType, plot.itemCount)
+  const sprite = plotSprite(geometry.x, geometry.y, drawn)
   const { hitbox, tree } = sprite
   // Hover / focus / touch warms the tree's page and its drill (code + loading skeleton), so the
   // popover's links open instantly.
@@ -81,7 +83,7 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
       className="group absolute rounded-[40%] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
       style={{ ...hitbox, zIndex: Math.round(geometry.y) }}
     >
-      <TreeShadows x={geometry.x - hitbox.left} y={geometry.y - hitbox.top} reach={SHADOW_REACH[stage]} scale={size.scale} />
+      <TreeShadows x={geometry.x - hitbox.left} y={geometry.y - hitbox.top} reach={SHADOW_REACH[stage]} scale={drawn} />
       {/* Tap / hover: a springy squash & stretch about the trunk base. The sway lives one layer in,
           so the two transforms never fight; shadows, signs, badges and buff tags stay on the ground. */}
       <div
@@ -206,7 +208,7 @@ export function PlotLabels({
   // Owner: pick the tree's fruit (the farm credits the coins at once and confirms in the background).
   onHarvest?: (plot: FarmPlotView) => void
 }) {
-  const { sign, badge, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, getTreeSizeTier(plot.itemCount).scale)
+  const { sign, badge, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, treeScale(plot.treeType, plot.itemCount))
   const thirsty = plot.needsWater === true && plot.itemCount > 0
   const mighty = plot.masteryPercent >= 100
   const open = (e: { stopPropagation: () => void }) => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { getTreeSpecies } from '@/shared/lib/treeSkins'
+import { getTreeSpecies, isSurrealForm } from '@/shared/lib/treeSkins'
 import { seededRandom } from '@/shared/utils/seededRandom'
 import type { TreeStage } from '../types'
 
@@ -14,7 +14,8 @@ type Vars = CSSProperties & Record<`--mg-${string}`, string>
 export function FallingParticles({ seed, stage, treeType, size }: { seed: string; stage: TreeStage; treeType: string; size: number }) {
   const { form, skin } = getTreeSpecies(treeType)
   const particles = useMemo(() => {
-    if (stage < 4 || (form === 'cactus' && stage < 5)) return []
+    // Surreal species shed no leaves: their own light particles are part of the sprite.
+    if (stage < 4 || (form === 'cactus' && stage < 5) || isSurrealForm(form)) return []
     const random = seededRandom(`leaf:${seed}`)
     const colors =
       form === 'cherry'
@@ -69,7 +70,7 @@ const BEES = [
 ]
 export function Bees({ stage, treeType, size }: { stage: TreeStage; treeType: string; size: number }) {
   const { form } = getTreeSpecies(treeType)
-  if (stage < 3 || (form === 'cactus' && stage < 5)) return null
+  if (stage < 3 || (form === 'cactus' && stage < 5) || isSurrealForm(form)) return null
   return (
     <>
       {BEES.slice(0, stage === 5 ? 3 : 2).map((b, i) => (

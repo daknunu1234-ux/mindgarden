@@ -19,7 +19,7 @@ function CoinsBadge({ coins, coinsAsOf }: { coins: number; coinsAsOf: number }) 
       onClick={open}
       className={HEADER_PILL}
       aria-label={`Gold coins: ${shown}. Open the Coin Shop`}
-      title={`A tree seed costs ${SEED_PRICE_COINS} coins. Earn 1 the first time you master a statement (5/5). Click for the Coin Shop`}
+      title={`Tree seeds cost from ${SEED_PRICE_COINS} coins. Earn 1 the first time you master a statement (5/5). Click for the Coin Shop`}
     >
       <span aria-hidden>🪙</span>
       {shown}

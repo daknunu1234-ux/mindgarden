@@ -26,7 +26,7 @@ function CoinShopModal({ signedIn, simulateTopUp }: CoinShopModalProps) {
   const { isOpen, setOpen } = useCoinShop()
   return (
     <GameDialog open={isOpen} onOpenChange={setOpen}>
-      <GameDialogContent title="🪙 Coin Shop" ribbon="gold" tone="parchment" size="lg" description={`Coins buy tree seeds: ${SEED_PRICE_COINS} 🪙 plants one new tree.`}>
+      <GameDialogContent title="🪙 Coin Shop" ribbon="gold" tone="parchment" size="lg" description={`Coins buy tree seeds: from ${SEED_PRICE_COINS} 🪙 for a new tree.`}>
         {isOpen && <ShopBody signedIn={signedIn} simulateTopUp={simulateTopUp} onDone={() => setOpen(false)} />}
       </GameDialogContent>
     </GameDialog>

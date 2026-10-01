@@ -23,9 +23,10 @@ describe('CreateDeckDto', () => {
     expect(CreateDeckDto.safeParse({ title: 'x', treeType: 'banyan' }).success).toBe(false)
   })
 
-  it('plants all ten species, but never a retired one (they only live on in old rows)', () => {
+  it('plants all thirteen species (the surreal ones too), but never a retired one (they only live on in old rows)', () => {
     for (const treeType of TREE_TYPE_IDS) expect(CreateDeckDto.safeParse({ title: 'x', treeType }).success, treeType).toBe(true)
-    expect(TREE_TYPE_IDS).toHaveLength(10)
+    expect(TREE_TYPE_IDS).toHaveLength(13)
+    for (const surreal of ['crystal_flora', 'cosmic_nebula', 'chrono_willow']) expect(CreateDeckDto.safeParse({ title: 'x', treeType: surreal }).success, surreal).toBe(true)
     for (const retired of ['sakura', 'saguaro', 'apple', 'bamboo']) expect(CreateDeckDto.safeParse({ title: 'x', treeType: retired }).success, retired).toBe(false)
   })
 

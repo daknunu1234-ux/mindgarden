@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
 import { createKnowledgeItem } from '../actions/createKnowledgeItem'
@@ -30,7 +31,8 @@ type AddResult = { success: true; drillable: boolean } | { success: false; messa
 type BulkResult = { success: true; data: BulkImportResult } | { success: false; message: string }
 
 export type DeckDraftActions = {
-  // Show the new species at once; updateDeck in the background, rolled back with a toast on error.
+  // Show the new species at once; updateDeck in the background, rolled back with a toast on error
+  // (a pricier species charges the difference: a short purse is such an error).
   changeSpecies: (treeType: string) => void
   // Show the statement at once; resolves with the server's verdict (drillable, or why it failed).
   // nodeId may be a root that is still saving: the statement waits for its real id.
@@ -75,6 +77,7 @@ export function useDeckDraftActions(): DeckDraftActions {
 // saving is sent once that root has its real id.
 export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { view: DeckDraftView; actions: DeckDraftActions } {
   const { toast } = useToast()
+  const { setCoins } = useCoins()
   const [ops, setOps] = useState<{ base: DeckDetail; list: DeckOp[] }>({ base: detail, list: [] })
   // New server data (a refresh after another edit): ops still in flight carry over onto it.
   const list = useMemo(() => (ops.base === detail ? ops.list : rebaseOps(ops.list)), [ops, detail])
@@ -120,7 +123,11 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
         const key = nextOpKey()
         edit((l) => [...l, { key, kind: 'species', treeType }])
         void updateDeck({ deckId: detail.deck.id, treeType }).then((res) => {
-          if (res.success) return edit((l) => settleOp(l, key))
+          if (res.success) {
+            // A pricier species was paid for: show the new purse in the header at once.
+            if (res.data.remainingCoins !== null) setCoins(res.data.remainingCoins)
+            return edit((l) => settleOp(l, key))
+          }
           edit((l) => dropOp(l, key))
           failed(`Could not change the species to ${getTreeSpecies(treeType).label}: ${res.error.message}`)
         })
@@ -216,7 +223,7 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
       isPending: (id) => current.current.pendingIds.has(resolve(id)),
       resolveId: resolve,
     }
-  }, [detail.deck.id, edit, toast])
+  }, [detail.deck.id, edit, toast, setCoins])
 
   return { view, actions }
 }

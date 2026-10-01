@@ -12,8 +12,11 @@ const USER = '11111111-1111-4111-8111-111111111111'
 
 type DeckRow = { id: string; user_id: string; title: string; slug: string; description: string | null; is_public: boolean; tree_type: string; created_at: string }
 
-// In-memory stand-in for plant_deck() with the migration's semantics: charge 100 only if the purse
-// has it, insert the deck, and roll the charge back on a duplicate slug (one transaction).
+// seed_price() of migration 20261006000000_species_seed_prices.sql.
+const sqlSeedPrice = (treeType: string) => (['crystal_flora', 'cosmic_nebula', 'chrono_willow'].includes(treeType) ? 180 : 100)
+
+// In-memory stand-in for plant_deck() with the migration's semantics: charge the species' seed price
+// only if the purse has it, insert the deck, and roll the charge back on a duplicate slug (one transaction).
 function fakeSupabase({ userId, coins, takenSlugs = [] }: { userId: string | null; coins: number; takenSlugs?: string[] }) {
   const db = { coins, decks: [] as DeckRow[], taken: new Set(takenSlugs), rpcCalls: 0 }
   const client = {
@@ -21,9 +24,10 @@ function fakeSupabase({ userId, coins, takenSlugs = [] }: { userId: string | nul
     rpc: async (fn: string, args: { p_title: string; p_slug: string; p_description: string | null; p_is_public: boolean; p_tree_type: string }) => {
       if (fn !== 'plant_deck') throw new Error(`unexpected rpc ${fn}`)
       db.rpcCalls += 1
-      if (db.coins < 100) return { data: null, error: { code: 'P0001', message: 'INSUFFICIENT_COINS' } }
+      const price = sqlSeedPrice(args.p_tree_type)
+      if (db.coins < price) return { data: null, error: { code: 'P0001', message: 'INSUFFICIENT_COINS' } }
       const before = db.coins
-      db.coins -= 100
+      db.coins -= price
       if (db.taken.has(args.p_slug)) {
         db.coins = before // rolled back with the failed insert
         return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "idx_decks_slug"' } }
@@ -86,11 +90,45 @@ describe('createDeck (seed economy)', () => {
 
     expect(res).toEqual({
       success: false,
-      error: { code: 'INSUFFICIENT_COINS', message: 'You need 100 coins to buy a seed for a new tree!' },
+      error: { code: 'INSUFFICIENT_COINS', message: 'You need 100 coins to buy a seed for this tree!' },
     })
     expect(db.coins).toBe(99)
     expect(db.decks).toHaveLength(0)
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('deducts exactly 180 coins for each surreal species', async () => {
+    for (const treeType of ['crystal_flora', 'cosmic_nebula', 'chrono_willow']) {
+      const db = fakeSupabase({ userId: USER, coins: STARTING_COINS })
+      const res = await createDeck({ title: `Tree ${treeType}`, treeType })
+      expect(res, treeType).toMatchObject({ success: true, data: { remainingCoins: 120, deck: { treeType } } })
+      expect(db.coins, treeType).toBe(120)
+    }
+  })
+
+  it('refuses a surreal seed below 180 coins (the purse is untouched) and accepts exactly 180', async () => {
+    const short = fakeSupabase({ userId: USER, coins: 179 })
+    expect(await createDeck({ title: 'Nebula', treeType: 'cosmic_nebula' })).toEqual({
+      success: false,
+      error: { code: 'INSUFFICIENT_COINS', message: 'You need 180 coins to buy a seed for this tree!' },
+    })
+    expect(short.coins).toBe(179)
+    expect(short.decks).toHaveLength(0)
+
+    const exact = fakeSupabase({ userId: USER, coins: 180 })
+    const res = await createDeck({ title: 'Nebula', treeType: 'cosmic_nebula' })
+    expect(res.success && res.data.remainingCoins).toBe(0)
+    expect(exact.coins).toBe(0)
+  })
+
+  it('a starter purse buys one surreal tree and one standard tree, not two surreal ones', async () => {
+    const db = fakeSupabase({ userId: USER, coins: STARTING_COINS })
+    expect((await createDeck({ title: 'A', treeType: 'chrono_willow' })).success).toBe(true)
+    expect(db.coins).toBe(120)
+    expect(await createDeck({ title: 'B', treeType: 'crystal_flora' })).toMatchObject({ success: false, error: { code: 'INSUFFICIENT_COINS' } })
+    expect(db.coins).toBe(120)
+    expect((await createDeck({ title: 'C', treeType: 'oak' })).success).toBe(true)
+    expect(db.coins).toBe(20)
   })
 
   it('succeeds with exactly 100 coins and leaves 0', async () => {

@@ -3,13 +3,13 @@
 import { useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameButton, GameIcon, GameInput, GameLabel, GameTextarea } from '@/shared/components/game'
-import { canAffordSeed, SEED_PRICE_COINS } from '@/shared/lib/economy'
+import { canAffordSeed } from '@/shared/lib/economy'
 import { useCoinShop } from '@/shared/stores/CoinShopProvider'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import { createDeck } from '../actions/createDeck'
-import type { TreeTypeId } from '@/shared/lib/treeSkins'
+import { seedPrice, type TreeTypeId } from '@/shared/lib/treeSkins'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 
 type CreateDeckFormProps = {
@@ -27,10 +27,12 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf, initialTreeType = 'oak'
   const { setCoins } = useCoins()
   // Newest of the server's purse and any live update (a shop top-up while this page is open).
   const coins = useDisplayedCoins(serverCoins, coinsAsOf)
-  const affordable = canAffordSeed(coins)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [treeType, setTreeType] = useState<TreeTypeId>(initialTreeType)
+  // The seed of the species picked: 100 🪙, or 180 for a surreal one.
+  const price = seedPrice(treeType)
+  const affordable = canAffordSeed(coins, price)
   // New trees start private; sharing is a choice (here, or later in the Tree Workshop).
   const [isPublic, setIsPublic] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,7 +57,7 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf, initialTreeType = 'oak'
 
   return (
     <form onSubmit={submit} className="space-y-6">
-      <SeedPurse coins={coins} affordable={affordable} onGetCoins={openShop} />
+      <SeedPurse price={price} coins={coins} affordable={affordable} onGetCoins={openShop} />
       <div>
         <GameLabel htmlFor="deck-title">Name</GameLabel>
         <GameInput id="deck-title" required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sinh học Tế bào" />
@@ -75,7 +77,7 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf, initialTreeType = 'oak'
         />
       </div>
 
-      <TreeSpeciesPicker value={treeType} onChange={setTreeType} />
+      <TreeSpeciesPicker value={treeType} onChange={setTreeType} coins={coins} />
 
       {/* Chunky toggle switch. */}
       <div className="flex items-center gap-3">
@@ -118,22 +120,22 @@ function CreateDeckForm({ coins: serverCoins, coinsAsOf, initialTreeType = 'oak'
       )}
 
       <GameButton type="submit" tone="leaf" size="lg" disabled={isPending || !affordable} className="w-full">
-        {isPending ? 'Planting…' : `Plant a Tree 🌱 · ${SEED_PRICE_COINS} 🪙`}
+        {isPending ? 'Planting…' : `Plant a Tree 🌱 · ${price} 🪙`}
       </GameButton>
     </form>
   )
 }
 
-// "Seed Cost: 100 🪙 · Your Purse: X 🪙": a wooden price tag above the form. When the purse is
-// short, a bouncy "Get More Coins" opens the Coin Shop.
-function SeedPurse({ coins, affordable, onGetCoins }: { coins: number | null; affordable: boolean; onGetCoins: () => void }) {
+// "Seed Cost: N 🪙 · Your Purse: X 🪙": a wooden price tag above the form, following the species
+// picked. When the purse is short, a bouncy "Get More Coins" opens the Coin Shop.
+function SeedPurse({ price, coins, affordable, onGetCoins }: { price: number; coins: number | null; affordable: boolean; onGetCoins: () => void }) {
   return (
     <div className="rounded-[20px] border-[3px] border-[#c9955e] bg-gradient-to-b from-[#fffcf3] to-[#f7e2bd] p-3 shadow-[inset_0_2px_0_#fff,0_4px_0_#b07a45]">
       <dl className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-game font-extrabold text-[#4a2511]">
         <div className="flex items-center gap-2">
           <dt className="text-sm text-[#8a5a2b]">Seed Cost:</dt>
           <dd className="flex items-center gap-1 text-xl tabular-nums">
-            {SEED_PRICE_COINS} <GameIcon name="coin" className="size-6" />
+            {price} <GameIcon name="coin" className="size-6" />
           </dd>
         </div>
         <div className="flex items-center gap-2">
@@ -148,7 +150,7 @@ function SeedPurse({ coins, affordable, onGetCoins }: { coins: number | null; af
           <p role="status" className="text-sm font-semibold text-amber-900">
             {coins === null
               ? 'We could not read your purse right now.'
-              : `You need ${SEED_PRICE_COINS - coins} more 🪙 for a seed. Master statements (5/5) to earn coins, or visit the shop.`}
+              : `You need ${price - coins} more 🪙 for this seed. Master statements (5/5) to earn coins, or visit the shop.`}
           </p>
           <GameButton type="button" tone="wood" className="mg-bob" onClick={onGetCoins}>
             Get More Coins 🪙
