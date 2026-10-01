@@ -39,8 +39,6 @@ export type Database = {
           // Migration 20260930000000: fraction of a coin carried between buffed payouts (0 ≤ x < 1).
           coin_carry: number
           avatar_url: string | null
-          streak_count: number
-          last_active_at: string | null
           coins: number
           created_at: string
         }
@@ -51,8 +49,6 @@ export type Database = {
           full_name?: string | null
           display_name?: string | null
           avatar_url?: string | null
-          streak_count?: number
-          last_active_at?: string | null
           coins?: number
           created_at?: string
         }
@@ -63,8 +59,6 @@ export type Database = {
           full_name?: string | null
           display_name?: string | null
           avatar_url?: string | null
-          streak_count?: number
-          last_active_at?: string | null
           coins?: number
           created_at?: string
         }
@@ -519,7 +513,6 @@ export type Database = {
           user_id: string
           knowledge_item_id: string
           mastery_level: number
-          mistake_count: number
           last_practiced_at: string | null
           coin_awarded_at: string | null
         }
@@ -528,7 +521,6 @@ export type Database = {
           user_id: string
           knowledge_item_id: string
           mastery_level?: number
-          mistake_count?: number
           last_practiced_at?: string | null
           coin_awarded_at?: string | null
         }
@@ -537,7 +529,6 @@ export type Database = {
           user_id?: string
           knowledge_item_id?: string
           mastery_level?: number
-          mistake_count?: number
           last_practiced_at?: string | null
           coin_awarded_at?: string | null
         }

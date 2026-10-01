@@ -426,7 +426,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Input (DrillSubmissionDto): { itemId: string; seed: string; tag: 'A' | 'B' | 'C' | 'D'; timeZone?: string /* browser IANA zone */ }
 // data
 { isCorrect: boolean; correctTag: 'A' | 'B' | 'C' | 'D';
-  masteryLevel: 0 | 1 | 2 | 3 | 4 | 5; previousMasteryLevel: 0 | 1 | 2 | 3 | 4 | 5; mistakeCount: number;
+  masteryLevel: 0 | 1 | 2 | 3 | 4 | 5; previousMasteryLevel: 0 | 1 | 2 | 3 | 4 | 5;
   streakCount: number | null;    // current daily streak; null if it could not be saved (the answer still counts)
   coinsEarned: number;           // 🪙 paid by this answer: 1 on the item's first 5/5, else 0
   streakReward: number;          // 🪙 streak bonus paid by this answer: 7 / 30 / the streak at every 100 days, on that day's first watering; else 0
@@ -435,8 +435,8 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - **Owner only**: a visitor's answer is refused before anything is saved, so no progress, streak or 🪙 can be earned on someone else's tree
 - **Grading**: `decks/server` `findDrillItem` loads the item with its whole deck (`deckItems`, the rows `listDrillItems` gives sessions); the question engine rebuilds the question from the seed (`prepareDeck` + `buildQuestion`); `tag` is compared with its `correctTag`
-- **Mastery** (`nextMastery` in `progress/lib`, scale in `shared/lib/mastery.ts`): correct → `min(level + 1, 5)`; wrong → `max(level - 1, 0)` and `mistakeCount + 1`. A 5/5 item drops to 4/5 on a wrong answer (it can only get there in review mode)
-- **Write**: first answer inserts the `user_progress` row, later ones update `mastery_level`, `mistake_count`, `last_practiced_at = now()` (players can't rewrite the row's user/item, DATABASE.md "Gold coins")
+- **Mastery** (`nextMastery` in `progress/lib`, scale in `shared/lib/mastery.ts`): correct → `min(level + 1, 5)`; wrong → `max(level - 1, 0)`. A 5/5 item drops to 4/5 on a wrong answer (it can only get there in review mode)
+- **Write**: first answer inserts the `user_progress` row, later ones update `mastery_level` and `last_practiced_at = now()` in place. **Progress only**: the payload is the pick (`itemId`, `seed`, `tag`, plus `timeZone` for the day) and unknown fields are dropped; no per-answer row, answer time, pick or mistake tally is stored (`progress/__tests__/drillPipeline.test.ts`) (players can't rewrite the row's user/item, DATABASE.md "Gold coins")
 - **Gold** (admin client, `progress/services/coins.ts`): if the answer leaves the item at 5/5 and it was never paid (`coin_awarded_at` NULL), `award_mastery_coin` pays 1 🪙 atomically. Once per item ever: re-mastering after a drop, or answering a mastered item again, pays 0. A coin failure never fails the answer (`coinsEarned: 0`, `totalCoins: null`). The client pushes `totalCoins` into `shared/stores/CoinsProvider` so the farm HUD updates without a reload. There's no `revalidatePath` because it would re-render the drill route and restart the round
 - **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak"). This is the **only** thing that grows the streak: opening the game doesn't. The day is inserted once (watering more trees that day changes nothing); after a missed day the next answer starts at 1
 - **Streak reward** (admin client, `progress/services/coins.ts` `claimStreakReward`): when the streak after this answer is 7, 30 or a multiple of 100, `award_streak_reward(user, day)` pays 7 / 30 / the streak in 🪙, once that day (DATABASE.md "Streak rewards"). `streakReward` is what this answer paid and `totalCoins` includes it; other days make no call and pay 0. The drill shows a toast ("🌱 Tree watered today! 7-day streak: +7 🪙") and counts it in the round's coins. A failure never fails the answer

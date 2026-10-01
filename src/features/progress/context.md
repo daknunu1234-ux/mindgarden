@@ -3,12 +3,12 @@
 Per-player mastery for knowledge items.
 
 ## Owned tables
-`user_progress`, `practice_days`, `deck_practice_days` + `tree_harvests` (tree fruit, migration `20261003000000_tree_fruit.sql`), `streak_rewards` (streak milestone coins, migration `20261004000000_streak_rewards.sql`), and `users.streak_count` / `users.last_active_at` (written with the admin client)
+`user_progress`, `practice_days`, `deck_practice_days` + `tree_harvests` (tree fruit, migration `20261003000000_tree_fruit.sql`), `streak_rewards` (streak milestone coins, migration `20261004000000_streak_rewards.sql`). Progress only: an answer updates `user_progress.mastery_level` + `last_practiced_at` in place and marks at most one `practice_days` and one `deck_practice_days` row for the day; no per-answer rows, timings or picks (`__tests__/drillPipeline.test.ts`). `user_progress.mistake_count` and `users.streak_count` / `last_active_at` are no longer written (dropped by migration `20261007000000_drop_unused_progress_columns.sql`)
 
 ## Exports
 | From | Export | Notes |
 |------|--------|-------|
-| `index.ts` | `submitDrillResult({ itemId, seed, tag })` | Server Action. Auth: Required. Grades on the server, upserts `user_progress` → `DrillResult { isCorrect, correctTag, masteryLevel, previousMasteryLevel, mistakeCount }`. Errors: `VALIDATION_FAILED`, `AUTH_UNAUTHORIZED`, `ITEM_NOT_FOUND`, `INTERNAL_ERROR` |
+| `index.ts` | `submitDrillResult({ itemId, seed, tag })` | Server Action. Auth: Required. Grades on the server, upserts `user_progress` → `DrillResult { isCorrect, correctTag, masteryLevel, previousMasteryLevel, streakCount, coinsEarned, streakReward, totalCoins }`. Errors: `VALIDATION_FAILED`, `AUTH_UNAUTHORIZED`, `ITEM_NOT_FOUND`, `INTERNAL_ERROR` |
 | `index.ts` | `getProgressByDecks({ deckIds })` | Server Action. Auth: Optional. 1–50 ids → `DeckProgress[] { deckId, masteryPercent, itemCount, items: { itemId, masteryLevel }[] }`, zeros when signed out. Errors: `VALIDATION_FAILED`, `INTERNAL_ERROR` |
 | `index.ts` | `getGardenStats()` | Server Action. Auth: Required. Totals over owned trees: `treeCount`, `itemCount`, `mightyRootCount`, `masteryPercent`, `trees[]` (pure `lib/gardenStats.ts` `summarizeGarden`) |
 | `index.ts` | `harvestTreeFruit({ deckId, timeZone? })` | Server Action, Auth Required (owner). Today's fruit of a tree practised yesterday: +`FRUIT_COINS` (2) 🪙, once per tree per day, via `services/fruit.ts` `harvestFruit` → `harvest_tree_fruit()` (service role; "today" = server clock in the player's zone). Errors: `DECK_NOT_FOUND`, `FRUIT_NOT_READY`. The farm calls it through `app/_components/FarmWorld.tsx`. Tests: `__tests__/fruit.test.ts` |
@@ -20,7 +20,7 @@ Per-player mastery for knowledge items.
 | `index.ts` | `type GardenStats`, `GardenStatsWithStreak`, `GardenTree` | |
 | `index.ts` | `type DeckProgress` | Pure summary in `lib/deckProgress.ts` (`summarizeDeckProgress`) |
 | `index.ts` | `DrillSubmissionDto` | Zod `{ itemId, seed, tag }`, also used by drill's `checkDrillAnswer` |
-| `index.ts` | `nextMastery`, `MASTERY_NAMES`, `MAX_MASTERY`, types | Pure rules: correct +1 (max 5), wrong −1 (min 0; 5/5 → 4/5 too) and `mistake_count + 1`. The scale (`MAX_MASTERY = 5`, names, `isMastered`) lives in `shared/lib/mastery.ts` and is re-exported here |
+| `index.ts` | `nextMastery`, `MASTERY_NAMES`, `MAX_MASTERY`, types | Pure rules: correct +1 (max 5), wrong −1 (min 0; 5/5 → 4/5 too). The scale (`MAX_MASTERY = 5`, names, `isMastered`) lives in `shared/lib/mastery.ts` and is re-exported here |
 | `server.ts` | `gradeSubmission`, `fetchMasteryLevels` | For drill: grading, and the player's levels to rest 5/5 items |
 | `server.ts` | `gradeSubmission(supabase, submission, viewerId)` | Rebuilds the question from the seed and the whole deck (`decks/server` `findDrillItem` → `deckItems`, `shared/lib/questionEngine`); shared with drill. Owner only: anyone else (or `viewerId = null`) gets `FORBIDDEN_VISITOR_PRACTICE`, so `submitDrillResult` saves no progress, streak or coin on someone else's tree (`__tests__/visitorGrading.test.ts`) |
 

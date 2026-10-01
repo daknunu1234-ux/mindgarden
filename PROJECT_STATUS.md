@@ -51,6 +51,19 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
 | Streak milestone (first watering that day) | +7 at 7 days, +30 at 30, +N at every 100 (100, 200, …) | `award_streak_reward()` |
 
+### Practice stores progress, not history
+
+- **Payload**: an answer sends only the pick (`itemId`, `seed`, `tag`, plus the timezone for the day).
+  The server grades it; unknown fields are dropped by the Zod DTO.
+- **Per answer, in place**: the item's `mastery_level` (±1, 0–5) and `last_practiced_at` in its one
+  `user_progress` row.
+- **Per day**: one `practice_days` row per player (streak, streak rewards) and one
+  `deck_practice_days` row per tree (watering, fruit), insert-if-absent however many answers.
+- **Never stored**: per-answer rows, answer times, the pick, a mistake tally. An audit found no
+  latency or per-answer logging; three values written on every answer but read by nothing were
+  removed (`user_progress.mistake_count`, `users.streak_count`, `users.last_active_at`; migration 19
+  drops the columns). `progress/__tests__/drillPipeline.test.ts` pins all of this.
+
 ### Seed prices and price tags
 
 - **Prices live in the species registry** (`shared/lib/treeSkins.ts` `price`, `seedPrice`; the numbers
@@ -536,6 +549,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 16 | `20261004000000_streak_rewards.sql` | `streak_rewards` ledger, `award_streak_reward()` (service role: streak milestone coins at 7, 30 and every 100 days, once per day) |
 | 17 | `20261005000000_surreal_tree_species.sql` | `decks_tree_type_check` widened to thirteen ids (adds `crystal_flora`, `cosmic_nebula`, `chrono_willow`). Run **before or with** deploying the code |
 | 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (180 for the three surreal ids, else 100); `plant_deck()` and `clone_deck()` charge by species; trigger `decks_charge_species_upgrade` charges the difference when a tree changes to a pricier species. Run **with** the deploy |
+| 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -548,6 +562,7 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | refactor(progress): practice stores progress only; stop writing the unused mistake tally and streak mirror, migration to drop them |
 | (pending) | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
 | (pending) | feat(decks): surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
 | (pending) | feat(garden): three surreal tree species (Crystal Flora, Cosmic Nebula, Chrono Willow) with their own light effects, in prismatic / rainbow palettes |
@@ -587,5 +602,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 76 files, 734 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 77 files, 745 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

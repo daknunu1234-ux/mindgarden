@@ -45,7 +45,7 @@ const USER = '11111111-1111-4111-8111-111111111111'
 const ITEM_A = '6f1c2a8e-2b1e-4c8a-9d3f-1a2b3c4d5e6f'
 const ITEM_B = '7a2d3b9f-3c2f-4d9b-8e4a-2b3c4d5e6f70'
 
-type Row = { user_id: string; knowledge_item_id: string; mastery_level: number; mistake_count: number; last_practiced_at: string | null; coin_awarded_at: string | null }
+type Row = { user_id: string; knowledge_item_id: string; mastery_level: number; last_practiced_at: string | null; coin_awarded_at: string | null }
 
 // `migrated: false` = before 20260928000300 (no coin_awarded_at column, no award function).
 const db = { progress: [] as Row[], coins: new Map<string, number>(), rpcCalls: 0, migrated: true }
@@ -160,7 +160,7 @@ describe('recordDrillResult coins', () => {
     for (let i = 0; i < 5; i++) await answer(ITEM_A, true) // → 5/5, +1
     expect(await answer(ITEM_A, true)).toMatchObject({ previousMasteryLevel: 5, masteryLevel: 5, coinsEarned: 0, totalCoins: 1 })
     expect(await answer(ITEM_A, false)).toMatchObject({ previousMasteryLevel: 5, masteryLevel: 4, coinsEarned: 0, totalCoins: 1 })
-    expect(db.progress[0]).toMatchObject({ mastery_level: 4, mistake_count: 1 })
+    expect(db.progress[0]).toMatchObject({ mastery_level: 4 })
     expect(db.progress[0].coin_awarded_at).not.toBeNull()
     expect(await answer(ITEM_A, true)).toMatchObject({ previousMasteryLevel: 4, masteryLevel: 5, coinsEarned: 0, totalCoins: 1 })
     // Already paid: the server doesn't even ask the database again.
@@ -184,7 +184,21 @@ describe('recordDrillResult coins', () => {
     await answer(ITEM_A, true)
     await answer(ITEM_A, false)
     expect(db.progress).toHaveLength(1)
-    expect(db.progress[0]).toMatchObject({ user_id: USER, knowledge_item_id: ITEM_A, mastery_level: 0, mistake_count: 1 })
+    expect(db.progress[0]).toMatchObject({ user_id: USER, knowledge_item_id: ITEM_A, mastery_level: 0 })
+  })
+
+  it('stores progress only: the level and the last review time, nothing about the answer itself', async () => {
+    await answer(ITEM_A, true)
+    await answer(ITEM_A, false)
+    await answer(ITEM_A, true)
+    // One row per item however many answers, with exactly these columns.
+    expect(db.progress).toHaveLength(1)
+    expect(Object.keys(db.progress[0]).sort()).toEqual(['coin_awarded_at', 'knowledge_item_id', 'last_practiced_at', 'mastery_level', 'user_id'])
+    expect(db.progress[0].mastery_level).toBe(1)
+    expect(typeof db.progress[0].last_practiced_at).toBe('string')
+    // And the reply carries no tally either.
+    const res = await recordDrillResult(userClient() as never, USER, { itemId: ITEM_A, seed: 's', tag: 'A', timeZone: 'UTC' })
+    expect(res.success && Object.keys(res.data).sort()).toEqual(['coinsEarned', 'correctTag', 'isCorrect', 'masteryLevel', 'previousMasteryLevel', 'streakCount', 'streakReward', 'totalCoins'])
   })
 })
 

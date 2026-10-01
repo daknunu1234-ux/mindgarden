@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // A tiny practice_days table + purse, shared by the player's client and the service-role client.
 type Day = { user_id: string; day: string; time_zone: string }
-const db = { days: [] as Day[], coins: 300, adminWrites: 0, upserts: [] as { row: Day; options: unknown }[], rpc: vi.fn() }
+const db = { days: [] as Day[], coins: 300, adminWrites: 0, written: [] as string[], upserts: [] as { row: Day; options: unknown }[], rpc: vi.fn() }
 
 vi.mock('@/shared/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -13,6 +13,7 @@ vi.mock('@/shared/lib/supabase/admin', () => ({
       // ON CONFLICT (user_id, day) DO NOTHING: the day's first watering inserts, later ones don't.
       upsert: async (row: Day, options: unknown) => {
         db.adminWrites += 1
+        db.written.push(table)
         db.upserts.push({ row, options })
         if (table === 'practice_days' && !db.days.some((d) => d.user_id === row.user_id && d.day === row.day)) db.days.push(row)
         return { error: null }
@@ -20,6 +21,7 @@ vi.mock('@/shared/lib/supabase/admin', () => ({
       update: () => ({
         eq: async () => {
           db.adminWrites += 1
+          db.written.push(`${table} (update)`)
           return { error: null }
         },
       }),
@@ -66,6 +68,7 @@ beforeEach(() => {
   db.days = []
   db.coins = 300
   db.adminWrites = 0
+  db.written = []
   db.upserts = []
   db.rpc.mockReset()
 })
@@ -94,6 +97,9 @@ describe('the streak grows only by watering a tree', () => {
     expect(db.days.filter((d) => d.day === '2026-10-04')).toHaveLength(1)
     // Idempotent at the database too: every write is an insert-if-absent on (user_id, day).
     for (const u of db.upserts) expect(u.options).toEqual({ onConflict: 'user_id,day', ignoreDuplicates: true })
+    // The day's row is the only thing written: one insert-if-absent per answer, no counter copies
+    // on the users row, however many answers are given.
+    expect(db.written).toEqual(['practice_days', 'practice_days', 'practice_days'])
   })
 
   it('grows by one on the next day and restarts at 1 after a missed day', async () => {

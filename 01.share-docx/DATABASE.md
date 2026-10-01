@@ -43,8 +43,7 @@
 | full_name | VARCHAR(100) | NULLABLE | Private name (Google sign-in fills it). Never shown to other players |
 | display_name | VARCHAR(30) | NULLABLE, CHECK 2–30 chars after trim and no `<` `>` | The public **Garden Name** the player chose (migration `20260928001000`). Shown on tournament boards, in other gardeners' Visited Gardens, on the visitor banner and in the header. NULL = the id-derived pseudonym ("Mossy Owl") everywhere. Players update only their own (column grant + RLS "users: update self"); the app sanitizes first (`auth/lib/displayName.ts`). Others read it only through `get_display_names(ids)` (`SECURITY DEFINER`, display names only, 200 ids max) and the board functions |
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
-| streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
-| last_active_at | DATE | NULLABLE | Drives streak logic |
+| ~~streak_count~~, ~~last_active_at~~ | — | dropped by migration `20261007000000` | Were a copy of the current streak that nothing read. The app no longer writes them; the streak is always computed from `practice_days` |
 | coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit), `award_streak_reward` (streak milestones) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
 | coin_carry | NUMERIC(6,3) | NOT NULL, DEFAULT 0, 0 ≤ x < 1 | Fraction of a coin carried between buffed mastery payouts (migration `20260930000000`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
@@ -209,7 +208,7 @@ Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 pe
 | user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
 | knowledge_item_id | UUID | FK → knowledge_items, NOT NULL, ON DELETE CASCADE | |
 | mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–5 | 0 Seed → 1 Sprout → 2 Seedling → 3 Sapling → 4 Young Tree → 5 Mighty Root (mastered: 5 net correct answers). The scale was 0–3 before migration `20260928000400`. Old values were kept as they were, not rescaled, so a former 3/3 item is now 3/5 |
-| mistake_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Times fooled by a trap |
+| ~~mistake_count~~ | — | dropped by migration `20261007000000` | Was a tally of wrong answers that nothing read. The app no longer writes it |
 | last_practiced_at | TIMESTAMPTZ | NULLABLE | |
 | coin_awarded_at | TIMESTAMPTZ | NULLABLE, not writable by players | When this item's 🪙 was paid to this player; NULL = unpaid. Makes the reward one-time |
 | *(user_id, knowledge_item_id)* | — | UNIQUE | One progress row per player per item |
@@ -219,7 +218,7 @@ Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 pe
 | Invariant | Enforced by |
 |-----------|-------------|
 | Mastery pays only through `public.award_mastery_coin(user, item)` | `users` UPDATE is granted to players on `full_name`, `avatar_url` only; the function is `SECURITY DEFINER` with EXECUTE for `service_role` only (`progress/services/coins.ts`, admin client). The other writers of `users.coins` are the spending RPCs `plant_deck` / `clone_deck` and the dev-only `dev_grant_coins` (see *Seed economy*) |
-| A paid item can't be reset and farmed again | Players have no INSERT/UPDATE privilege on `user_progress.coin_awarded_at` (column grants), and can't rewrite a row's identity: UPDATE is granted on `mastery_level`, `mistake_count`, `last_practiced_at` only |
+| A paid item can't be reset and farmed again | Players have no INSERT/UPDATE privilege on `user_progress.coin_awarded_at` (column grants), and can't rewrite a row's identity: UPDATE is granted on `mastery_level`, `last_practiced_at` only (and on `mistake_count` until migration `20261007000000` drops that column) |
 | No double payment under concurrency | The function claims with one `UPDATE … WHERE mastery_level = 5 AND coin_awarded_at IS NULL` (it was `= 3` before migration `20260928000400`): only one caller gets the row |
 | Coins earned from mastery ≤ number of (player, item) pairs ever mastered | The above. The balance itself also holds the 300 🪙 starter purse, minus what was spent on seeds and clones; `coins >= 0` CHECK |
 
@@ -270,7 +269,7 @@ Written by `recordDrillResult` (service role, `progress/services/fruit.ts`) afte
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | *(user_id, day)* | — | PK | First answer of the day inserts, later ones change nothing |
 
-⚠️ `user_progress.last_practiced_at` is overwritten on every answer (one row per item), so past active days cannot be rebuilt from it. Streaks are computed from `practice_days` (`progress/lib/streak.ts`); `users.streak_count` / `last_active_at` mirror the current value. The only writer is `recordPracticeDay` (service role), called when a practice answer is saved ("watering a tree"): opening the game writes nothing, and a missed day restarts the run at 1.
+⚠️ `user_progress.last_practiced_at` is overwritten on every answer (one row per item), so past active days cannot be rebuilt from it. Streaks are computed from `practice_days` (`progress/lib/streak.ts`) and stored nowhere else. The only writer is `recordPracticeDay` (service role), called when a practice answer is saved ("watering a tree"): opening the game writes nothing, and a missed day restarts the run at 1.
 
 **streak_rewards** — *Streak bonus ledger (migration `20261004000000_streak_rewards.sql`): one row per player per local day that paid a milestone bonus*
 | Column | Type | Constraints | Description |
@@ -480,6 +479,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at`: written on every answer, read by nothing. Destructive and optional |
   | 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (surreal species 180 🪙, others 100); `plant_deck()` and `clone_deck()` re-created to charge by species; trigger `decks_charge_species_upgrade` (the price difference when a tree changes to a pricier species) |
   | 17 | `20261005000000_surreal_tree_species.sql` | `decks_tree_type_check` widened from the ten natural ids to thirteen (adds `crystal_flora`, `cosmic_nebula`, `chrono_willow`); no row changes |
   | 16 | `20261004000000_streak_rewards.sql` | `streak_rewards` (RLS: read own; server writes only), `award_streak_reward()` (service role: streak milestone coins at 7, 30 and every 100 days, once per day, streak counted in the database) |
@@ -495,6 +495,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 19** runs only **after** the code that stopped writing those columns is deployed: older code sends `mistake_count` with every answer, so answers would fail to save against the dropped column. It is optional (the unused columns are harmless) and irreversible (the values are lost). Never re-run file 4 after it: its column grant names `mistake_count`
 - **File 18** runs after file 17, together with the deploy of the code that shows the species prices. Until it runs, the database still charges 100 🪙 for a surreal seed and nothing for a species change (the app shows 180 / +80 but the purse loses 100 / 0); with it applied under older code, players are charged 180 while that code still shows 100
 - **File 17** runs **before or together with** deploying the surreal-species code (the opposite of file 13): it is safe with older code, which only writes the first ten ids, while the new code planting or switching to a surreal species before it runs is refused by the old check ("Could not plant" / the species change rolls back). Never re-run file 13 after it: that would turn surreal trees into oaks and narrow the check again
 - **File 16** can run any time after file 15, before or after the deploy. Until it runs, answers and streaks still save; a milestone day just pays no bonus (the log names the migration) and can't be claimed later
@@ -563,11 +564,11 @@ CREATE TRIGGER on_auth_user_created
 
 | Action | Implementation |
 |--------|----------------|
-| Start drilling an item | Insert the `user_progress` row (user client); later answers update `mastery_level`, `mistake_count`, `last_practiced_at` only. A unique-violation race on the first answer falls back to update |
+| Start drilling an item | Insert the `user_progress` row (user client); later answers update `mastery_level` and `last_practiced_at` only, in place. No per-answer row, timing or pick is stored anywhere. A unique-violation race on the first answer falls back to update |
 | First mastery of an item | Answer lands on 5/5 and `coin_awarded_at` is NULL → `award_mastery_coin(user, item)` (admin client) sets it and adds 1 to `users.coins` in one call; returns `{ coins_earned, total_coins }` |
 | Correct answer | `mastery_level = LEAST(mastery_level + 1, 5)`, set `last_practiced_at = now()` |
-| Fooled by a trap | `mistake_count + 1`, `mastery_level = GREATEST(mastery_level - 1, 0)` (a mastered 5/5 item drops to 4/5 too), set `last_practiced_at = now()` |
+| Fooled by a trap | `mastery_level = GREATEST(mastery_level - 1, 0)` (a mastered 5/5 item drops to 4/5 too), set `last_practiced_at = now()` |
 | Load deck progress | `getProgressByDecks`: item IDs per deck (via `decks` server API) + `user_progress` rows of the user |
 | Tree health | `Σ mastery_level / (5 × item count) × 100`, unpractised items count as 0 (computed, not stored). 100% = every item at 5/5 |
 | Practice queue | `getDrillSession` reads the player's levels (`progress/server` `fetchMasteryLevels`): items at 5/5 rest (excluded) unless `includeMastered` (review mode, `?review=1`). Nothing left → `DRILL_ALL_MASTERED` ("fully cultivated") |
-| Daily streak | `recordPracticeDay` (admin client): upsert `practice_days (user_id, today)` with `ignoreDuplicates`, recompute current/best from all days, sync `users.streak_count` + `last_active_at`. Current = run ending today or yesterday (alive until a whole day is missed); best = longest run. Migration `20260928000200_practice_days.sql` |
+| Daily streak | `recordPracticeDay` (admin client): upsert `practice_days (user_id, today)` with `ignoreDuplicates`, recompute current/best from all days (nothing else is written: one row per player per day is the whole practice log). Current = run ending today or yesterday (alive until a whole day is missed); best = longest run. Migration `20260928000200_practice_days.sql` |

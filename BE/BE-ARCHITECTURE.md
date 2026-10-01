@@ -97,7 +97,7 @@ features/[feature]/
 |---------|-------------|---------|------------|
 | `auth` | `roles`, `users` (except streak columns) | none (OAuth via `/auth/callback`) | `shared` |
 | `decks` | `decks`, `mindmap_nodes`, `knowledge_items` | `getDecks` (own trees only), `getDeckBySlug`, `getDeckReader`, `createDeck`, `cloneDeck`, editing actions (full list: API_SPEC.md §6) | `shared` |
-| `progress` | `user_progress`, `practice_days`, `users.streak_count`, `users.last_active_at`, `users.coins` (mastery payouts, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
+| `progress` | `user_progress`, `practice_days`, `deck_practice_days`, `tree_harvests`, `streak_rewards`, `users.coins` (mastery payouts, streak rewards, fruit, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
 | `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `tournament` | `deck_tournament_participants`, `deck_tournament_item_progress` | `submitTournamentAnswer` (service role writes via `record_tournament_answer`), `getTournamentBoards` | `shared`, `decks/server` |
 | `garden` | `garden_placements` (the farm grid) | `getFarmPlacements`, `placeFarmItem`, `removeFarmPlacement` | `shared` |
@@ -230,4 +230,5 @@ Pick up to 2 traps tier by tier (seeded shuffle inside each tier) ──► 2 or
 | One folder per feature (server + UI) | One place per domain; `index.ts` / `server.ts` keep the bundle split safe |
 | RLS as the final guard | A bug in a service can't leak private decks |
 | Seeded determinism | Reproducible drills, testable engine, grading without storing sessions |
-| Streak via admin client | `users.streak_count` is not client-writable (DATABASE.md) |
+| Streak via admin client | `practice_days` is not client-writable, so days can't be faked (DATABASE.md) |
+| Progress only, no answer history | An answer updates the item's level and review time in place and marks the day (one row per player per day). No per-answer rows, timings or picks: less to store, nothing to leak |

@@ -8,7 +8,7 @@ import { computeStreaks, localDay, resolveTimeZone, type Streaks } from '../lib/
 
 // Streak data lives in public.practice_days (migration 20260928000200_practice_days).
 // Players read their own rows with their session; only the service role writes, so days
-// can't be faked through the REST API. users.streak_count / last_active_at mirror the result.
+// can't be faked through the REST API. One row per player per day is the whole practice log.
 
 const MISSING_TABLE = new Set(['42P01', 'PGRST205'])
 
@@ -71,17 +71,9 @@ export async function recordPracticeDay(
     return fail('INTERNAL_ERROR', 'Could not save your streak')
   }
 
-  const streaks = await loadStreaks(supabase, userId, zone)
-  if (!streaks.success) return streaks
-
-  // Keep the documented counters in sync (DATABASE.md users.streak_count / last_active_at).
-  const { error: syncError } = await admin
-    .from('users')
-    .update({ streak_count: streaks.data.current, last_active_at: today })
-    .eq('id', userId)
-  if (syncError) console.error('[progress] users streak sync failed', syncError.code, syncError.message)
-
-  return streaks
+  // The streak is always computed from practice_days: nothing else is written per answer (the old
+  // copy of the streak on the users row was read by nothing and cost a write every answer).
+  return loadStreaks(supabase, userId, zone)
 }
 
 // Timezone saved with the player's latest practice day (UTC if none or unreadable).

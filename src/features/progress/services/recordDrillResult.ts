@@ -36,12 +36,12 @@ export async function recordDrillResult(
       .select(columns)
       .eq('user_id', userId)
       .eq('knowledge_item_id', submission.itemId)
-      .maybeSingle<{ mastery_level: number; mistake_count: number; coin_awarded_at?: string | null }>()
-  let { data: current, error: readError } = await readRow('mastery_level, mistake_count, coin_awarded_at')
+      .maybeSingle<{ mastery_level: number; coin_awarded_at?: string | null }>()
+  let { data: current, error: readError } = await readRow('mastery_level, coin_awarded_at')
   // Deploy order: this code ships before migration 20260928000300 adds coin_awarded_at. Until then,
   // answers still save (no coins yet: the award function doesn't exist either).
   const coinsReady = readError?.code !== UNDEFINED_COLUMN
-  if (!coinsReady) ({ data: current, error: readError } = await readRow('mastery_level, mistake_count'))
+  if (!coinsReady) ({ data: current, error: readError } = await readRow('mastery_level'))
 
   if (readError) {
     console.error('[progress] read user_progress failed', readError)
@@ -50,10 +50,11 @@ export async function recordDrillResult(
 
   const previousMasteryLevel = toMasteryLevel(current?.mastery_level ?? 0)
   const masteryLevel = nextMastery(previousMasteryLevel, graded.isCorrect)
-  const mistakeCount = (current?.mistake_count ?? 0) + (graded.isCorrect ? 0 : 1)
-  const values = { mastery_level: masteryLevel, mistake_count: mistakeCount, last_practiced_at: new Date().toISOString() }
+  // Progress only, updated in place: the item's level and when it was last reviewed. Nothing else
+  // about the answer is stored: no per-answer row, no timing, no pick, no mistake tally.
+  const values = { mastery_level: masteryLevel, last_practiced_at: new Date().toISOString() }
 
-  // The row's identity (user, item) is never rewritten: players may update only these three
+  // The row's identity (user, item) is never rewritten: players may update only their progress
   // columns (migration 20260928000300), so no upsert here.
   const updateRow = () =>
     supabase.from('user_progress').update(values).eq('user_id', userId).eq('knowledge_item_id', submission.itemId)
@@ -95,7 +96,6 @@ export async function recordDrillResult(
     ...graded,
     masteryLevel,
     previousMasteryLevel,
-    mistakeCount,
     streakCount,
     coinsEarned: coins.success ? coins.data.coinsEarned : 0,
     streakReward: bonus?.coinsEarned ?? 0,

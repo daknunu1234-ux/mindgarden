@@ -10,7 +10,6 @@ export type GradedAnswer = { isCorrect: boolean; correctTag: DrillTag }
 export type DrillResult = GradedAnswer & {
   masteryLevel: MasteryLevel
   previousMasteryLevel: MasteryLevel
-  mistakeCount: number
   // Current daily streak after this answer; null if it couldn't be saved (the answer still counts).
   streakCount: number | null
   // 🪙 paid by this answer: 1 the first time the item reaches 5/5, otherwise 0.
