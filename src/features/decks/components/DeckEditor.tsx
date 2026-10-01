@@ -8,6 +8,9 @@ import { useToast } from '@/shared/stores/ToastProvider'
 import { cn } from '@/shared/utils/cn'
 import { flatBranchImpact } from '../lib/branch'
 import {
+  expandPath,
+  hiddenCount,
+  isWithin,
   nestEditorNodes,
   nextOutlineSlot,
   outlineKey,
@@ -15,6 +18,7 @@ import {
   outlineParents,
   resolveOutlineSlot,
   rootSummaries,
+  slotTarget,
   topRootOf,
   type OutlineKey,
   type OutlineNode,
@@ -70,6 +74,9 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
   const [bulkFor, setBulkFor] = useState<string | null>(null)
   const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
+  // Collapsed roots / sub-roots: view state only (never saved, no server call). It lives here, above
+  // the per-root outline, so switching root chips keeps every root's toggles.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set())
 
   const outline = useMemo(() => nestEditorNodes(editor.nodes), [editor.nodes])
   const roots = useMemo(() => rootSummaries(editor.nodes), [editor.nodes])
@@ -81,6 +88,37 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
   const slot = rawSlot ? resolveOutlineSlot(rawSlot, resolveId) : null
   const liveSlot = slot && (slot.kind === 'root' || known(slot.kind === 'branch' ? slot.parentId : slot.nodeId)) ? slot : null
   const editingId = editing ? (editing.kind === 'node' ? resolveId(editing.id) : editing.id) : null
+  // A root collapsed while it was still saving is stored under its temp id; read it under its real one.
+  const collapsed: ReadonlySet<string> = new Set([...collapsedIds].map(resolveId))
+  // Stored ids are normalized to real ones on every change; an unchanged set keeps its identity, so
+  // expanding an already-open path doesn't even re-render.
+  const updateCollapsed = (change: (current: ReadonlySet<string>) => ReadonlySet<string>) =>
+    setCollapsedIds((current) => change([...current].some((id) => resolveId(id) !== id) ? new Set([...current].map(resolveId)) : current))
+
+  // Every way of opening an input goes through here: the node it types under (and everything above
+  // it) expands first, so the new field is visible and focused straight away.
+  const showSlot = (next: OutlineSlot | null) => {
+    setSlot(next)
+    const target = next && slotTarget(next)
+    if (target) updateCollapsed((c) => expandPath(c, target, parents))
+  }
+
+  // Collapsing hides the branch, so an input or bulk importer open inside it closes with it.
+  const toggleCollapsed = (nodeId: string) => {
+    const id = resolveId(nodeId)
+    if (collapsed.has(id)) {
+      updateCollapsed((c) => {
+        const next = new Set(c)
+        next.delete(id)
+        return next
+      })
+      return
+    }
+    updateCollapsed((c) => new Set(c).add(id))
+    const target = liveSlot && slotTarget(liveSlot)
+    if (target && isWithin(target, id, parents)) setSlot(null)
+    if (bulkFor && isWithin(resolveId(bulkFor), id, parents)) setBulkFor(null)
+  }
 
   const rootNode = deletingRootId ? editor.nodes.find((n) => n.id === deletingRootId) : undefined
   const impact = deletingRootId ? flatBranchImpact(editor.nodes, deletingRootId) : null
@@ -89,7 +127,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
   // Open an input (closing any edit), keeping the selector on the root it types into.
   const open = (next: OutlineSlot | null) => {
     setEditing(null)
-    setSlot(next)
+    showSlot(next)
     if (next && next.kind !== 'root') {
       const top = topRootOf(next.kind === 'branch' ? next.parentId : next.nodeId, parents)
       if (top) setSelectedId(top)
@@ -114,7 +152,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
     // A new top-level root that is being nested into becomes the one shown.
     if (liveSlot.kind === 'root' && created && key === 'tab') setSelectedId(created)
     const next = nextOutlineSlot(liveSlot, key, typed.length > 0, created, parents)
-    setSlot(next)
+    showSlot(next)
   }
 
   // Inline edits: Enter / leaving the field saves, Esc cancels; Tab on a root saves and opens a
@@ -132,7 +170,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
       }
     }
     setEditing(null)
-    if (key === 'tab' && editing.kind === 'node' && editingId) setSlot({ kind: 'statement', nodeId: editingId })
+    if (key === 'tab' && editing.kind === 'node' && editingId) showSlot({ kind: 'statement', nodeId: editingId })
   }
 
   const branchProps: BranchProps = {
@@ -149,7 +187,12 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
       setEditing({ kind, id })
     },
     onEditKey,
-    onBulk: (id) => setBulkFor((current) => (current === id ? null : id)),
+    onBulk: (id) => {
+      if (bulkFor !== id) updateCollapsed((c) => expandPath(c, resolveId(id), parents))
+      setBulkFor((current) => (current === id ? null : id))
+    },
+    collapsed,
+    onToggle: toggleCollapsed,
     onDeleteStatement: setDeletingStatement,
     onDeleteRoot: setDeletingRootId,
   }
@@ -160,7 +203,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
         <h3 id="outline-heading" className="font-game text-base font-extrabold">
           🌱 Roots &amp; statements
         </h3>
-        <p className="hidden text-[11px] font-semibold text-amber-900/55 sm:block">↵ next · Tab child · ⇧Tab up · Esc close · double-click to edit</p>
+        <p className="hidden text-[11px] font-semibold text-amber-900/55 sm:block">▾ fold · ↵ next · Tab child · ⇧Tab up · Esc close · double-click to edit</p>
       </div>
 
       {/* Root selector: one chip per top-level root; a new root is typed in the last chip. */}
@@ -244,6 +287,9 @@ type BranchProps = {
   onBulk: (nodeId: string) => void
   onDeleteStatement: (statement: StatementToDelete) => void
   onDeleteRoot: (id: string) => void
+  // Collapsed roots / sub-roots (real ids) and the ▾ / ▸ toggle.
+  collapsed: ReadonlySet<string>
+  onToggle: (nodeId: string) => void
 }
 
 // Connector lines: a vertical rail down the left of every child list, and an elbow into each row
@@ -256,17 +302,35 @@ const CHILD = cn(
 )
 
 // One root or sub-root: its row, then its statements, the statement input, its sub-roots and the
-// sub-root input, joined by connector lines.
+// sub-root input, joined by connector lines. A node with children has a ▾ / ▸ toggle; collapsed, it
+// hides its whole branch (rows and lines) and shows how much is tucked away.
 function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: OutlineNode; top?: boolean }) {
-  const { slot, editingId, bulkFor, isPending, onOpen, onSlotKey, onCloseSlot, onEdit, onEditKey, onBulk, onDeleteRoot } = props
+  const { slot, editingId, bulkFor, isPending, onOpen, onSlotKey, onCloseSlot, onEdit, onEditKey, onBulk, onDeleteRoot, collapsed, onToggle } = props
   const pending = isPending(node.id)
   const statementSlot = slot?.kind === 'statement' && slot.nodeId === node.id
   const branchSlot = slot?.kind === 'branch' && slot.parentId === node.id
-  const hasChildren = node.items.length + node.children.length > 0 || statementSlot || branchSlot || bulkFor === node.id
+  const canCollapse = node.items.length + node.children.length > 0
+  const isCollapsed = canCollapse && collapsed.has(node.id)
+  const hidden = isCollapsed ? hiddenCount(node) : null
+  const hasChildren = !isCollapsed && (canCollapse || statementSlot || branchSlot || bulkFor === node.id)
 
   return (
     <div>
-      <div className="group relative flex min-h-6 items-center gap-1.5 rounded-md pr-1 hover:bg-amber-100/60">
+      <div className="group relative flex min-h-6 items-center gap-1 rounded-md pr-1 hover:bg-amber-100/60">
+        {canCollapse ? (
+          <button
+            type="button"
+            onClick={() => onToggle(node.id)}
+            aria-expanded={!isCollapsed}
+            aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${node.title}`}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+            className="flex size-4 shrink-0 items-center justify-center rounded text-[10px] leading-none text-amber-900/70 hover:bg-amber-200/70 hover:text-amber-950 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
+          >
+            <span aria-hidden>{isCollapsed ? '▸' : '▾'}</span>
+          </button>
+        ) : (
+          <span aria-hidden className="w-4 shrink-0" />
+        )}
         {editingId === node.id ? (
           <InlineInput
             initial={node.title}
@@ -297,6 +361,17 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
             <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] leading-4 font-semibold text-amber-900 tabular-nums" title="Statements in this root">
               {node.items.length}
             </span>
+            {hidden && (
+              <button
+                type="button"
+                onClick={() => onToggle(node.id)}
+                title={`${hidden.statements} ${hidden.statements === 1 ? 'statement' : 'statements'}, ${hidden.subRoots} ${hidden.subRoots === 1 ? 'sub-root' : 'sub-roots'} hidden. Click to expand`}
+                aria-label={`Expand ${node.title}: ${hidden.total} hidden ${hidden.total === 1 ? 'item' : 'items'}`}
+                className="shrink-0 rounded-full border border-dashed border-amber-700/40 bg-amber-50 px-1.5 text-[10px] leading-4 font-semibold text-amber-800 tabular-nums hover:bg-amber-100 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
+              >
+                +{hidden.total} {hidden.total === 1 ? 'item' : 'items'}
+              </button>
+            )}
             <HoverActions label={`Tools for ${node.title}`} className="ml-auto shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
               <HoverActionButton icon="＋📜" label={`Add a statement under ${node.title}`} onClick={() => onOpen({ kind: 'statement', nodeId: node.id })} />
               <HoverActionButton icon="＋🌿" label={`Add a sub-root under ${node.title}`} onClick={() => onOpen({ kind: 'branch', parentId: node.id })} />
@@ -313,7 +388,7 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
       </div>
 
       {hasChildren && (
-        <ul className="ml-1.5">
+        <ul className="ml-2">
           {node.items.map((item) => (
             <li key={item.id} className={CHILD}>
               <StatementRow item={item} editing={editingId === item.id} {...props} />

@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  expandPath,
+  hiddenCount,
+  isWithin,
   nestEditorNodes,
   nextOutlineSlot,
   outlineKey,
   outlineParents,
   resolveOutlineSlot,
   rootSummaries,
+  slotTarget,
   topRootOf,
   type OutlineSlot,
 } from '../lib/outline'
@@ -119,5 +123,42 @@ describe('resolveOutlineSlot', () => {
     expect(resolveOutlineSlot({ kind: 'branch', parentId: 'pending-node-1' }, saved)).toEqual({ kind: 'branch', parentId: 'r9' })
     const same: OutlineSlot = { kind: 'statement', nodeId: 'cell' }
     expect(resolveOutlineSlot(same, saved)).toBe(same)
+  })
+})
+
+describe('collapse / expand', () => {
+  const tree = nestEditorNodes(NODES)
+
+  it('counts everything a collapsed node hides, at any depth', () => {
+    expect(hiddenCount(tree[0])).toEqual({ statements: 3, subRoots: 3, total: 6 })
+    expect(hiddenCount(tree[0].children[0])).toEqual({ statements: 1, subRoots: 1, total: 2 })
+    expect(hiddenCount(tree[1])).toEqual({ statements: 1, subRoots: 0, total: 1 })
+  })
+
+  it('knows what lies inside a branch', () => {
+    expect(isWithin('dna', 'cell', parents)).toBe(true)
+    expect(isWithin('nucleus', 'nucleus', parents)).toBe(true)
+    expect(isWithin('membrane', 'nucleus', parents)).toBe(false)
+    expect(isWithin('energy', 'cell', parents)).toBe(false)
+  })
+
+  it('expands a node and every node above it, so an input under it shows', () => {
+    const collapsed = new Set(['cell', 'nucleus', 'energy'])
+    expect([...expandPath(collapsed, 'dna', parents)]).toEqual(['energy'])
+    expect([...expandPath(collapsed, 'membrane', parents)].sort()).toEqual(['energy', 'nucleus'])
+    expect(collapsed.size).toBe(3)
+  })
+
+  it('keeps the same set when nothing on the path was collapsed (no re-render)', () => {
+    const collapsed = new Set(['energy'])
+    expect(expandPath(collapsed, 'dna', parents)).toBe(collapsed)
+    // A root typed a moment ago isn't in the parent index yet: nothing to expand.
+    expect(expandPath(collapsed, 'pending-node-1', parents)).toBe(collapsed)
+  })
+
+  it('names the node a slot types under', () => {
+    expect(slotTarget({ kind: 'root' })).toBeNull()
+    expect(slotTarget({ kind: 'branch', parentId: 'cell' })).toBe('cell')
+    expect(slotTarget({ kind: 'statement', nodeId: 'dna' })).toBe('dna')
   })
 })

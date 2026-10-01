@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-09-30.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-01.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -67,6 +67,11 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
     by connector lines (a rail down each child list, an elbow into each row).
   - **＋ Add Root** is pinned to the bottom of the screen while the Workshop is in view (`sticky`), so
     there's no scrolling back up; the new root is typed in the selector's last chip.
+  - **Collapse / expand**: ▾ / ▸ next to every root and sub-root that has children. Collapsed, its whole
+    branch (rows and connector lines) hides and a `+N items` pill counts what's tucked away (statements +
+    sub-roots, at any depth; click it to expand). View state only (no server call, outside the deck
+    draft), kept when switching root chips. Opening an input under a collapsed node (＋📜, ＋🌿, 📋, Tab)
+    expands its path first so the field is visible and focused; collapsing closes an input inside it.
   - Hover a root for **＋📜 statement**, **＋🌿 sub-root**, ✏️ rename, 📋 bulk add (the importer opens
     inline) and 🗑️. ✏️ or a double-click edits a root or a statement in place (Enter or leaving the field
     saves, Esc cancels).
@@ -332,7 +337,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(decks): inline outline editor in the Tree Workshop; mindmap canvas restored |
+| (pending) | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
+| `7d77fdb` | feat(decks): inline outline editor in the Tree Workshop; mindmap canvas restored |
 | `92092dd` | feat(mindmap): fast-entry authoring on the canvas, root switcher and a compact layout (canvas part reverted by the next commit) |
 | `91af687` | perf(decks): instant statement deletes and a lighter tree uproot |
 | `44d3381` | perf(decks): optimistic species changes and statement adds on the deck page |
@@ -359,5 +365,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 65 files, 586 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 65 files, 591 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

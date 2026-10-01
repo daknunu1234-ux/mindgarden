@@ -124,3 +124,31 @@ export function topRootOf(nodeId: string, parents: ReadonlyMap<string, string | 
   for (let parent = parents.get(at); parent; parent = parents.get(at)) at = parent
   return at
 }
+
+// Collapse / expand (the Workshop outline keeps the collapsed node ids in local state; nothing is saved).
+
+// What a collapsed node hides: every statement and sub-root below it, at any depth.
+export function hiddenCount(node: OutlineNode): { statements: number; subRoots: number; total: number } {
+  const { statements, subRoots } = countBranch(node)
+  return { statements, subRoots, total: statements + subRoots }
+}
+
+// `nodeId` itself or anything below `ancestorId`.
+export function isWithin(nodeId: string, ancestorId: string, parents: ReadonlyMap<string, string | null>): boolean {
+  for (let at: string | null | undefined = nodeId; at; at = parents.get(at)) if (at === ancestorId) return true
+  return false
+}
+
+// The collapsed set with `nodeId` and every node above it expanded (so a new input under it shows).
+// Returns the same set when nothing on the path was collapsed.
+export function expandPath(collapsed: ReadonlySet<string>, nodeId: string, parents: ReadonlyMap<string, string | null>): ReadonlySet<string> {
+  const path: string[] = []
+  for (let at: string | null | undefined = nodeId; at; at = parents.get(at)) path.push(at)
+  if (!path.some((id) => collapsed.has(id))) return collapsed
+  const next = new Set(collapsed)
+  for (const id of path) next.delete(id)
+  return next
+}
+
+// The node a slot types under (null for a new top-level root).
+export const slotTarget = (slot: OutlineSlot): string | null => (slot.kind === 'root' ? null : slot.kind === 'branch' ? slot.parentId : slot.nodeId)
