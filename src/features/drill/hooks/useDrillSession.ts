@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from 'react'
 import { submitDrillResult } from '@/features/progress'
 import { submitTournamentAnswer, type TournamentAnswer } from '@/features/tournament'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
@@ -8,6 +8,7 @@ import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useStreak } from '@/shared/stores/StreakProvider'
 import type { ErrorCode } from '@/shared/types/errors'
 import { checkDrillAnswer } from '../actions/checkDrillAnswer'
+import { autoAdvanceDelay } from '../lib/feedbackAdvance'
 import { becameMighty, leveledUp } from '../lib/masteryChange'
 import type { DrillAnswer, DrillProgress, DrillQuestion, DrillTag } from '../types'
 
@@ -132,6 +133,19 @@ export function useDrillSession(questions: DrillQuestion[], isSignedIn: boolean,
     setIndex(index + 1)
     setState({ status: 'answering' })
   }
+
+  // A correct answer flashes gold, then the next card comes on its own (lib/feedbackAdvance.ts); a
+  // wrong one waits so the right answer can be read. Enter / Space / a tap still move on at once.
+  const latestNext = useRef(next)
+  useLayoutEffect(() => {
+    latestNext.current = next
+  })
+  useEffect(() => {
+    const delay = autoAdvanceDelay(state)
+    if (delay === null) return
+    const timer = setTimeout(() => latestNext.current(), delay)
+    return () => clearTimeout(timer)
+  }, [state])
 
   return { question, index, total: questions.length, state, stats, saving: saving || tournament !== null, standing, isPending, pick, retry, next }
 }

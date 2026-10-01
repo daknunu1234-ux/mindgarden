@@ -162,7 +162,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
       ) : (
         question && (
           <>
-            <DrillCard question={question} state={state} onSelect={pick} />
+            <DrillCard question={question} state={state} onSelect={pick} onNext={next} />
 
             {state.status === 'error' && (
               <GameSlab role="alert" className="flex flex-wrap items-center gap-3 p-4">

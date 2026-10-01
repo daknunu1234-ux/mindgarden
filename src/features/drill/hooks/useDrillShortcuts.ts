@@ -15,7 +15,7 @@ type Options = {
 const INTERACTIVE = 'a, button, input, select, textarea, summary, [role="button"], [contenteditable="true"]'
 const EDITABLE = 'input, select, textarea, [contenteditable="true"]'
 
-// 1/2/3 or A/B/C to answer, Enter/Space for the next question. Rules live in lib/shortcuts.ts.
+// 1–4 or A–D to answer, Enter/Space for the next question. Rules live in lib/shortcuts.ts.
 export function useDrillShortcuts({ status, tags, onPick, onNext }: Options) {
   const { isOpen: loginOpen } = useLoginDialog()
   // Keep the listener stable while always reading the latest state and callbacks.
@@ -36,6 +36,7 @@ export function useDrillShortcuts({ status, tags, onPick, onNext }: Options) {
         blocked: loginOpen || event.defaultPrevented,
         withModifier: event.ctrlKey || event.metaKey || event.altKey,
         repeat: event.repeat,
+        code: event.code,
       })
       if (!action) return
 
@@ -44,7 +45,8 @@ export function useDrillShortcuts({ status, tags, onPick, onNext }: Options) {
       else onNext()
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    // Capture phase: the drill hears the key before anything on the page can stop it.
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [])
 }

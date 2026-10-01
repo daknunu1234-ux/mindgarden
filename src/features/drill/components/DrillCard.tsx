@@ -3,6 +3,8 @@
 import { isMastered, MASTERY_NAMES, MAX_MASTERY } from '@/shared/lib/mastery'
 import { GamePanel, GameProgressBar, GameSlab, ParticleBurst } from '@/shared/components/game'
 import type { DrillState } from '../hooks/useDrillSession'
+import { choiceTapAction } from '../lib/feedbackAdvance'
+import { shortcutKeyFor } from '../lib/shortcuts'
 import { becameMighty, leveledUp } from '../lib/masteryChange'
 import type { DrillProgress, DrillQuestion, DrillTag } from '../types'
 import { ChoiceButton, type ChoiceState } from './ChoiceButton'
@@ -12,6 +14,8 @@ type DrillCardProps = {
   question: DrillQuestion
   state: DrillState
   onSelect: (tag: DrillTag) => void
+  // During feedback a tap on any choice moves on (as Enter / Space do).
+  onNext: () => void
 }
 
 // The ribbon over the question: what kind of question this is.
@@ -34,8 +38,9 @@ function choiceState(tag: DrillTag, state: DrillState): ChoiceState {
 }
 
 // The question plaque + tactile choice slabs + feedback scroll.
-function DrillCard({ question, state, onSelect }: DrillCardProps) {
-  const locked = state.status !== 'answering'
+function DrillCard({ question, state, onSelect, onNext }: DrillCardProps) {
+  const tap = choiceTapAction(state.status)
+  const onChoice = (tag: DrillTag) => (tap === 'pick' ? onSelect(tag) : tap === 'next' ? onNext() : undefined)
   const textOf = (tag: DrillTag) => question.choices.find((c) => c.tag === tag)?.text ?? ''
 
   return (
@@ -59,12 +64,12 @@ function DrillCard({ question, state, onSelect }: DrillCardProps) {
 
       <div className="space-y-3.5" role="group" aria-label="Choices">
         {question.choices.map((choice) => (
-          <ChoiceButton key={choice.tag} choice={choice} state={choiceState(choice.tag, state)} disabled={locked} onSelect={onSelect} />
+          <ChoiceButton key={choice.tag} choice={choice} state={choiceState(choice.tag, state)} disabled={tap === null} onSelect={onChoice} />
         ))}
       </div>
       <p className="hidden text-center text-xs font-medium text-amber-900/55 sm:block">
-        Press {question.choices.map((_, i) => i + 1).join(' / ')} or {question.choices.map((c) => c.tag).join(' / ')} to answer · Enter
-        for the next one
+        Press {question.choices.map((c) => shortcutKeyFor(c.tag)).join(' / ')} or {question.choices.map((c) => c.tag).join(' / ')} to answer ·
+        Enter, Space or a tap for the next one (right answers move on by themselves)
       </p>
 
       {state.status === 'feedback' && (

@@ -88,6 +88,11 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 - **Hover-to-reveal owner tools**: ✏️ Edit / 🗑️ Delete (and ⚙️ Manage on roots) stay hidden until a card,
   pill or row is hovered or keyboard-focused (`shared/components/game` `HoverActions`), and are always
   visible on touch screens. Visitors and contestants never see them.
+- **Snappy drill rounds**: a correct answer flashes gold and the next card comes on its own after 300 ms
+  (`drill/lib/feedbackAdvance.ts`); a wrong answer waits so the right answer can be read. Enter, Space or a
+  tap on any choice moves on at once. Keys: `1`–`4` / `A`–`D` (explicit maps, so a 4th choice shows `4`,
+  never `0`), with physical-key fallbacks for the keypad, AZERTY and Vietnamese VNI / Telex IMEs, heard in
+  the capture phase. Grading loads the deck row and its roots in parallel (one round trip fewer per answer).
 - **Scoped question pacing**: one launch modal picks the session size (5 / 10 / 20 questions) and the
   scope (the whole tree or a single root branch, `?nodeId=`). 5/5 statements rest from normal rounds
   unless the player chooses review (`?review=1`).
@@ -384,7 +389,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
+| (pending) | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
+| `88dc2e7` | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
 | `eed0080` | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
 | `b9195ed` | style(decks): statement rows start with their text; status moves to a trailing badge |
 | `89e737f` | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
@@ -415,5 +421,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 69 files, 638 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 70 files, 647 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

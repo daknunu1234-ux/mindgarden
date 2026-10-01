@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shortcutFor, shortcutKeyFor, type ShortcutContext } from '../lib/shortcuts'
+import { shortcutFor, shortcutKeyFor, tagForKey, type ShortcutContext } from '../lib/shortcuts'
 
 const base: ShortcutContext = {
   status: 'answering',
@@ -58,8 +58,49 @@ describe('shortcutFor', () => {
   })
 })
 
+describe('four choices: 1–4 and A–D', () => {
+  const four = { ...base, tags: ['A', 'B', 'C', 'D'] as const }
+
+  it('maps every digit and letter, either case, to its choice', () => {
+    const expected = [
+      ['1', 'a', 'A', 'A'],
+      ['2', 'b', 'B', 'B'],
+      ['3', 'c', 'C', 'C'],
+      ['4', 'd', 'D', 'D'],
+    ] as const
+    for (const [digit, lower, upper, tag] of expected) {
+      for (const key of [digit, lower, upper]) expect(shortcutFor(key, four), key).toEqual({ type: 'pick', tag })
+    }
+  })
+
+  it('never picks with 0, 5 or E, and ignores 4 / D when the question has fewer choices', () => {
+    for (const key of ['0', '5', 'e', 'E']) expect(shortcutFor(key, four), key).toBeNull()
+    expect(shortcutFor('4', base)).toBeNull()
+    expect(shortcutFor('d', base)).toBeNull()
+  })
+
+  it('falls back to the physical digit key: keypad, AZERTY (1 types &), Vietnamese VNI (4 is a tone mark)', () => {
+    expect(shortcutFor('4', { ...four, code: 'Numpad4' })).toEqual({ type: 'pick', tag: 'D' })
+    expect(shortcutFor('&', { ...four, code: 'Digit1' })).toEqual({ type: 'pick', tag: 'A' })
+    expect(shortcutFor("'", { ...four, code: 'Digit4' })).toEqual({ type: 'pick', tag: 'D' })
+    expect(shortcutFor('Process', { ...four, code: 'Digit4' })).toEqual({ type: 'pick', tag: 'D' })
+  })
+
+  it('uses the physical letter key only while an IME holds it (Telex d → đ), never on other layouts', () => {
+    expect(shortcutFor('Process', { ...four, code: 'KeyD' })).toEqual({ type: 'pick', tag: 'D' })
+    // AZERTY: the key in the A position types "q"; it must not pick A.
+    expect(tagForKey('q', 'KeyA')).toBeNull()
+    expect(tagForKey('a', 'KeyQ')).toBe('A')
+  })
+})
+
 describe('shortcutKeyFor', () => {
-  it('labels A/B/C as 1/2/3', () => {
-    expect(['A', 'B', 'C'].map((t) => shortcutKeyFor(t as 'A' | 'B' | 'C'))).toEqual(['1', '2', '3'])
+  it('labels A/B/C/D as 1/2/3/4 (never 0)', () => {
+    expect((['A', 'B', 'C', 'D'] as const).map(shortcutKeyFor)).toEqual(['1', '2', '3', '4'])
+  })
+
+  it('the label is the key that picks it', () => {
+    const four = { ...base, tags: ['A', 'B', 'C', 'D'] as const }
+    for (const tag of four.tags) expect(shortcutFor(shortcutKeyFor(tag), four)).toEqual({ type: 'pick', tag })
   })
 })

@@ -52,10 +52,15 @@ export async function listDrillItems(
   // '*' (decks holds nothing secret) so this still works before migration 20260928000900 adds
   // is_tournament_open.
   const deckQuery = supabase.from('decks').select('*')
-  const { data: deck, error: deckError } = await ('deckId' in ref
-    ? deckQuery.eq('id', ref.deckId)
-    : deckQuery.eq('slug', ref.slug)
-  ).maybeSingle()
+  const nodesOf = (deckId: string) =>
+    supabase.from('mindmap_nodes').select('id, parent_id, title, knowledge_items(id, prompt, created_at)').eq('deck_id', deckId).order('sort_order')
+  // By id (grading, tournaments: every answer) the deck row and its roots load in parallel, one
+  // round trip instead of two; by slug the deck's id is needed first.
+  const [deckRes, earlyNodes] = await Promise.all([
+    ('deckId' in ref ? deckQuery.eq('id', ref.deckId) : deckQuery.eq('slug', ref.slug)).maybeSingle(),
+    'deckId' in ref ? nodesOf(ref.deckId) : null,
+  ])
+  const { data: deck, error: deckError } = deckRes
 
   if (deckError) {
     console.error('[decks] listDrillItems: deck query failed', deckError)
@@ -63,11 +68,7 @@ export async function listDrillItems(
   }
   if (!deck) return fail('DECK_NOT_FOUND', 'Deck not found')
 
-  const { data: nodes, error: nodesError } = await supabase
-    .from('mindmap_nodes')
-    .select('id, parent_id, title, knowledge_items(id, prompt, created_at)')
-    .eq('deck_id', deck.id)
-    .order('sort_order')
+  const { data: nodes, error: nodesError } = earlyNodes ?? (await nodesOf(deck.id))
 
   if (nodesError) {
     console.error('[decks] listDrillItems: nodes query failed', nodesError)
