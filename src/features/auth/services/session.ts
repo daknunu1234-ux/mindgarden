@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient, User } from '@supabase/supabase-js'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { SignInWithEmailInput } from '../dto/SignInWithEmailDto'
@@ -32,10 +32,8 @@ export async function sendMagicLink(
   return ok({ sent: true })
 }
 
-export async function readSessionUser(supabase: SupabaseClient<Database>): Promise<SessionUser | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+// `user` = the request's verified user (shared/lib/supabase/requestUser `getRequestUser`).
+export async function readSessionUser(supabase: SupabaseClient<Database>, user: User | null): Promise<SessionUser | null> {
   if (!user) return null
   return { id: user.id, email: user.email ?? '', createdAt: user.created_at, displayName: await readOwnDisplayName(supabase, user.id) }
 }

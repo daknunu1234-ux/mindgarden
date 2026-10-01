@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/shared/lib/supabase/server'
+import { getRequestUser } from '@/shared/lib/supabase/requestUser'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { GetTournamentBoardsDto } from '../dto/TournamentDto'
 import { standingRank } from '../lib/scoring'
@@ -23,9 +24,8 @@ export async function getTournamentBoards(input: unknown): Promise<ActionResult<
   const { deckId } = parsed.data
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // One verified Auth call per request, shared with the other actions on the page.
+  const user = await getRequestUser()
 
   const [boards, standing, levels] = await Promise.all([
     loadBoards(supabase, deckId),

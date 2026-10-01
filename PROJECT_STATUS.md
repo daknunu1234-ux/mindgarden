@@ -296,6 +296,26 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   itself). When another edit refreshes the page, settled ops drop and ops still in flight carry over onto
   the fresh data (`rebaseOps`), so nothing typed blinks out. The mindmap canvas's own dialogs
   (`AddRootDialog`, ⚙️ Manage) keep their original behaviour.
+- **Opening a tree, faster** (farm → `/deck/[slug]`):
+  - **Server, no waterfall**: the page ran four stages one after another (deck → progress + user →
+    editor / reader + purse + boards → owner name), and up to five actions each made their own
+    `supabase.auth.getUser()` round trip to Supabase Auth. Now it is two stages: the deck alongside the
+    viewer, then every other read at once; the verified user is fetched once per request
+    (`shared/lib/supabase/requestUser.ts` `getRequestUser`, React `cache`, request-scoped) and shared by
+    `getCurrentUser`, `getProgressByDecks`, `getDeckEditor`, `getDeckReader`, `getFarmHud`,
+    `getTournamentBoards`. `findDeckBySlug` loads the deck with its roots and statements embedded in one
+    query (it was two, one after the other).
+  - **Instant skeleton**: `app/deck/[slug]/loading.tsx` is shaped like the page (header, growth, stat
+    slabs, the wooden-framed canvas with a tree and roots, the Workshop) and is server-only markup.
+  - **Prefetch on intent**: hovering, focusing or touching a farm tree prefetches its page and its drill
+    (`shared/hooks/usePrefetchOnIntent`: code + the loading shell, production only), so a popover link
+    opens the skeleton at once. Not `prefetch={true}`: without Cache Components that renders the whole
+    page and caches it for 5 minutes, and since deck edits are optimistic and never revalidate, a
+    revisit could show statements from before your edits. The data is always fresh instead.
+  - **Code splitting**: the mindmap canvas (`DeckRootsPanel`) and the Tree Workshop (`DeckWorkshop`, with
+    decks' lazy `DeckEditor`) are `next/dynamic` chunks (still server-rendered; the canvas keeps a
+    same-size frame while it loads). The deck page's own entry JS went from 651 to 617 KB raw (173 → 164 KB
+    gzipped); most of the rest is the shared framework chunk.
 - **Rendering**: the grid is `React.memo`'d with stable props (memoized ghost, handlers that read the
   latest state through a ref), so camera drags and zooms never re-render it. Its static layers (ocean,
   the island with its 256 tiles, palms, clouds) are memoized components that render once; tree beds and
@@ -340,7 +360,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | style(decks): statement rows start with their text; status moves to a trailing badge |
+| (pending) | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
+| `b9195ed` | style(decks): statement rows start with their text; status moves to a trailing badge |
 | `89e737f` | feat(decks): collapse / expand roots and sub-roots in the Tree Workshop outline |
 | `7d77fdb` | feat(decks): inline outline editor in the Tree Workshop; mindmap canvas restored |
 | `92092dd` | feat(mindmap): fast-entry authoring on the canvas, root switcher and a compact layout (canvas part reverted by the next commit) |
@@ -369,5 +390,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 65 files, 591 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 66 files, 594 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

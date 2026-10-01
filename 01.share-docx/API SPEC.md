@@ -19,7 +19,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 ## 2. Authentication
 
 - **Session**: Supabase session cookie via `createServerClient` (`@supabase/ssr`) in `src/shared/lib/supabase/server.ts`
-- **Identity**: `supabase.auth.getUser()` on the server; `userId` is never accepted from the client
+- **Identity**: `supabase.auth.getUser()` on the server; `userId` is never accepted from the client. Actions a page calls together share one verified call per request through `shared/lib/supabase/requestUser.ts` `getRequestUser` (React `cache`, request-scoped): `getCurrentUser`, `getProgressByDecks`, `getDeckEditor`, `getDeckReader`, `getFarmHud`, `getTournamentBoards`
 - **Anonymous**: may explore and read public decks (strict read-only), and read Mind Tournament boards. Drills are **owner-only**: `getDrillSession`, `checkDrillAnswer` and `submitDrillResult` need a session AND the deck's owner, else `FORBIDDEN_VISITOR_PRACTICE` (`shared/lib/visitor.ts` `canPractice`). Visitors clone a tree (`cloneDeck`) to practise it. The one exception is a **Mind Tournament**: a signed-in visitor may drill a public tree whose owner hosts one (`getTournamentSession`, `submitTournamentAnswer`), with an isolated score
 
 | Auth | Meaning |
@@ -219,6 +219,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   children: DeckTreeNode[] }
 // Errors: VALIDATION_FAILED, DECK_NOT_FOUND
 ```
+- **One round trip**: `decks` by its unique slug with `mindmap_nodes(…, knowledge_items(id, prompt, created_at))` embedded (RLS applies to each embedded table). The deck page loads it in parallel with `getCurrentUser`, then runs every other read at once (two stages, no waterfall)
 
 ### `createDeck` (decks)
 ```typescript

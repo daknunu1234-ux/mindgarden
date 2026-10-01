@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/shared/lib/supabase/server'
+import { getRequestUser } from '@/shared/lib/supabase/requestUser'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { GetDeckEditorDto } from '../dto/GetDeckEditorDto'
 import { loadDeckReader } from '../services/authoring'
@@ -14,8 +15,7 @@ export async function getDeckReader(input: unknown): Promise<ActionResult<DeckEd
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // One verified Auth call per request, shared with the other actions on the page.
+  const user = await getRequestUser()
   return loadDeckReader(supabase, user?.id ?? null, parsed.data.deckId)
 }

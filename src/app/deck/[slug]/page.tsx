@@ -22,9 +22,13 @@ export async function generateMetadata({ params }: PageProps<'/deck/[slug]'>): P
   }
 }
 
+// Two parallel stages instead of a waterfall: (1) the deck (one query: deck + roots + statements)
+// alongside the viewer; (2) everything that needs both (progress, editor or reader, purse, boards,
+// the owner's public name) at once. The verified user is fetched once per request
+// (shared/lib/supabase/requestUser) however many of these actions ask for it.
 export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
   const { slug } = await params
-  const res = await loadDeck(slug)
+  const [res, userRes] = await Promise.all([loadDeck(slug), getCurrentUser()])
 
   if (!res.success) {
     // A malformed slug can never match a deck, so it is a 404 too.
@@ -41,22 +45,20 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
     )
   }
 
-  // Signed out → zeros. A progress error only dims the tree; the deck still renders.
   const deckId = res.data.deck.id
-  const [progress, userRes] = await Promise.all([getProgressByDecks({ deckIds: [deckId] }), getCurrentUser()])
   const signedIn = userRes.success && userRes.data !== null
   const isOwner = signedIn && userRes.data?.id === res.data.deck.userId
-  // Owner → editor. Visitor (strict read-only mode) → the statements to read + their purse for
-  // the clone fee.
-  // Mind Tournament boards exist only on shared trees.
-  const [editor, reader, hud, boards] = await Promise.all([
+  // Signed out → zeros; a progress error only dims the tree, the deck still renders. Owner → editor.
+  // Visitor (strict read-only mode) → the statements to read, their purse for the clone fee and the
+  // owner's public name (chosen Garden Name, else pseudonym). Boards exist only on shared trees.
+  const [progress, editor, reader, hud, boards, ownerNames] = await Promise.all([
+    getProgressByDecks({ deckIds: [deckId] }),
     isOwner ? getDeckEditor({ deckId }) : null,
     isOwner ? null : getDeckReader({ deckId }),
     !isOwner && signedIn ? getFarmHud() : null,
     res.data.deck.isPublic ? getTournamentBoards({ deckId }) : null,
+    isOwner ? null : getDisplayNames({ userIds: [res.data.deck.userId] }),
   ])
-  // The owner as visitors see them: their chosen Garden Name, else their pseudonym.
-  const ownerNames = isOwner ? null : await getDisplayNames({ userIds: [res.data.deck.userId] })
   const ownerName = publicName(ownerNames?.success ? ownerNames.data[res.data.deck.userId] : null, res.data.deck.userId)
   const purse = hud?.success && hud.data ? hud.data : null
   // Visited Gardens: a signed-in player opening someone else's shared tree. Recorded from the

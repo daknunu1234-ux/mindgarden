@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
@@ -10,12 +11,8 @@ import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchCont
 import {
   CloneTreeButton,
   countDeckTree,
-  DeckDangerZone,
   DeckDraftProvider,
-  DeckEditor,
   DeckReader,
-  DeckShareToggle,
-  TournamentHostToggle,
   useDeckDraft,
   type DeckDetail,
   type DeckEditorData,
@@ -24,7 +21,13 @@ import { GrowthBar, neighborName, TREE_BASE_RATIO, TreeStageSvg, useTreeStage, v
 import type { ItemLevels } from '@/features/mindmap'
 import type { DeckProgress } from '@/features/progress'
 import { TournamentBoard, TournamentLiveBadge, type TournamentBoardsView } from '@/features/tournament'
-import { DeckRootsPanel } from './DeckRootsPanel'
+
+// Code-split (next/dynamic, still server-rendered): the mindmap canvas and the owner's Tree
+// Workshop (whose outline editor is decks' lazy DeckEditor) load as their own chunks, so the
+// header (title, growth, Water Tree) hydrates without waiting for them. On a client navigation the
+// canvas shows a same-size frame meanwhile.
+const DeckRootsPanel = dynamic(() => import('./DeckRootsPanel').then((m) => m.DeckRootsPanel), { loading: () => <CanvasFrame /> })
+const DeckWorkshop = dynamic(() => import('./DeckWorkshop').then((m) => m.DeckWorkshop))
 
 // Someone else's tree (strict read-only visitor mode): the statements to read (null if they could
 // not be loaded) and the visitor's purse for the clone fee.
@@ -296,31 +299,24 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
           </section>
         )}
 
-        {editor && (
-          <section aria-labelledby="grow-heading" className="mt-12">
-            <GamePanel tone="wood" ribbon="gold" title={<span id="grow-heading">🛠️ Tree Workshop</span>}>
-              <p className="mb-5 text-center text-sm text-amber-100/85">
-                Change the tree species, then grow your roots right here: pick a root, type statements and sub-roots inline, Enter for the next, Tab to nest.
-              </p>
-              <div className="mb-5">
-                <DeckShareToggle deckId={deck.id} slug={deck.slug} isPublic={deck.isPublic} />
-              </div>
-              <div className="mb-5">
-                <TournamentHostToggle deckId={deck.id} isPublic={deck.isPublic} isOpen={deck.isTournamentOpen} />
-              </div>
-              <DeckEditor editor={editor} />
-              <div className="mt-8">
-                <DeckDangerZone deckId={deck.id} deckTitle={deck.title} />
-              </div>
-            </GamePanel>
-          </section>
-        )}
+        {editor && <DeckWorkshop deck={deck} editor={editor} />}
       </div>
     </main>
   )
 
   const withDraft = <DeckDraftProvider value={actions}>{scene}</DeckDraftProvider>
   return launch ? <SessionLaunchProvider context={launch}>{withDraft}</SessionLaunchProvider> : withDraft
+}
+
+// Placeholder the size of the mindmap canvas while its chunk loads (no layout jump).
+function CanvasFrame() {
+  return (
+    <div aria-hidden className="space-y-3">
+      {/* The toolbar row, then the wooden-framed canvas. */}
+      <div className="h-8" />
+      <div className="h-[72vh] max-h-[860px] min-h-[460px] rounded-[24px] border-[5px] border-amber-800/60 bg-gradient-to-b from-sky-100 via-emerald-50 to-[#f1e4cc] motion-safe:animate-pulse" />
+    </div>
+  )
 }
 
 function Stat({ icon, label, value }: { icon: string; label: string; value: number }) {

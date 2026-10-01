@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
+import { usePrefetchOnIntent } from '@/shared/hooks/usePrefetchOnIntent'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
 import { FARM_TREE_SIZE, plotSprite, TREE_BASE_RATIO } from '../lib/plotSprite'
@@ -46,6 +47,9 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
   const size = getTreeSizeTier(plot.itemCount)
   const sprite = plotSprite(geometry.x, geometry.y, size.scale)
   const { hitbox, tree } = sprite
+  // Hover / focus / touch warms the tree's page and its drill (code + loading skeleton), so the
+  // popover's links open instantly.
+  const prefetch = usePrefetchOnIntent([`/deck/${plot.slug}`, `/deck/${plot.slug}/drill`])
   const label = [
     `${plot.title}: ${stageName}, ${plot.masteryPercent}% grown`,
     `${size.name} (${plot.itemCount} ${plot.itemCount === 1 ? 'statement' : 'statements'})`,
@@ -66,6 +70,7 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
         e.stopPropagation()
         onOpen(plot)
       }}
+      {...prefetch}
       aria-label={label}
       className="group absolute rounded-[40%] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
       style={{ ...hitbox, zIndex: Math.round(geometry.y) }}
