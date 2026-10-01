@@ -376,6 +376,13 @@
   50% { transform: rotate(1.5deg) scale(1, 1); }
   75% { transform: rotate(0deg) scale(0.99, 1.02); }
 }
+/* A withered tree (shared/lib/treeVitality) stands still: its crown, aura and sparkles stop too. */
+.mg-withered .mg-foliage,
+.mg-withered .mg-aura,
+.mg-withered .mg-sparkle {
+  animation: none;
+}
+
 @keyframes mg-foliage {
   0%, 100% { transform: rotate(-0.8deg) translateY(0); }
   25% { transform: rotate(0deg) translateY(-1.2px); }

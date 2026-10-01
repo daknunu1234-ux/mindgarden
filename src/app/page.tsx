@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { GameButton, GamePanel, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
+import { isWithered } from '@/shared/lib/treeVitality'
 import { getCurrentUser, getDisplayNames } from '@/features/auth'
 import { getDecks, getNeighborGarden, getVisitedGardens, type Deck } from '@/features/decks'
 import { FarmWorld } from './_components/FarmWorld'
 import {
   GardenGrid,
   getFarmPlacements,
+  getTreeStage,
   groupVisitedGardens,
   publicName,
   treeBuff,
@@ -30,14 +32,15 @@ const hrefFor = (view: View, page = 1) => {
 }
 
 // Joins decks with the player's progress (50 decks per request). If progress fails to load, trees
-// show 0% instead of failing the page.
-async function loadProgress(decks: Deck[]): Promise<Map<string, DeckProgress>> {
+// show 0% instead of failing the page. `at` = when it was read: withering compares the last practice
+// with this moment (72 h).
+async function loadProgress(decks: Deck[]): Promise<{ map: Map<string, DeckProgress>; at: number }> {
   const map = new Map<string, DeckProgress>()
   for (let i = 0; i < decks.length; i += 50) {
     const res = await getProgressByDecks({ deckIds: decks.slice(i, i + 50).map((d) => d.id) })
     if (res.success) for (const p of res.data) map.set(p.deckId, p)
   }
-  return map
+  return { map, at: Date.now() }
 }
 
 // The farm shows every tree the gardener owns (not one page): up to FARM_DECK_PAGES × 50.
@@ -54,8 +57,10 @@ async function loadAllOwnDecks(): Promise<Awaited<ReturnType<typeof getDecks>>> 
   return { ...first, data: decks }
 }
 
-function toPlotView(d: Deck, p: DeckProgress | undefined, userId: string | null): FarmPlotView {
+function toPlotView(d: Deck, p: DeckProgress | undefined, userId: string | null, now: number): FarmPlotView {
   const isOwner = userId !== null && d.userId === userId
+  const masteryPercent = p?.masteryPercent ?? 0
+  const itemCount = p?.itemCount ?? 0
   return {
     id: d.id,
     slug: d.slug,
@@ -70,6 +75,11 @@ function toPlotView(d: Deck, p: DeckProgress | undefined, userId: string | null)
     wateredDay: isOwner && p?.practicedToday ? p.lastPracticedDay : null,
     isOwner,
     isTournamentOpen: d.isPublic && d.isTournamentOpen,
+    // Only the owner's own practice waters a tree, so only their trees wither (and bear fruit).
+    withered:
+      isOwner &&
+      isWithered({ stage: getTreeStage(masteryPercent), itemCount, lastPracticedAt: p?.lastPracticedAt ?? null, plantedAt: d.createdAt, now }),
+    fruitReady: isOwner && (p?.fruitReady ?? false),
   }
 }
 
@@ -93,7 +103,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
         : await loadAllOwnDecks()
       : await getDecks({ page: typeof page === 'string' ? page : undefined })
   const decks = res.success ? res.data : []
-  const [progress, placementsRes] = await Promise.all([
+  const [{ map: progress, at: progressAt }, placementsRes] = await Promise.all([
     loadProgress(decks),
     view === 'farm' ? getFarmPlacements(visitOwnerId ? { ownerId: visitOwnerId } : {}) : null,
   ])
@@ -122,7 +132,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
 
   // Trees on the farm carry their tile and coin buff; own trees without a tile wait in the Shop.
   const treeTiles = new Map(placements.filter((p) => p.itemType === 'tree' && p.deckId).map((p) => [p.deckId!, p]))
-  const allPlots = decks.map((d) => toPlotView(d, progress.get(d.id), userId))
+  const allPlots = decks.map((d) => toPlotView(d, progress.get(d.id), userId, progressAt))
   const plots: FarmPlotView[] = allPlots.flatMap((plot) => {
     const tile = treeTiles.get(plot.id)
     return tile ? [{ ...plot, placementId: tile.id, buff: treeBuff(tile.x, tile.y, placements).multiplier }] : []

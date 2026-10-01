@@ -22,3 +22,9 @@ export function localDay(at: Date, timeZone: string): string {
     day: '2-digit',
   }).format(at)
 }
+
+// The calendar day before `day` ('YYYY-MM-DD' → 'YYYY-MM-DD'), across months and years.
+export function previousDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10)
+}

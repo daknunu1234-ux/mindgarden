@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Link from 'next/link'
 import { GameButton } from '@/shared/components/game'
 import { useCamera } from '@/shared/hooks/useCamera'
+import { FRUIT_COINS } from '@/shared/lib/economy'
 import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/camera'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import type { ActionResult } from '@/shared/types/result'
@@ -53,10 +54,15 @@ type FarmIslandViewProps = {
   // removes the tree at once, credits the Woodshop refund, runs it in the background and rolls back
   // on error. Wired in app/ (garden never imports decks).
   onUproot?: (plot: FarmPlotView, chop: (run: ChopRun) => void) => void
+  // Owner: collect a ripe tree's fruit (the page wires progress' harvestTreeFruit; garden imports no
+  // other feature). The farm takes the fruit off and credits the coins at once, then settles.
+  onHarvest?: HarvestRun
 }
 
 // The server side of a chop, supplied by the page: resolves with the refund and the purse after it.
 export type ChopRun = () => Promise<ActionResult<{ refund: number; totalCoins: number | null }>>
+// Collects one tree's fruit on the server (progress harvestTreeFruit): the page passes it in.
+export type HarvestRun = (deckId: string, timeZone: string) => Promise<ActionResult<{ coinsEarned: number; totalCoins: number }>>
 
 // What is being placed: one of your trees (free), a shop item (paid when put down), or something
 // already on the farm being moved (free; `tree` set when it's a tree).
@@ -74,7 +80,7 @@ type BuildRequest =
 // go, and putting it down moves it (Esc / Cancel leaves it where it was).
 // Every edit is optimistic (lib/optimistic.ts): planting, buying, moving and picking up show at once
 // and sync in the background (no page refresh); a refusal rolls the farm back with a toast.
-function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot }: FarmIslandViewProps) {
+function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot, onHarvest }: FarmIslandViewProps) {
   const { toast } = useToast()
   const { setCoins } = useCoins()
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
@@ -103,12 +109,14 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const nextKey = useRef(0)
   const farm = useMemo(() => applyOps(placements, opList), [placements, opList])
 
+  // Fruit picked on this visit: off the tree at once (the server's next render agrees).
+  const [harvested, setHarvested] = useState<ReadonlySet<string>>(() => new Set())
   // Trees as the farm shows them: planted ones carry their tile and buff; the rest wait in the Shop.
   const allTrees = useMemo(() => {
     const byId = new Map<string, FarmPlotView>()
-    for (const tree of [...plots, ...unplacedTrees]) byId.set(tree.id, tree)
+    for (const tree of [...plots, ...unplacedTrees]) byId.set(tree.id, tree.fruitReady && harvested.has(tree.id) ? { ...tree, fruitReady: false } : tree)
     return [...byId.values()]
-  }, [plots, unplacedTrees])
+  }, [plots, unplacedTrees, harvested])
   const { planted, unplanted } = useMemo(() => {
     const gone = choppedDecks(opList)
     return splitTrees(
@@ -270,12 +278,34 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
     })
   }
 
+  // 🍎 Harvest (optimistic): the fruit goes and the purse grows at once; the server checks yesterday's
+  // practice and today's first harvest, and a refusal puts the fruit back with the coins.
+  const harvest = (plot: FarmPlotView) => {
+    if (!onHarvest || !plot.fruitReady || harvested.has(plot.id)) return
+    const purseBefore = coins
+    setHarvested((h) => new Set(h).add(plot.id))
+    if (purseBefore !== null) setCoins(purseBefore + FRUIT_COINS)
+    setSelectedPlot((open) => (open?.id === plot.id ? null : open))
+    toast({ message: `Picked the fruit of “${plot.title}” · +${FRUIT_COINS} 🪙`, icon: '🍎' })
+    void onHarvest(plot.id, Intl.DateTimeFormat().resolvedOptions().timeZone).then((res) => {
+      if (res.success) return setCoins(res.data.totalCoins)
+      setHarvested((h) => {
+        const next = new Set(h)
+        next.delete(plot.id)
+        return next
+      })
+      if (purseBefore !== null) setCoins(purseBefore)
+      failed(`Could not harvest “${plot.title}”: ${res.error.message}`)
+    })
+  }
+
   // Stable handlers for the (memoized) grid: they read the latest state through a ref, so camera
   // drags and zooms never re-render the grid's 256 tiles.
-  const latest = useRef({ build, place, chop, farm, startMove, plotsByDeck })
+  const latest = useRef({ build, place, chop, farm, startMove, plotsByDeck, harvest })
   useLayoutEffect(() => {
-    latest.current = { build, place, chop, farm, startMove, plotsByDeck }
+    latest.current = { build, place, chop, farm, startMove, plotsByDeck, harvest }
   })
+  const onHarvestPlot = useCallback((plot: FarmPlotView) => latest.current.harvest(plot), [])
   const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
   const onBuildCancel = useCallback(() => setBuild(null), [])
   const onBuildTap = useCallback((tile: { x: number; y: number }, pointerType: string) => {
@@ -361,6 +391,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
               onBuildCancel={onBuildCancel}
               onOpenPlot={setSelectedPlot}
               onOpenItem={setSelectedItem}
+              onHarvestPlot={isOwner && onHarvest ? onHarvestPlot : undefined}
               dragEnabled={isOwner && !build}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
@@ -489,6 +520,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         plot={selectedPlot}
         onOpenChange={(open) => !open && setSelectedPlot(null)}
         onRemoveFromFarm={isOwner ? removeFromFarm : undefined}
+        onHarvest={isOwner && onHarvest ? harvest : undefined}
         onMove={
           isOwner
             ? (plot) => {

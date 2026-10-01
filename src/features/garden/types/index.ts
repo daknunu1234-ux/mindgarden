@@ -33,6 +33,11 @@ export type FarmPlotView = {
   buff?: number
   // The owner hosts a Mind Tournament on it (visitors may compete).
   isTournamentOpen?: boolean
+  // Owner only: no practice for over 72 h below growth stage 4 (shared/lib/treeVitality): drawn grey
+  // and still until a round waters it. Stage 4+ trees are immune.
+  withered?: boolean
+  // Owner only: practised yesterday, not harvested today: a fruit worth FRUIT_COINS 🪙 hangs on it.
+  fruitReady?: boolean
 }
 
 // Farm HUD. level/streak/coins are null when signed out.

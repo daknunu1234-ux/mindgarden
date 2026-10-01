@@ -18,6 +18,10 @@ export type DeckProgress = {
   lastPracticedDay: string | null
   // False also for never-practised decks: the farm shows a 💧 "needs watering" badge.
   practicedToday: boolean
+  // Newest practice of any item (ISO timestamp), or null: drives withering (shared/lib/treeVitality).
+  lastPracticedAt: string | null
+  // Practised yesterday and not harvested today: the tree bears fruit (FRUIT_COINS 🪙).
+  fruitReady: boolean
 }
 
 // Unpractised items count as level 0 (DATABASE.md "Tree health").
@@ -26,6 +30,7 @@ export function summarizeDeckProgress(
   items: readonly { itemId: string; nodeId: string }[],
   rows: ReadonlyMap<string, PracticeRow>,
   clock: LocalClock,
+  ripe: ReadonlySet<string> = new Set(),
 ): DeckProgress {
   const byNode = new Map<string, number[]>()
   let total = 0
@@ -49,5 +54,7 @@ export function summarizeDeckProgress(
     mightyRoots: [...byNode.values()].filter((ls) => ls.every((l) => l === MAX_MASTERY)).length,
     lastPracticedDay,
     practicedToday: lastPracticedDay !== null && lastPracticedDay >= clock.today,
+    lastPracticedAt,
+    fruitReady: ripe.has(deckId),
   }
 }

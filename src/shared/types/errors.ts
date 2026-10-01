@@ -21,4 +21,6 @@ export type ErrorCode =
   | 'TOURNAMENT_GRADUATED'
   // Farm grid: the spot is taken, off the grid, or the tree is already planted.
   | 'TILE_UNAVAILABLE'
+  // Tree fruit: not practised yesterday, or today's fruit is already harvested.
+  | 'FRUIT_NOT_READY'
   | 'INTERNAL_ERROR'

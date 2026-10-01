@@ -8,7 +8,9 @@ import { shouldAwardMasteryCoin } from '../lib/coins'
 import { nextMastery, toMasteryLevel } from '../lib/masteryRules'
 import type { DrillResult } from '../types'
 import { awardMasteryCoin, readCoins } from './coins'
-import { gradeSubmission } from './grading'
+import { localDay, resolveTimeZone } from '@/shared/lib/localDay'
+import { recordDeckPracticeDay } from './fruit'
+import { gradeWithTree } from './grading'
 import { recordPracticeDay } from './streak'
 
 const UNIQUE_VIOLATION = '23505'
@@ -24,8 +26,9 @@ export async function recordDrillResult(
   submission: DrillSubmission,
 ): Promise<ActionResult<DrillResult>> {
   // Owner-only: a visitor's answer on someone else's tree is refused before anything is saved.
-  const graded = await gradeSubmission(supabase, submission, userId)
-  if (!graded.success) return graded
+  const gradedWithTree = await gradeWithTree(supabase, submission, userId)
+  if (!gradedWithTree.success) return gradedWithTree
+  const graded = gradedWithTree.data.answer
 
   const readRow = (columns: string) =>
     supabase
@@ -46,8 +49,8 @@ export async function recordDrillResult(
   }
 
   const previousMasteryLevel = toMasteryLevel(current?.mastery_level ?? 0)
-  const masteryLevel = nextMastery(previousMasteryLevel, graded.data.isCorrect)
-  const mistakeCount = (current?.mistake_count ?? 0) + (graded.data.isCorrect ? 0 : 1)
+  const masteryLevel = nextMastery(previousMasteryLevel, graded.isCorrect)
+  const mistakeCount = (current?.mistake_count ?? 0) + (graded.isCorrect ? 0 : 1)
   const values = { mastery_level: masteryLevel, mistake_count: mistakeCount, last_practiced_at: new Date().toISOString() }
 
   // The row's identity (user, item) is never rewritten: players may update only these three
@@ -69,9 +72,11 @@ export async function recordDrillResult(
     return fail('INTERNAL_ERROR', 'Could not save progress')
   }
 
-  // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes.
-  const [streak, coins] = await Promise.all([
+  // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes. It also logs
+  // the tree's own practice day, so tomorrow the tree bears fruit (tree_fruit migration).
+  const [streak, , coins] = await Promise.all([
     recordPracticeDay(supabase, userId, submission.timeZone),
+    recordDeckPracticeDay(userId, gradedWithTree.data.deckId, localDay(new Date(), resolveTimeZone(submission.timeZone))),
     !coinsReady
       ? Promise.resolve(fail('INTERNAL_ERROR', 'Coins are not set up yet'))
       : shouldAwardMasteryCoin({ previous: previousMasteryLevel, next: masteryLevel, alreadyAwarded: current?.coin_awarded_at != null })
@@ -82,7 +87,7 @@ export async function recordDrillResult(
 
   // Coins never block the answer: on failure the player sees 0 earned and an unknown total.
   return ok({
-    ...graded.data,
+    ...graded,
     masteryLevel,
     previousMasteryLevel,
     mistakeCount,

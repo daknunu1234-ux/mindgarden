@@ -3,7 +3,7 @@
 Per-player mastery for knowledge items.
 
 ## Owned tables
-`user_progress`, `practice_days`, and `users.streak_count` / `users.last_active_at` (written with the admin client)
+`user_progress`, `practice_days`, `deck_practice_days` + `tree_harvests` (tree fruit, migration `20261003000000_tree_fruit.sql`), and `users.streak_count` / `users.last_active_at` (written with the admin client)
 
 ## Exports
 | From | Export | Notes |
@@ -11,6 +11,7 @@ Per-player mastery for knowledge items.
 | `index.ts` | `submitDrillResult({ itemId, seed, tag })` | Server Action. Auth: Required. Grades on the server, upserts `user_progress` → `DrillResult { isCorrect, correctTag, masteryLevel, previousMasteryLevel, mistakeCount }`. Errors: `VALIDATION_FAILED`, `AUTH_UNAUTHORIZED`, `ITEM_NOT_FOUND`, `INTERNAL_ERROR` |
 | `index.ts` | `getProgressByDecks({ deckIds })` | Server Action. Auth: Optional. 1–50 ids → `DeckProgress[] { deckId, masteryPercent, itemCount, items: { itemId, masteryLevel }[] }`, zeros when signed out. Errors: `VALIDATION_FAILED`, `INTERNAL_ERROR` |
 | `index.ts` | `getGardenStats()` | Server Action. Auth: Required. Totals over owned trees: `treeCount`, `itemCount`, `mightyRootCount`, `masteryPercent`, `trees[]` (pure `lib/gardenStats.ts` `summarizeGarden`) |
+| `index.ts` | `harvestTreeFruit({ deckId, timeZone? })` | Server Action, Auth Required (owner). Today's fruit of a tree practised yesterday: +`FRUIT_COINS` (2) 🪙, once per tree per day, via `services/fruit.ts` `harvestFruit` → `harvest_tree_fruit()` (service role; "today" = server clock in the player's zone). Errors: `DECK_NOT_FOUND`, `FRUIT_NOT_READY`. The farm calls it through `app/_components/FarmWorld.tsx`. Tests: `__tests__/fruit.test.ts` |
 | `index.ts` | `getFarmHud()` | Server Action. Auth: Optional. `FarmHud { level: GardenerLevel, streak, coins }` or null (coins = stored 🪙 balance `users.coins`, `services/coins.ts` `readCoins`) (`lib/gardenerLevel.ts`, `services/farmHud.ts`) |
 | `index.ts` | `getStreak()` | Server Action. Auth: Optional. `Streaks { current, best, practicedToday, lastDay }` or null |
 | `index.ts` | `StreakBadge` | Client. Header badge "🔥 N days" / "🌱 N days" (not yet today) from `shared/stores/StreakProvider`; hidden at 0 |
@@ -26,6 +27,11 @@ Per-player mastery for knowledge items.
 - `services/levels.ts` `fetchMasteryLevels` is the one chunked `user_progress` read, shared by both stats actions
 - Read-then-upsert is not atomic; move to a `SECURITY DEFINER` RPC before leaderboards (DATABASE.md)
 - An upsert FK error (23503) means the player has no `public.users` row: check the `handle_new_user` trigger
+
+## Tree fruit
+- `services/fruit.ts` (service role, allow-listed in `decks/__tests__/answerSecrecy.test.ts`): `recordDeckPracticeDay` (called by `recordDrillResult` after every saved answer with the tree from `gradeWithTree`; never fails the answer), `readRipeTrees` (player client: practised yesterday minus harvested today; empty before the migration), `harvestFruit`, pure `ripeTrees`
+- `getProgressByDecks` → each `DeckProgress` also carries `lastPracticedAt` (newest practice, ISO: the farm's withering, `shared/lib/treeVitality`) and `fruitReady`
+- `services/grading.ts` `gradeWithTree` = `gradeSubmission` + the item's `deckId` (from `decks/server` `findDrillItem`)
 
 ## Streaks
 - `services/streak.ts`: `recordPracticeDay` (called by `recordDrillResult` after every saved answer) and `loadStreaks`. Writes use the service role (allow-listed in `decks/__tests__/answerSecrecy.test.ts`); a failure is logged and `streakCount` is `null`, the answer still saves

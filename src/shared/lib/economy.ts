@@ -5,6 +5,9 @@
 export const STARTING_COINS = 300
 // Price of one tree seed (planting a new deck).
 export const SEED_PRICE_COINS = 100
+// A tree you drilled yesterday bears fruit at your midnight: harvest it once that day for this much
+// (migration 20261003000000 harvest_tree_fruit() pays the same; a test checks).
+export const FRUIT_COINS = 2
 
 // Cloning someone else's shared tree: a seed plus 1 🪙 per statement, capped at 150.
 export const CLONE_COST_CAP = 150

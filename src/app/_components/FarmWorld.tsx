@@ -3,12 +3,14 @@
 import { useState, type ComponentProps } from 'react'
 import { chopDeck, DeleteDeckDialog } from '@/features/decks'
 import { FarmIslandView, type ChopRun, type FarmPlotView } from '@/features/garden'
+import { harvestTreeFruit } from '@/features/progress'
 
-type FarmWorldProps = Omit<ComponentProps<typeof FarmIslandView>, 'onUproot'>
+type FarmWorldProps = Omit<ComponentProps<typeof FarmIslandView>, 'onUproot' | 'onHarvest'>
 
 type ChopTarget = { plot: FarmPlotView; chop: (run: ChopRun) => void }
 
-// Route-level composition for `/`: the garden's Farm World plus the decks feature's uproot dialog.
+// Route-level composition for `/`: the garden's Farm World plus the decks feature's uproot dialog and
+// progress' fruit harvest.
 // garden stays UI-only (no decks import). The dialog runs in farm mode: confirming hands the farm
 // decks' chopDeck to run; the farm removes the tree at once and syncs in the background (no redirect,
 // no page re-render).
@@ -21,6 +23,7 @@ export function FarmWorld(props: FarmWorldProps) {
     <>
       <FarmIslandView
         {...props}
+        onHarvest={(deckId, timeZone) => harvestTreeFruit({ deckId, timeZone })}
         onUproot={(plot, chop) => {
           setTarget({ plot, chop })
           setUprooting({ plot, chop })

@@ -47,6 +47,7 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Statement mastered (first 5/5) | +1 × farm buff, fraction carried | `award_mastery_coin()` |
 | Shop item | −1 to −50 (catalogue below) | `purchase_and_place_item()` |
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
+| Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
 
 ## Knowledge Engine
 
@@ -182,6 +183,25 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
   scenery (beach palms, islets, clouds) is fixed decor around the grid, not placements.
 - **Picking up** an item gives no refund; a picked-up tree goes back to the Shop's Trees tab unchanged.
 - **Visitors** see another farm's items and its public trees only, read-only, with no Shop.
+
+## Tree vitality: withering, evergreen trees and fruit
+
+- **Withering** (`shared/lib/treeVitality.ts`, tested): a farm tree nobody has practised for more than
+  72 hours (counted from planting if it was never practised) withers: it turns grey and stands still (no
+  sway, no crown lag, no bees, no falling leaves), shows a 🥀 sign and a "water it to bring it back" note.
+  One practice answer revives it. It costs nothing and changes no mastery. Trees without statements
+  never wither.
+- **Evergreen from stage 4**: a tree at growth stage 4 (Mature Canopy, ≥ 66 %) or 5 is immune: however long
+  it rests it keeps its colours, its sway and its bees ("🌳 Evergreen" in its popover). Stages 1–3 still
+  wither. A test renders the real farm tree markup to check an inactive stage 4 tree stays coloured and
+  swaying.
+- **Fruit**: every tree you practised yesterday (your local day) bears fruit at your midnight, worth
+  **2 🪙** (`FRUIT_COINS`), harvested once that day from the 🍎 +2 bubble or the popover. Any stage,
+  stage 4+ included (they just never wither). Server-enforced (migration 15): a per-tree practice log
+  written when an answer is saved (`user_progress.last_practiced_at` can't prove "yesterday"), a harvest
+  ledger with one row per tree per day, and a service-role-only `harvest_tree_fruit()` that checks both
+  and pays in one transaction; "today" comes from the server clock. Optimistic on the farm: the fruit
+  goes and the purse grows at once, rolled back with a toast if refused.
 
 ## Tree species: 10 × 5 = 50 sprites
 
@@ -391,6 +411,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 12 | `20260930000000_farm_grid.sql` | `garden_placements`, `purchase_and_place_item()`, `farm_coin_multiplier()`, buffed `award_mastery_coin()`, `users.coin_carry`, `uproot_deck()`, backfill of existing trees onto the grid |
 | 13 | `20261001000000_ten_tree_species.sql` | Retired species → successor, `decks_tree_type_check` (the ten ids). Run **after** deploying the code |
 | 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement()`: owner-only move, bounds + overlap checks, row lock |
+| 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days`, `tree_harvests`, `harvest_tree_fruit()` (service role: +2 🪙 once per tree per day after practice the day before) |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -403,7 +424,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
+| (pending) | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
+| `3e31e55` | feat(garden): hold-and-drag every tree and item on the island; streams get a click target |
 | `956ef3d` | fix(drill): 1–4 / A–D shortcuts for four choices, auto-advance after a right answer, tap to skip |
 | `88dc2e7` | feat(drill): zero-drop question engine: inherited context, key–value recall, cloze, recognition, fallbacks |
 | `eed0080` | perf(decks): faster tree opening: two-stage deck page, one auth call per request, prefetch on intent, matching skeleton, lazy canvas and workshop |
@@ -436,5 +458,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 71 files, 657 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 73 files, 677 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

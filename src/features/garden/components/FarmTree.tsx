@@ -1,7 +1,9 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import { FRUIT_COINS } from '@/shared/lib/economy'
 import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT } from '@/shared/lib/treeSkins'
+import { treeLook } from '@/shared/lib/treeVitality'
 import { usePrefetchOnIntent } from '@/shared/hooks/usePrefetchOnIntent'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
@@ -43,6 +45,8 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
   const stageName = TREE_STAGES[stage].name
   const mighty = plot.masteryPercent >= 100
   const thirsty = plot.needsWater === true && plot.itemCount > 0
+  // Withered (over 72 h without practice, below stage 4): grey and still, no bees or falling leaves.
+  const look = treeLook(plot.withered === true)
   const splash = useWateredSplash(plot.id, plot.wateredDay)
   const size = getTreeSizeTier(plot.itemCount)
   const sprite = plotSprite(geometry.x, geometry.y, size.scale)
@@ -54,6 +58,8 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
     `${plot.title}: ${stageName}, ${plot.masteryPercent}% grown`,
     `${size.name} (${plot.itemCount} ${plot.itemCount === 1 ? 'statement' : 'statements'})`,
     thirsty && 'needs watering today',
+    plot.withered && 'withered: practise it to bring it back',
+    plot.fruitReady && 'fruit ready to harvest',
     plot.needsWater === false && 'watered today',
     mighty && 'fully mastered',
   ]
@@ -84,10 +90,18 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
           'group-hover:scale-105 group-focus-visible:scale-105 group-active:scale-x-105 group-active:scale-y-95 group-active:duration-100',
           splash && 'scale-[1.05]',
         )}
-        style={{ left: tree.left - hitbox.left, top: tree.top - hitbox.top, width: tree.width, height: tree.height }}
+        style={{
+          left: tree.left - hitbox.left,
+          top: tree.top - hitbox.top,
+          width: tree.width,
+          height: tree.height,
+          // Static (a withered tree doesn't sway), so this filter costs nothing per frame.
+          filter: look.grayscale ? 'grayscale(1) saturate(0.5) brightness(0.95)' : undefined,
+        }}
       >
         <div
-          className="mg-tree-sway absolute inset-0"
+          className={cn('absolute inset-0', look.sways ? 'mg-tree-sway' : 'mg-withered')}
+          data-vitality={look.sways ? 'lively' : 'withered'}
           style={{ '--mg-sway-delay': `${-phase}s`, transformOrigin: `${TREE_BASE_RATIO.x * 100}% ${TREE_BASE_RATIO.y * 100}%` } as CSSProperties}
         >
           <TreeStageSvg
@@ -99,7 +113,7 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
             scale={size.scale}
             className="size-full [&>g]:pointer-events-auto"
           />
-          {animate && (
+          {animate && look.ambience && (
             // Same bottom-centre anchor as the drawing, so leaves and bees follow the scaled crown.
             <div
               className="absolute inset-0"
@@ -180,7 +194,18 @@ export function ChopPuff({ x, y }: { x: number; y: number }) {
 // Everything that labels a plot: title sign, mastery badge, 💧 / ✨ bubbles. Rendered in one layer
 // above every tree, so a big crown in front can never hide (or block clicks on) a neighbour's sign.
 // Decorative for assistive tech (the plot button's label says it all); clicks open the plot.
-export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; plot: FarmPlotView; onOpen: (plot: FarmPlotView) => void }) {
+export function PlotLabels({
+  geometry,
+  plot,
+  onOpen,
+  onHarvest,
+}: {
+  geometry: GroundPoint
+  plot: FarmPlotView
+  onOpen: (plot: FarmPlotView) => void
+  // Owner: pick the tree's fruit (the farm credits the coins at once and confirms in the background).
+  onHarvest?: (plot: FarmPlotView) => void
+}) {
   const { sign, badge, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, getTreeSizeTier(plot.itemCount).scale)
   const thirsty = plot.needsWater === true && plot.itemCount > 0
   const mighty = plot.masteryPercent >= 100
@@ -202,6 +227,22 @@ export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; 
           💧
         </span>
       )}
+      {/* Ripe fruit (practised yesterday): one tap harvests it. Beside the 💧 when both show. */}
+      {plot.fruitReady && onHarvest && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onHarvest(plot)
+          }}
+          aria-label={`Harvest the fruit of ${plot.title}: +${FRUIT_COINS} coins`}
+          title={`Harvest: +${FRUIT_COINS} 🪙`}
+          className="mg-bob pointer-events-auto absolute flex h-8 -translate-x-1/2 items-center gap-0.5 rounded-full border-[2.5px] border-[#b45309] bg-gradient-to-b from-[#fff7d6] to-[#ffd36b] px-1.5 font-game text-xs font-extrabold text-[#7c2d12] shadow-[inset_0_2px_0_#fff,0_3px_0_#b45309] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
+          style={at({ x: thirstyAt.x + (thirsty ? 38 : 0), y: thirstyAt.y })}
+        >
+          <span aria-hidden className="text-base">🍎</span>+{FRUIT_COINS}
+        </button>
+      )}
       {mighty && (
         <span
           onClick={open}
@@ -214,7 +255,7 @@ export function PlotLabels({ geometry, plot, onOpen }: { geometry: GroundPoint; 
       {/* Floating wooden mastery badge by the right corner of the mound. */}
       <MasteryBadge percent={plot.masteryPercent} style={at(badge)} onClick={open} />
       {/* Rustic post sign at the front-left of the mound: the deck title, out of the tree's way. */}
-      <PlotSign title={plot.title} emoji={TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} mighty={mighty} style={at(sign)} onClick={open} />
+      <PlotSign title={plot.title} emoji={plot.withered ? '🥀' : TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} mighty={mighty} style={at(sign)} onClick={open} />
     </div>
   )
 }

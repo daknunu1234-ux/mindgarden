@@ -15,6 +15,8 @@ const ADMIN_USERS = [
   ANSWERS,
   ['features', 'progress', 'services', 'streak.ts'].join(sep),
   ['features', 'progress', 'services', 'coins.ts'].join(sep),
+  // fruit: write deck_practice_days, call harvest_tree_fruit (the only other writer of users.coins).
+  ['features', 'progress', 'services', 'fruit.ts'].join(sep),
   ['features', 'tournament', 'services', 'answers.ts'].join(sep),
 ]
 

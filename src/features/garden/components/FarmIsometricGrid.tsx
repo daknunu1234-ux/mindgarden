@@ -70,6 +70,8 @@ type FarmIsometricGridProps = {
   onBuildCancel: () => void
   onOpenPlot: (plot: FarmPlotView) => void
   onOpenItem: (placement: Placement) => void
+  // Owner: harvest a ripe tree's fruit (shown as a 🍎 bubble).
+  onHarvestPlot?: (plot: FarmPlotView) => void
   // Direct drag-and-drop (the owner's farm, outside build mode): hold a tree or item to pick it up
   // (lib/dragGesture.ts). onDragStart answers whether it was picked up (it enters Move mode, and the
   // ghost then follows onBuildHover); onDragEnd gets the tile under the release (null: off the island).
@@ -99,6 +101,7 @@ function FarmIsometricGridImpl({
   onBuildCancel,
   onOpenPlot,
   onOpenItem,
+  onHarvestPlot,
   dragEnabled = false,
   onDragStart,
   onDragEnd,
@@ -209,7 +212,8 @@ function FarmIsometricGridImpl({
     })
     const animated = new Set(
       trees
-        .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3)
+        // Withered trees stand still: no bees, no falling leaves.
+        .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3 && !plot.withered)
         .slice(0, MAX_ANIMATED)
         .map(({ placement }) => placement.id),
     )
@@ -274,7 +278,7 @@ function FarmIsometricGridImpl({
       {/* Standing things, back to front. In build mode they let clicks through to the grid. */}
       <div className={build ? 'pointer-events-none' : undefined}>
         {scene.trees.map(({ placement, plot, animate, buffs }) => (
-          <TreeTile key={placement.id} placement={placement} plot={plot} animate={animate} buffs={buffs} lifted={placement.id === movingId} onOpen={onOpenPlot} />
+          <TreeTile key={placement.id} placement={placement} plot={plot} animate={animate} buffs={buffs} lifted={placement.id === movingId} onOpen={onOpenPlot} onHarvest={onHarvestPlot} />
         ))}
         {scene.items.map(({ placement, links }) => (
           <FarmItem key={placement.id} placement={placement} links={links} lifted={placement.id === movingId} onOpen={onOpenItem} />
@@ -355,6 +359,7 @@ const TreeTile = memo(function TreeTile({
   buffs,
   lifted,
   onOpen,
+  onHarvest,
 }: {
   placement: Placement
   plot: FarmPlotView
@@ -362,6 +367,7 @@ const TreeTile = memo(function TreeTile({
   buffs: string
   lifted: boolean
   onOpen: (plot: FarmPlotView) => void
+  onHarvest?: (plot: FarmPlotView) => void
 }) {
   const ground = groundOf(placement)
   const phase = treeSwayPhase(placement.x, placement.y)
@@ -380,7 +386,7 @@ const TreeTile = memo(function TreeTile({
       <div {...{ [PLACEMENT_ATTR]: placement.id }} className="contents">
         <PlotButton geometry={ground} plot={plot} animate={animate} phase={phase} onOpen={onOpen} />
       </div>
-      <PlotLabels geometry={ground} plot={plot} onOpen={onOpen} />
+      <PlotLabels geometry={ground} plot={plot} onOpen={onOpen} onHarvest={onHarvest} />
       <BuffTags ground={ground} scale={getTreeSizeTier(plot.itemCount).scale} current={current} next={next} />
     </>
   )

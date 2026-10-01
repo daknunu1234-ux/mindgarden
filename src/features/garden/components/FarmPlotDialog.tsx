@@ -4,7 +4,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Network, PencilLine } from 'lucide-react'
 import { GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
+import { FRUIT_COINS } from '@/shared/lib/economy'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
+import { isImmune } from '@/shared/lib/treeVitality'
 import { useTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
 import { GrowthBar } from './GrowthBar'
@@ -19,25 +21,27 @@ type FarmPlotDialogProps = {
   onRemoveFromFarm?: (plot: FarmPlotView) => void
   // Owners only: pick the tree up and move it to another tile (Move mode on the farm).
   onMove?: (plot: FarmPlotView) => void
+  // Owners only: harvest today's fruit (practised yesterday).
+  onHarvest?: (plot: FarmPlotView) => void
 }
 
 // Tree popover: 💧 water (practise), 🔍 roots (mindmap), edit, ↔️ move, 📦 remove from the farm and 🪓 chop, all
 // owner only. Visitors (strict read-only mode) explore the roots, clone to practise, and ⚔️ compete
 // while the owner hosts a Mind Tournament.
-function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm, onMove }: FarmPlotDialogProps) {
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onRemoveFromFarm, onMove, onHarvest }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} onMove={onMove} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onRemoveFromFarm={onRemoveFromFarm} onMove={onMove} onHarvest={onHarvest} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm' | 'onMove'> & { plot: FarmPlotView }
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onRemoveFromFarm' | 'onMove' | 'onHarvest'> & { plot: FarmPlotView }
 
-function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove }: PlotDetailsProps) {
+function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove, onHarvest }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -68,8 +72,19 @@ function PlotDetails({ plot, onUproot, onRemoveFromFarm, onMove }: PlotDetailsPr
           )}
           {plot.needsWater === true && canWater && <p className="font-semibold text-sky-800">💧 Thirsty: practise today to water it.</p>}
           {plot.needsWater === false && <p className="font-semibold text-emerald-800">Watered today 🌿</p>}
+          {plot.withered && <p className="font-semibold text-stone-600">🥀 Withered after 3 days without practice: water it to bring it back.</p>}
+          {plot.isOwner && !plot.withered && isImmune(stage) && (
+            <p className="font-semibold text-emerald-800">🌳 Evergreen: mastered this deeply, it never withers.</p>
+          )}
         </div>
       </GameSlab>
+
+      {/* Practised yesterday: today's fruit hangs on it (also a 🍎 bubble on the farm). */}
+      {plot.isOwner && plot.fruitReady && onHarvest && (
+        <GameButton tone="sun" size="lg" className="w-full" onClick={() => onHarvest(plot)}>
+          🍎 Harvest fruit (+{FRUIT_COINS} 🪙)
+        </GameButton>
+      )}
 
       <div className="grid gap-3">
         {!plot.isOwner ? (

@@ -54,8 +54,10 @@ const db = { progress: [] as Row[], coins: new Map<string, number>(), rpcCalls: 
 let nextCorrect = true
 
 vi.mock('../services/grading', () => ({
-  gradeSubmission: vi.fn(async () => ({ success: true, data: { isCorrect: nextCorrect, correctTag: 'A' } })),
+  gradeWithTree: vi.fn(async () => ({ success: true, data: { answer: { isCorrect: nextCorrect, correctTag: 'A' }, deckId: 'deck-1' } })),
 }))
+// Tree fruit: every saved answer logs the tree's practice day (tested below).
+vi.mock('../services/fruit', () => ({ recordDeckPracticeDay: vi.fn(async () => undefined) }))
 vi.mock('../services/streak', () => ({
   recordPracticeDay: vi.fn(async () => ({ success: true, data: { current: 1, best: 1, practicedToday: true, lastDay: null } })),
 }))
@@ -76,6 +78,7 @@ vi.mock('@/shared/lib/supabase/admin', () => ({
   }),
 }))
 
+import { recordDeckPracticeDay } from '../services/fruit'
 import { recordDrillResult } from '../services/recordDrillResult'
 
 // The player's own client: the few user_progress / users queries recordDrillResult makes.
@@ -182,5 +185,20 @@ describe('recordDrillResult coins', () => {
     await answer(ITEM_A, false)
     expect(db.progress).toHaveLength(1)
     expect(db.progress[0]).toMatchObject({ user_id: USER, knowledge_item_id: ITEM_A, mastery_level: 0, mistake_count: 1 })
+  })
+})
+
+describe('tree fruit: the practice day of the tree', () => {
+  it("logs the answered tree for the player's local day on every saved answer, right or wrong", async () => {
+    vi.mocked(recordDeckPracticeDay).mockClear()
+    await answer('fruit-item-1', false)
+    await answer('fruit-item-1', true)
+    const calls = vi.mocked(recordDeckPracticeDay).mock.calls
+    expect(calls).toHaveLength(2)
+    for (const [userId, deckId, day] of calls) {
+      expect(userId).toBe(USER)
+      expect(deckId).toBe('deck-1')
+      expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
   })
 })

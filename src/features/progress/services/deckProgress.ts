@@ -6,6 +6,7 @@ import type { Database } from '@/shared/types/database.types'
 import { ok, type ActionResult } from '@/shared/types/result'
 import { summarizeDeckProgress, type DeckProgress, type PracticeRow } from '../lib/deckProgress'
 import { localDay } from '../lib/streak'
+import { readRipeTrees } from './fruit'
 import { fetchPracticeRows } from './levels'
 import { latestTimeZone } from './streak'
 
@@ -34,7 +35,9 @@ export async function listProgressByDecks(
     timeZone = zone
   }
 
-  // "Watered today" uses the player's own calendar day (timezone of their latest practice day).
+  // "Watered today" and "fruit today" use the player's own calendar day (timezone of their latest
+  // practice day).
   const clock = { today: localDay(new Date(), timeZone), timeZone }
-  return ok(decks.data.map((deck) => summarizeDeckProgress(deck.deckId, deck.items, rows, clock)))
+  const ripe = userId ? await readRipeTrees(supabase, userId, decks.data.map((d) => d.deckId), clock.today) : new Set<string>()
+  return ok(decks.data.map((deck) => summarizeDeckProgress(deck.deckId, deck.items, rows, clock, ripe)))
 }

@@ -226,6 +226,83 @@ export type Database = {
           },
         ]
       }
+      // Migration 20261003000000_tree_fruit.sql. Players read their own rows; only the server writes.
+      deck_practice_days: {
+        Row: {
+          user_id: string
+          deck_id: string
+          day: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          deck_id: string
+          day: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          deck_id?: string
+          day?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'deck_practice_days_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'deck_practice_days_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      // Migration 20261003000000_tree_fruit.sql. Players read their own rows; only the server writes.
+      tree_harvests: {
+        Row: {
+          user_id: string
+          deck_id: string
+          day: string
+          coins: number
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          deck_id: string
+          day: string
+          coins: number
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          deck_id?: string
+          day?: string
+          coins?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'tree_harvests_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'tree_harvests_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       // Migration 20260928000900_mind_tournament.sql. Players read their own rows; only
       // record_tournament_answer() (service role) writes.
       deck_tournament_participants: {
@@ -453,6 +530,11 @@ export type Database = {
     }
     Functions: {
       // Migration 20260928000300_user_coins.sql. Service role only.
+      // Migration 20261003000000_tree_fruit.sql. Service role only: pays FRUIT_COINS once per tree per day.
+      harvest_tree_fruit: {
+        Args: { p_user_id: string; p_deck_id: string; p_today: string }
+        Returns: { coins_earned: number; total_coins: number }[]
+      }
       award_mastery_coin: {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]

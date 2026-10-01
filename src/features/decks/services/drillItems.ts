@@ -36,6 +36,8 @@ export type DrillSourceItem = {
 export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'> & {
   // Owner of the item's deck: grading refuses anyone else (read-only visitors).
   ownerId: string
+  // The item's tree (a saved answer logs a practice day for it: tree fruit).
+  deckId: string
   // Every item of the deck, exactly as listDrillItems returns them: the question engine needs the
   // same context to rebuild the question it showed, or the correct tag would differ.
   deckItems: DrillSourceItem[]
@@ -171,6 +173,7 @@ export async function findDrillItem(
     trapRules: own.trapRules,
     siblingStatements: own.siblingStatements,
     ownerId: deck.data.deck.ownerId,
+    deckId: deck.data.deck.id,
     deckItems: deck.data.items,
   })
 }

@@ -16,9 +16,19 @@ import type { GradedAnswer } from '../types'
 // earned on someone else's tree.
 export async function gradeSubmission(
   supabase: SupabaseClient<Database>,
-  { itemId, seed, tag }: DrillSubmission,
+  submission: DrillSubmission,
   viewerId: string | null,
 ): Promise<ActionResult<GradedAnswer>> {
+  const graded = await gradeWithTree(supabase, submission, viewerId)
+  return graded.success ? ok(graded.data.answer) : graded
+}
+
+// The same grading, plus the item's tree (recordDrillResult logs the tree's practice day with it).
+export async function gradeWithTree(
+  supabase: SupabaseClient<Database>,
+  { itemId, seed, tag }: DrillSubmission,
+  viewerId: string | null,
+): Promise<ActionResult<{ answer: GradedAnswer; deckId: string }>> {
   const item = await findDrillItem(supabase, itemId)
   if (!item.success) return item
   if (!canPractice(item.data.ownerId, viewerId)) return fail('FORBIDDEN_VISITOR_PRACTICE', VISITOR_PRACTICE_MESSAGE)
@@ -27,5 +37,5 @@ export async function gradeSubmission(
   const built = buildQuestion(prepareDeck(item.data.deckItems.map(toDeckNote)), item.data.id, seed)
   if (!built.ok) return fail('ITEM_NOT_FOUND', 'This item can no longer be drilled')
 
-  return ok({ isCorrect: tag === built.question.correctTag, correctTag: built.question.correctTag })
+  return ok({ answer: { isCorrect: tag === built.question.correctTag, correctTag: built.question.correctTag }, deckId: item.data.deckId })
 }

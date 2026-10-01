@@ -45,7 +45,7 @@
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | streak_count | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Consecutive active days |
 | last_active_at | DATE | NULLABLE | Drives streak logic |
-| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck` and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
+| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
 | coin_carry | NUMERIC(6,3) | NOT NULL, DEFAULT 0, 0 ≤ x < 1 | Fraction of a coin carried between buffed mastery payouts (migration `20260930000000`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
@@ -237,6 +237,29 @@ Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 pe
 
 ⚠️ Players can still write their own `mastery_level` (see *Supabase Notes*), so a player could mark an item 5/5 directly and collect its one coin without drilling. The cap above still holds: one coin per item. Close this with the planned `SECURITY DEFINER` progress RPC before coins buy anything.
 
+**deck_practice_days** — *Tree practice log (migration `20261003000000_tree_fruit.sql`): one row per player per tree per local day with at least one saved (owner) practice answer*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
+| deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | The practised tree |
+| day | DATE | NOT NULL | Player's local calendar day (same zone rules as `practice_days`) |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(user_id, deck_id, day)* | — | PK | First answer of the day inserts, later ones change nothing |
+
+Written by `recordDrillResult` (service role, `progress/services/fruit.ts`) after every saved owner answer; Mind Tournament answers never count. `user_progress.last_practiced_at` can't prove "yesterday" (overwritten by every answer) and `practice_days` is per player, so this log is what fruit is checked against.
+
+**tree_harvests** — *Fruit ledger (same migration): one row per player per tree per day they harvested*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
+| deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | |
+| day | DATE | NOT NULL | The harvest day (player's local day, computed on the server) |
+| coins | INT | NOT NULL, CHECK > 0 | 🪙 paid (FRUIT_COINS = 2) |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(user_id, deck_id, day)* | — | PK | Makes each tree's fruit claimable once a day |
+
+**Tree fruit** (`public.harvest_tree_fruit(user, deck, today)`, `SECURITY DEFINER`, EXECUTE for **service_role only**; the `harvestTreeFruit` action computes `today` from the server clock and the player's timezone, so players can't pick the day): the tree must be the player's, they must have a `deck_practice_days` row for `today - 1`, and today's `tree_harvests` insert must be the first (`ON CONFLICT DO NOTHING` → `FRUIT_NOT_READY`); then `users.coins + 2` in the same transaction under a row lock. Any growth stage bears fruit. **Withering** (grey, still farm trees after 72 h without practice; immune from growth stage 4) is computed in the app from `user_progress.last_practiced_at` (and the deck's `created_at` for never-practised trees): nothing is stored.
+
 **practice_days** — *Streak log: one row per player per local day with at least one saved answer*
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -342,6 +365,8 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 | tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
 | garden_placements | Owner; others: items + public trees | ✗ direct; only via `purchase_and_place_item()` | ✗ | Owner |
+| deck_practice_days | Owner | ✗ (service role: `recordDrillResult`) | ✗ | ✗ (cascades only) |
+| tree_harvests | Owner | ✗ (service role: `harvest_tree_fruit()`) | ✗ | ✗ (cascades only) |
 | deck_tournament_participants | Owner (boards through the two board functions) | ✗ (service role: `record_tournament_answer`) | ✗ (same) | ✗ (cascades only) |
 | deck_tournament_item_progress | Owner (through the participant) | ✗ (service role) | ✗ (service role) | ✗ (cascades only) |
 
@@ -431,6 +456,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 11 | `20260928001000_display_names.sql` | `users.display_name` (public Garden Name, 2–30, CHECK), its column grant, `get_display_names()`, and both tournament board functions re-created to return `display_name` instead of `full_name` |
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
+  | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
   | 14 | `20261002000000_move_garden_placement.sql` | `move_garden_placement(p_placement_id, p_new_x, p_new_y)`: owner-only move of a farm placement (bounds with its own footprint, overlaps excluding itself, row lock); still no UPDATE grant on `garden_placements` |
   | 10 | `20260928000900_mind_tournament.sql` | `decks.is_tournament_open`, `deck_tournament_participants` + `deck_tournament_item_progress` + RLS (read own), `record_tournament_answer()` (service role only), the two board functions |
 
@@ -443,6 +469,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 15** can run any time after file 14. Until it runs, saved answers still count (the tree practice day is just logged as missing), no tree shows fruit and harvesting answers "Could not harvest this tree" (the log names the migration). Withering needs no migration
 - **File 12** can run any time after file 11. Until it runs, the farm is empty (the log names the migration), the Shop can't place anything, chopping falls back to the plain delete (no refund) and coins pay ×1
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty

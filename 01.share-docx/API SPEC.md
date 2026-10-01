@@ -72,6 +72,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved in the Hall of Fame); your run is frozen |
 | `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
 | `TILE_UNAVAILABLE` | 409 | Farm grid: the spot is taken or off the 16 × 16 grid, or the tree is already planted (`placeFarmItem`) |
+| `FRUIT_NOT_READY` | 409 | Tree fruit: the tree wasn't practised yesterday, or today's fruit is already harvested (`harvestTreeFruit`) |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
 ---
@@ -113,6 +114,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm items (a tree goes back to the Shop, no refund) | Required |
+| Progress | `harvestTreeFruit` | Action/POST | Collect today's fruit of a tree you practised yesterday: +2 🪙, once per tree per day | Required (owner) |
 | Decks | `chopDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress, farm tile; Woodshop refund), answers `{ id, refund, totalCoins }` (no redirect, no revalidate). The farm's 🪓 Chop and the deck page's Danger Zone | Required |
 | Drill | `getDrillQuestion` | Action/POST | Not built (superseded by `getDrillSession({ nodeId })`) | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (one 2–4 choice question per item: cloze, recall, true/false, recognition…). Owner only | Required (owner) |
@@ -476,6 +478,16 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - `removeFarmPlacement`: no refund, no `revalidatePath` (optimistic on the farm). A tree goes back to the Shop's Trees tab unchanged (its deck and progress stay); only chopping pays the Woodshop refund
 - UI (`garden`): the farm's 🏪 Shop (`FarmShopModal`, tabs 🌳 Trees · 🏗️ Structures · 🌊 Landscape · 🪵 Decorations · 🐮 Animals) → placement mode on `FarmIsometricGrid` (green / red ghost; click to place, tap twice on touch; Esc, right-click or Cancel leaves without paying)
 
+### `harvestTreeFruit` (progress)
+```typescript
+// Input (HarvestFruitDto): { deckId: string /* uuid */; timeZone?: string /* browser IANA zone; unknown → UTC */ }
+// data: { coinsEarned: number /* FRUIT_COINS = 2 */; totalCoins: number }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, DECK_NOT_FOUND (not yours), FRUIT_NOT_READY, INTERNAL_ERROR
+```
+- "Today" = the server clock in the player's timezone (never sent by the client); `harvest_tree_fruit()` (service role, DATABASE.md "Tree fruit") checks ownership, a practice day for the tree yesterday and today's first harvest, then pays in one transaction
+- A tree bears fruit when the player saved at least one practice answer on it yesterday (their local day; `deck_practice_days`, written by `submitDrillResult`). Any growth stage, including the stage 4+ trees that never wither
+- UI: a 🍎 +2 bubble on the farm tree and "🍎 Harvest fruit" in its popover. Optimistic: the fruit goes and the purse grows at once; a refusal puts both back with a toast. No `revalidatePath`. Wired in `app/_components/FarmWorld.tsx` (garden imports no other feature)
+
 ### `getFarmHud` (progress)
 ```typescript
 // Input: none
@@ -516,7 +528,9 @@ Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × i
         itemCount: number; items: { itemId: string; masteryLevel: 0 | 1 | 2 | 3 | 4 | 5 }[];
         mightyRoots: number;                                // roots whose items are all 5/5
         lastPracticedDay: string | null;                    // newest practice, player's local day
-        practicedToday: boolean }>                          // false also when never practised (farm 💧)
+        practicedToday: boolean;                            // false also when never practised (farm 💧)
+        lastPracticedAt: string | null;                     // newest practice (ISO): the farm withers trees below stage 4 after 72 h
+        fruitReady: boolean }>                              // practised yesterday, not harvested today (🍎 +2 🪙)
 // Errors: VALIDATION_FAILED
 ```
 - Anonymous → every `masteryPercent` = 0 and `masteryLevel` = 0; unpractised items count as 0
