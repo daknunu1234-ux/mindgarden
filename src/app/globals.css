@@ -495,6 +495,31 @@
   .mg-sparkle { animation: mg-sparkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 }
 
+/* ── Tree labels on the farm (garden/FarmTree, lib/treeLabels) ────────────────
+   A tree's label capsule, name and progress in one pill (`.mg-tree-label`). With "show all tree labels" off, the farm
+   root has `.mg-labels-hover`: labels are hidden and fade / rise in for the tree that is hovered,
+   keyboard-focused or was just tapped or clicked (it keeps focus; on touch screens the tap's hover
+   sticks too), and stay while the pointer is on the label itself. `.mg-plot` is the tree's wrapper,
+   `.mg-plot-labels` the labels layer right after it. Opacity / transform only. */
+.mg-tree-label {
+  transition: opacity 180ms ease-out, transform 180ms cubic-bezier(.34, 1.56, .64, 1), translate 200ms ease-out;
+}
+.mg-labels-hover .mg-tree-label {
+  opacity: 0;
+  transform: translateY(6px) scale(0.94);
+  pointer-events: none;
+}
+.mg-labels-hover .mg-plot:hover + .mg-plot-labels .mg-tree-label,
+.mg-labels-hover .mg-plot:focus-within + .mg-plot-labels .mg-tree-label,
+.mg-labels-hover .mg-plot-labels .mg-tree-label:hover {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-tree-label { transition: opacity 120ms linear; }
+}
+
 /* ── Compositing hints for the farm's always-moving pieces ────────────────────
    Each swaying tree, drifting cloud, floating ghost and wandering animal gets its own GPU layer
    (will-change + translate3d), so its animation is a cheap composite instead of repainting the

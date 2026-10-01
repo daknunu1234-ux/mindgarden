@@ -35,6 +35,7 @@ export type PlotSprite = {
   treeTop: number
   sign: Anchor
   badge: Anchor
+  label: Anchor
   thirsty: Anchor
   mighty: Anchor
 }
@@ -54,6 +55,9 @@ export function plotSprite(x: number, y: number, scale = 1): PlotSprite {
     // mound (not the crown), so they stay put for every tier.
     sign: { x: x - PLOT_HALF_W * 0.7, y: y + PLOT_HALF_H * 0.34 },
     badge: { x: x + PLOT_HALF_W * 0.5, y: y - 6 },
+    // The name + progress capsule: centred on the trunk, at the front edge of the tile, just under
+    // the tree's base. Below the crown and its bubbles for every tier.
+    label: { x, y: y + PLOT_HALF_H * 0.5 },
     // Bubbles ride just above the crown, spreading with it.
     thirsty: { x: x + 30 * s, y: treeTop + 2 },
     mighty: { x: x - 46 * s, y: treeTop + 4 },

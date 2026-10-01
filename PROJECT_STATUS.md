@@ -233,6 +233,18 @@ The home page (`/`) is a Hay Day style farm: `src/features/garden`, table `garde
 - **One layout table**: `garden_placements` already is the island layout (`item_type`, `grid_x`, `grid_y`,
   `width`, `height` for every placed tree and item), so drag-and-drop needed no migration. The island's
   scenery (beach palms, islets, clouds) is fixed decor around the grid, not placements.
+- **Tree label capsule** (`FarmTree` `TreeLabel`): each tree's name and progress are one dark
+  see-through pill, `[ 🪴 Name • 42% ]`, 18 px tall with 11 px text, centred on the trunk at the front
+  edge of its tile (`plotSprite` `label`), under the crown and clear of the 💧 / 🍎 / ✨ bubbles. A long
+  name is cut off; the percentage turns gold from 90 %. It replaced the wooden post sign and the round
+  mastery badge. No backdrop blur (it repeats on every tile).
+- **Tree labels toggle** (`garden/lib/treeLabels.ts`, tested; `hooks/useTreeLabels.ts`): a small 🏷
+  button above the zoom buttons switches between showing every tree's label capsule, and
+  a clean island where it appears only for the tree that is hovered, keyboard-focused or was just
+  tapped / clicked (it fades and rises in, 180 ms). **Off by default**; the choice is remembered in
+  `localStorage` (`mindgarden:showAllTreeLabels`). The 💧 water, 🍎 fruit and ✨ mastered bubbles are
+  prompts, not labels: they always show. The mode is one class on the farm root (`.mg-labels-hover`)
+  and the reveal is CSS, so flipping the toggle or hovering re-renders no tree.
 - **Tree popover, compact**: under the big 💧 Water button (and 🍎 Harvest when fruit is ready), the
   owner's other actions are one pill row with dividers: Roots · ↔️ Move · 🪓 Chop, each with a
   tooltip. Roots opens the tree's page (mindmap, with the Tree Workshop below); the duplicate Edit
@@ -536,6 +548,7 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
 | (pending) | feat(decks): surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
 | (pending) | feat(garden): three surreal tree species (Crystal Flora, Cosmic Nebula, Chrono Willow) with their own light effects, in prismatic / rainbow palettes |
 | `a896a62` | feat(streak): streak milestone coins (7, 30, every 100 days) on the day's first watering; level / XP system removed. The same commit also carries: coins and streak pills in the site header; the compact tree popover (no Edit, no Store); the Tree Workshop layout (editor first, settings bar, inline Add root); the distant karst islands |
@@ -574,5 +587,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 75 files, 721 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 76 files, 734 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

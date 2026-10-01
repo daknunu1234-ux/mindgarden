@@ -10,19 +10,22 @@ import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import type { ActionResult } from '@/shared/types/result'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
+import { cn } from '@/shared/utils/cn'
 import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
+import { useTreeLabels } from '../hooks/useTreeLabels'
 import { getTreeStage } from '../hooks/useTreeStage'
 import { dropOutcome } from '../lib/dragGesture'
 import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
 import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
 import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
+import { treeLabelsModeClass } from '../lib/treeLabels'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
-import { BuffPills, FarmDock, GardenBanner, SignInInvite, ZoomControls, type FarmBuffSummary } from './FarmHud'
+import { BuffPills, FarmDock, GardenBanner, SignInInvite, TreeLabelsToggle, ZoomControls, type FarmBuffSummary } from './FarmHud'
 import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
 import { FarmItemDialog } from './FarmItemDialog'
 import { FarmPlotDialog } from './FarmPlotDialog'
@@ -86,6 +89,8 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
   const { open: openLogin } = useLoginDialog()
   const isOwner = signedIn && !visitor
+  // Show every tree's sign and badge, or only the hovered / tapped tree's (remembered per browser).
+  const labels = useTreeLabels()
 
   const world = useMemo(() => ({ w: FARM_WORLD.w, h: FARM_WORLD.h }), [])
   const focus = useMemo(() => ({ x: FARM_WORLD.w / 2, y: FARM_WORLD.h / 2 + 40 }), [])
@@ -360,7 +365,15 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   )
 
   return (
-    <div className="relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]">
+    // The labels mode is one class here (hover mode hides tree labels in CSS), so flipping the toggle
+    // re-renders no tree.
+    <div
+      className={cn(
+        'relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]',
+        treeLabelsModeClass(labels.showAll),
+      )}
+      data-tree-labels={labels.showAll ? 'all' : 'hover'}
+    >
       <div
         ref={scrollRef}
         className={
@@ -447,7 +460,8 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         </div>
       </div>
       {leftEdge && !build && <div className="pointer-events-none absolute top-1/2 left-0 z-10 -translate-y-1/2">{leftEdge}</div>}
-      <div className="pointer-events-none absolute bottom-24 left-2 sm:bottom-6 sm:left-4">
+      <div className="pointer-events-none absolute bottom-24 left-2 flex flex-col items-center gap-3 sm:bottom-6 sm:left-4">
+        <TreeLabelsToggle showAll={labels.showAll} onToggle={labels.toggle} />
         <ZoomControls
           zoom={zoom}
           onZoomIn={camera.zoomIn}

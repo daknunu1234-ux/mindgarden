@@ -22,6 +22,12 @@ export type GroundPoint = { x: number; y: number }
 // Plot labels sit above every tree and building (whose z-index is their ground y).
 export const LABEL_LAYER = 100_000
 
+// A tree's label: one capsule with its name and progress (TreeLabel). With "show all tree labels" off (the farm root has
+// `.mg-labels-hover`, lib/treeLabels.ts), globals.css hides these and fades them in for the tree
+// that is hovered, focused or was just tapped. The 💧 / 🍎 / ✨ bubbles are prompts, not labels:
+// they always show.
+export const TREE_LABEL = 'mg-tree-label'
+
 // ── Plot: tree, ambience, badges and nameplate (HTML button over the SVG bed) ─
 
 type PlotButtonProps = {
@@ -208,7 +214,7 @@ export function PlotLabels({
   // Owner: pick the tree's fruit (the farm credits the coins at once and confirms in the background).
   onHarvest?: (plot: FarmPlotView) => void
 }) {
-  const { sign, badge, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, treeScale(plot.treeType, plot.itemCount))
+  const { label, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, treeScale(plot.treeType, plot.itemCount))
   const thirsty = plot.needsWater === true && plot.itemCount > 0
   const mighty = plot.masteryPercent >= 100
   const open = (e: { stopPropagation: () => void }) => {
@@ -218,7 +224,8 @@ export function PlotLabels({
   const at = (p: { x: number; y: number }): CSSProperties => ({ left: p.x, top: p.y })
 
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0" style={{ zIndex: LABEL_LAYER + Math.round(geometry.y) }}>
+    // mg-plot-labels: must directly follow the tree's `.mg-plot` wrapper (see TREE_LABEL below).
+    <div aria-hidden className="mg-plot-labels pointer-events-none absolute inset-0" style={{ zIndex: LABEL_LAYER + Math.round(geometry.y) }}>
       {/* Thought-bubble asking for water, just above the crown. */}
       {thirsty && (
         <span
@@ -254,56 +261,37 @@ export function PlotLabels({
           ✨
         </span>
       )}
-      {/* Floating wooden mastery badge by the right corner of the mound. */}
-      <MasteryBadge percent={plot.masteryPercent} style={at(badge)} onClick={open} />
-      {/* Rustic post sign at the front-left of the mound: the deck title, out of the tree's way. */}
-      <PlotSign title={plot.title} emoji={plot.withered ? '🥀' : TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} mighty={mighty} style={at(sign)} onClick={open} />
+      {/* One compact capsule at the tree's base: its name and how far it has grown. */}
+      <TreeLabel title={plot.title} percent={plot.masteryPercent} emoji={plot.withered ? '🥀' : TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} style={at(label)} onClick={open} />
     </div>
   )
 }
 
-// Round wooden badge with a mastery ring (green → gold from the golden-bloom threshold).
-function MasteryBadge({ percent, style, onClick }: { percent: number; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
+// The tree's label: `[ 🌿 Tree name • 75% ]` on one line, a dark see-through pill 18 px tall at the
+// front edge of the tile (plotSprite `label`), under the crown and its bubbles. No backdrop blur: it
+// repeats on every tile, and blurs there cost fill-rate on every frame. The percentage turns gold from
+// the golden-bloom threshold.
+function TreeLabel({ title, percent, emoji, style, onClick }: { title: string; percent: number; emoji: string; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
   const pct = Math.min(100, Math.max(0, Math.round(percent)))
   const golden = pct >= GOLDEN_BLOOM_PERCENT
-  const ring = golden ? '#f6b928' : '#4fd86b'
   return (
     <span
       onClick={onClick}
-      className="pointer-events-auto absolute flex size-[38px] -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border-[2.5px] border-[#4a230c] shadow-[0_3px_0_#4a230c,0_6px_8px_rgba(47,95,22,0.35)] transition-transform duration-200 hover:-translate-y-1"
-      style={{ ...style, background: `conic-gradient(${ring} ${pct * 3.6}deg, #6b3d18 0deg)` }}
+      className={cn(
+        TREE_LABEL,
+        'pointer-events-auto absolute flex h-[18px] max-w-[156px] -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border bg-black/55 px-2 font-game text-[11px] leading-none font-bold whitespace-nowrap text-white',
+        golden ? 'border-yellow-300/60' : 'border-white/10',
+      )}
+      style={style}
     >
-      <span
-        className={cn(
-          'flex size-[27px] items-center justify-center rounded-full border-2 border-[#4a230c] font-game text-[11px] leading-none font-extrabold tabular-nums shadow-[inset_0_2px_0_rgba(255,255,255,0.45)]',
-          golden ? 'bg-gradient-to-b from-[#fff3a3] to-[#f6b928] text-[#5a2a02]' : 'bg-gradient-to-b from-[#e8a860] to-[#b36a2c] text-[#fff7e6] [text-shadow:0_1px_0_rgba(69,26,3,0.7)]',
-        )}
-      >
-        {pct}
-        <span className="text-[7px]">%</span>
+      <span aria-hidden className="shrink-0 text-[10px]">
+        {emoji}
       </span>
-    </span>
-  )
-}
-
-// A chunky wooden sign on a post: the growth stage's emoji and the title on a glossy plank (gold
-// trim once fully mastered), stake into the soil, soft ground shadow. Wiggles on hover.
-function PlotSign({ title, emoji, mighty, style, onClick }: { title: string; emoji: string; mighty: boolean; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
-  return (
-    <span onClick={onClick} className="group/sign pointer-events-auto absolute flex -translate-x-1/2 cursor-pointer flex-col items-center" style={style}>
-      <span
-        className={cn(
-          'relative z-10 flex max-w-[132px] items-center gap-1 rounded-[9px] border-[2.5px] border-[#3b1f0e] bg-gradient-to-b from-[#f6c27e] via-[#dc9148] to-[#b8702f] px-2 py-[3px] font-game text-[12px] leading-tight font-extrabold text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.5),0_3px_0_#3b1f0e] [text-shadow:0_1.5px_0_#3b1f0e,1px_0_0_#3b1f0e,-1px_0_0_#3b1f0e,0_-1px_0_#3b1f0e] transition-transform duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] group-hover/sign:-translate-y-0.5 group-hover/sign:-rotate-3',
-          mighty && 'border-[#8a4a0c] ring-2 ring-[#ffd23f]',
-        )}
-      >
-        <span aria-hidden className="shrink-0 text-[12px] [text-shadow:none]">
-          {emoji}
-        </span>
-        <span className="truncate">{title}</span>
+      <span className="truncate">{title}</span>
+      <span aria-hidden className="shrink-0 text-white/45">
+        •
       </span>
-      <span className="-mt-0.5 h-3.5 w-[5px] rounded-b-sm border-x-[1.5px] border-b-[1.5px] border-[#4a230c] bg-[#a8652c]" />
-      <span className="-mt-1 h-1.5 w-5 rounded-[50%] bg-[#2f5f16]/35" />
+      <span className={cn('shrink-0 tabular-nums', golden ? 'text-yellow-300' : 'text-emerald-300')}>{pct}%</span>
     </span>
   )
 }

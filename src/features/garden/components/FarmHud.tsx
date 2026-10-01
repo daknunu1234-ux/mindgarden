@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
+import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus, Tag, Tags } from 'lucide-react'
 import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, PodShadow } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
+import { treeLabelsToggleTitle } from '../lib/treeLabels'
 
 // Floating game HUD for the farm. The overlay around these pieces is pointer-events-none so drags
 // and clicks reach the world; every piece re-enables pointer events.
@@ -45,6 +46,17 @@ function ZoomControls({ zoom, onZoomIn, onZoomOut, onReset, canZoomIn, canZoomOu
         <Maximize strokeWidth={2.5} />
       </GameButton>
     </div>
+  )
+}
+
+// Above the camera buttons: show every tree's name sign and mastery badge, or only the hovered /
+// tapped tree's (lib/treeLabels.ts). The tooltip says what pressing it will do.
+function TreeLabelsToggle({ showAll, onToggle }: { showAll: boolean; onToggle: () => void }) {
+  const title = treeLabelsToggleTitle(showAll)
+  return (
+    <GameButton tone={showAll ? 'leaf' : 'cream'} size="icon-sm" onClick={onToggle} aria-pressed={showAll} aria-label={title} title={title} className="pointer-events-auto">
+      {showAll ? <Tags strokeWidth={2.5} /> : <Tag strokeWidth={2.5} />}
+    </GameButton>
   )
 }
 
@@ -189,4 +201,4 @@ function BuffPills({ summary, hint }: { summary: FarmBuffSummary; hint: boolean 
   )
 }
 
-export { BuffPills, FarmDock, GardenBanner, SignInInvite, ViewToggle, ZoomControls }
+export { BuffPills, FarmDock, GardenBanner, SignInInvite, TreeLabelsToggle, ViewToggle, ZoomControls }

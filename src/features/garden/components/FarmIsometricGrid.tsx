@@ -383,7 +383,8 @@ const TreeTile = memo(function TreeTile({
   return (
     <>
       {/* display: contents: no box of its own, it only marks the tree so a hold can pick it up. */}
-      <div {...{ [PLACEMENT_ATTR]: placement.id }} className="contents">
+      {/* mg-plot: in hover-labels mode, hovering / focusing the tree reveals the labels that follow it (globals.css). */}
+      <div {...{ [PLACEMENT_ATTR]: placement.id }} className="mg-plot contents">
         <PlotButton geometry={ground} plot={plot} animate={animate} phase={phase} onOpen={onOpen} />
       </div>
       <PlotLabels geometry={ground} plot={plot} onOpen={onOpen} onHarvest={onHarvest} />
