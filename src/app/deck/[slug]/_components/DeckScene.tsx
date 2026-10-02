@@ -55,7 +55,8 @@ type DeckSceneProps = {
 }
 
 // Rendered size of a Standard (md) tree in the scene; its trunk base is where the roots attach.
-const TREE_SIZE = 176
+// The sprite's view box holds the whole lush crown, so the box is a quarter bigger than the trunk's own.
+const TREE_SIZE = 220
 
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
 // ground line and the mindmap roots grow out of its trunk into the soil. A client component so the

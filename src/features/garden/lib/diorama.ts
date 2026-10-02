@@ -86,7 +86,7 @@ export function grassDetails(seed: string, count = 72): GrassDetail[] {
       x: p.x,
       y: p.y,
       kind: flower ? 'flower' : 'tuft',
-      color: flower ? FLOWERS[Math.floor(random() * FLOWERS.length)] : '#3a7d1f',
+      color: flower ? FLOWERS[Math.floor(random() * FLOWERS.length)] : '#529633',
       scale: 0.8 + random() * 0.5,
     })
   }

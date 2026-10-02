@@ -368,16 +368,38 @@ are cosmetic like the rest: same seed price, same planting, moving, chopping, dr
   - a sun-kissed rim light along the upper contours (warm sunlight, soft cyan on pine, pastel on
     cherry / mystic), plus lifted highlights, a sunlit cap, glints and a warm bounce light below;
   - stage 5 wraps the silhouette in a soft translucent golden halo (no hard rim).
-- **Low-poly trial: the oak at stages 2, 3 and 5** (`TreeStageSvg.tsx` `OakStage2` / `OakStage3` /
-  `OakStage5`, one `LowPolyOak` drawing fed by the `LOW_POLY_OAK` table): a chunky faceted look to
-  judge before other species follow. The crown is overlapping volumes of flat triangular facets (two
-  small puffs on the sapling, three creasing masses on the young tree, four on the mastered one), the
-  trunk a chiselled prism (stage 3 adds root wedges, stage 5 branches and acorns), all `<polygon>`s
-  in flat colours picked by how much each plane faces one key light (upper left): warm lime / amber
-  in the sun, emerald / bark in front, cool deep green / espresso in the creases and undersides. A
-  flat two-step contact shadow sits under every base. No filters, no gradients; same view box and
-  trunk base, inside the soft oak's crown extent at each stage; stage 5 keeps its golden halo, aura
-  and sparkles. The oak's sprout (1) and stage 4, and every other species, are unchanged (tested).
+- **Low-poly, lush set (all 13 species, all 5 stages)**. This supersedes the "soft layered
+  volumes", rim-light and occlusion-shade wording elsewhere in this section. Three files in
+  `garden/components`: `treeKit.tsx` (the shared pieces), `NaturalTrees.tsx` (the ten natural
+  species and their sprouts), `TreeStageSvg.tsx` (the frame, stage-5 dressing and the three surreal
+  species).
+  - **Look**: crowns are overlapping faceted volumes (`Crown`, `facetedVolume`) with a deep crease
+    between masses, trunks and limbs chiselled prisms (`Limb`, `prism`: a lit, a front and a shaded
+    face with sharp ridges), fruit, nuts, cones and coconuts cut solids (`Solid`), blossoms kite
+    petals (`Blossom`), fronds and sprout leaves two-plane blades (`Blade`). Every plane is a flat
+    fill picked from a dark → light ramp by how much it faces one key light (upper left): chartreuse
+    / amber in the sun, the species' core colour in front, cool deep tones in creases and undersides.
+    No gradients on natural trees, no filters.
+  - **Bigger crowns**: broad species (oak, cherry, citrus, maple) are 20–35% wider and taller than
+    the rounded set at stages 4 and 5 (tested); stage 5 swells the mature crown and adds masses
+    behind it, so the mastered tree is the biggest. Stage 3 and the saplings grow with the same design.
+  - **Species**: pine is a stack of faceted cones with jagged skirts; willow a dome weeping faceted
+    strands; mystic a twisted trunk with flat cloud pads; palm a ringed trunk with up to twelve
+    fronds; cactus ribbed columns with capped arms; birch a white prism trunk with dark lenticels.
+  - **Surreal species** keep their light effects (gradients, glows, motes, the galaxy disc, the
+    optic threads); they gained prism trunks and branches, a contact shadow, 25% longer crystal
+    shards, a wider galaxy and thread curtain, and a faceted golden knot on the Chrono Willow.
+  - **View box and anchors** (`lib/plotSprite.ts`): the view box grew from 120 to 150 units and now
+    starts left of and above the trunk's own box (`TREE_VIEW_X` / `TREE_VIEW_Y`), so no crown, halo
+    or sparkle is clipped in cards and dialogs; it is placed so the trunk base is still at
+    `TREE_BASE_RATIO` (0.5, 0.9). The farm's tree box went 132 → 165 px (same world scale), the
+    deck scene's 176 → 220. Bubbles float above the taller crown and further out; the label capsule
+    and the tap target (the soil tile and the tree's painted shapes) are unchanged. In small frames
+    (Shop, popover, cards) the whole tree now fits, so its trunk is drawn about 20% smaller there.
+  - **Shadows**: a flat two-step contact shadow under every tree, sized by stage; the farm's contact
+    and cast shadows are a quarter wider.
+  - Tests (`treeSprites.test.ts` "low-poly sprites"): facets and no filter / gradient for every
+    natural sprite, more facets at every stage, the 20–35% growth, and nothing outside the view box.
 - **Depth on the ground**: two soft shadows, blurred CSS radial gradients on the farm (outside the
   swaying tree, so they stay put): a dark contact shadow hugging the trunk and a longer cast shadow
   thrown back and to the right (sun upper left), growing with the stage and size tier. Elsewhere
@@ -424,13 +446,64 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   rippling from the rock bases (`.mg-shorefoam`); transform / opacity only, gradients instead of blur
   filters, still for reduced motion. Decorative only (`pointer-events: none`, in the ocean layer under
   the island): they are not placements and touch no grid, drag or harvest logic.
-- **Palette**: a warm meadow-green turf, lively but not neon: `#65b035` / `#4d9326` checkered
-  tiles with a `rgba(35, 75, 18, 0.25)` seam (`TROPIC` in `FarmDiorama.tsx`), a warm stone bevel under the beach, then
+- **Palette**: a fresh, low-contrast meadow-green turf that leaves the trees as the focal point:
+  `#82cb52` / `#74bb47` checkered tiles with a `rgba(45, 85, 25, 0.08)` seam, a `#44802c` raised edge and
+  `#529633` tufts (`TROPIC` in `FarmDiorama.tsx`). Tilled soil (the ring under each tree, `SOIL` in
+  `FarmStructures.tsx`, the sprite's mound and the sprout's heap) is a warm sandy clay: `#b08863`
+  rim, `#966e4a` body, `#7a5537` inner edge, with no outline.
+  Then a warm stone bevel under the beach, then
   muted brown earth darkening to slate cliff and a dark slate keel; turquoise water, citrus sand,
   terracotta roofs, coral flowers; thick dark-brown outlines (`#3b1f0e`), lit left faces and shaded
-  right faces (sun upper left). Contact shadows under trees and structures are a deep grass tint,
-  `rgba(20, 45, 15, 0.4)` (the tree's fades out as a gradient; no blur filters). Tile geometry,
+  right faces (sun upper left). Contact shadows under trees and structures are a soft deep grass tint,
+  `rgba(25, 45, 20, 0.3)` (the tree's fades out as a gradient; no blur filters). Tile geometry,
   click targets and the camera are unchanged.
+- **Low-poly props** (`FarmStructures.tsx`; this supersedes the outlined "toy" wording in the list
+  below): every standing item is flat planes lit from the upper left, with no ink outlines, on a
+  `rgba(20, 45, 15, 0.35)` contact ellipse. Farmer's House: cut stone plinth blocks, two-tone walls,
+  timber posts, a hip roof in tile bands, a two-face brick chimney. Woodshop: plank walls, a
+  two-tone saw blade, logs with hexagonal ends. Rockery: three faceted boulders with moss caps and
+  low-poly flowers. Fence: square posts with chamfered caps and bevelled rails (auto-joining as
+  before). Cow and pig: faceted bodies and heads. Beach palms, cliff pebbles, grass tufts and
+  flowers (`FarmDiorama.tsx`) follow the same style. Bubble icons (`BubbleIcons.tsx`): a cut water
+  drop, a faceted apple, a chunky bolt and a cut sparkle replace the 💧 / 🍎 / ✨ emoji in the tree
+  bubbles and the ⚡ on the Daily Rush button; the bubbles' shapes, positions and animations are
+  unchanged.
+- **Low-poly terrain** (no ink outlines anywhere on the island; this supersedes the outlined stream,
+  cliff and beach wording below):
+  - Streams (`StreamNetwork`): a channel cut into the turf. A bevelled bank (sunlit rim `#e3d3a4`
+    over `#b9a472`), the far wall of the cut, deep azure `#2b90b8` along the edges and a turquoise
+    `#4ecdc4` surface sunk 2.4 px below the bank, with slanted planes of light and drifting foam
+    chips. Auto-tiling geometry (`lib/streamTiles.ts`) and the ×1.2 buff are unchanged.
+  - Cliff (`CliffFacets` in `FarmDiorama.tsx`): each stratum of both front faces is cut into 14
+    pairs of triangles whose corners zigzag between strata; warm slate greys on the lit left face,
+    cool charcoal browns on the shaded right; the keel is four flat planes.
+  - Beach (`BeachFacets`): golden sand, `#e0b850` at the waterline and `#f4d06f` inland, eight
+    facets a side, meeting the water at a white foam rim. The grass has a two-tone bevel on its
+    front edges.
+  - Geometry (`lib/diorama.ts`) is unchanged; the distant islets follow the same palette.
+- **Day / night light** (`garden/lib/dayNight.ts`, tested; `hooks/useDayNight.ts`; CSS at the end of
+  `globals.css`):
+  - **When**: day from 06:00 up to 18:00 by the player's local clock, night otherwise; checked once
+    a minute and when the tab comes back. A small button above the labels toggle steps through
+    follow the clock → always day → always night, remembered in `localStorage`
+    (`mindgarden:lighting`).
+  - **No flash of daylight at night**: the server has no clock and renders daylight markup, so the
+    root layout inlines a tiny script (`shared/lib/lightingBoot.ts` `LIGHTING_BOOT_SCRIPT`) that runs
+    before the first paint and marks `<html data-mg-light="day|night">` from the pinned choice or the
+    local hour. Every night rule in `globals.css` also matches a farm under that mark until the farm
+    is hydrated; a live farm carries `data-lighting` and answers to its own `mg-night` class only.
+  - **How**: one class on the farm root (`mg-night`), so switching re-renders no tree or tile.
+    Colour variables and opacity cross-fades (900 ms) only: no filters, no keyframes.
+  - **Day**: the sun's glow from the upper left, a warm pool of light across the turf fading to the
+    lower right (`mg-sun-pool`), soft contact shadows `rgba(20, 40, 15, 0.35)`.
+  - **Night**: a darker sea, a navy veil over the island under the labels layer (`mg-night-veil`), a
+    vignette to `rgba(10, 20, 45, 0.35)` and a pale moon glow in screen space (`mg-moonlight`), a
+    silver pool on the turf (`mg-moon-pool`), contact shadows `rgba(6, 12, 28, 0.58)`, silver-cyan
+    chips on the crowns and sheens on streams, swell and foam, lamplight round the Farmer's House
+    windows and door, a steady halo behind the surreal trees, and a ring of pale light round the
+    floating bubbles (which sit above the veil, so they stay bright).
+  - Shadows everywhere take their colour from `--mg-shadow-rgb` / `--mg-shadow-a` (`mg-contact`,
+    `mg-contact-soft`, `mg-tree-contact`, `mg-tree-cast`); outside the farm they keep the day values.
 - **Chunky toy sprites** (`FarmStructures.tsx`):
   - Farmer's House: a cottage with an oversized terracotta hip roof, a rounded brick chimney puffing
     smoke, and glowing windows and door.
@@ -445,10 +518,12 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   - Fence: thick capped posts with outlined rails that auto-join.
   - Rockery: mossy boulders with tiny flowers.
   - Cow and pig: plump SVG animals that wander and squash as they idle.
-  - Trees: grow from a raised tilled garden bed that fills the whole 1 × 1 tile (no round soil discs),
-    with furrows running across it. Neighbouring trees' beds join into one plot: the outline, front faces
-    and furrow ends only appear on sides with no tree beside them (`TreePlots`). The tree, its stage-emoji
-    sign (gold trim at 100%) and its bees (from stage 3) stay anchored on the tile centre.
+  - Trees: stand in a small ring of tilled soil hugging the trunk base (`TreePlots`, `ROOT_RING`
+    27 × 12.5 px on a 112 × 56 tile), centred on the tile: a soft contact shadow, a sunlit rim, an
+    inner edge and the soil, with no outline. The square full-tile bed with furrows is gone, so the
+    grass checkerboard shows right up to the trunk. The tree and its bees stay anchored on the tile
+    centre; the tap target (the tile area round the base) is unchanged. The sprite's own mound
+    (cards, dialogs) is the same compact ring.
 - **Placement feedback**: the item floats over a free footprint with a glowing green outline, or throbs
   comic red with "✖ Blocked!". Placing a stream or Farmer's House previews its aura and pulses in the
   "+20% 🪙" / "+50% 🪙" tags it would add. Placed buffs show as floating glossy tags over each tree.
@@ -598,8 +673,10 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | style(garden): warm meadow-green turf (`#65b035` / `#4d9326`), stone-and-slate island foundation, deep grass contact shadows |
-| (pending) | feat(garden): low-poly faceted trial for the oak at stages 2, 3 and 5 (flat lit facets, chiselled trunk, contact shadow) |
+| (pending) | feat(garden): day / night lighting on the farm (local clock or a pinned light): sun and moon pools, night veil and vignette, tinted shadows, lamplight and glows; decided before the first paint (no flash of daylight at night); fresher low-contrast turf (`#82cb52` / `#74bb47`) |
+| (pending) | feat(garden): low-poly farm props (house, woodshop, rockery, fence, cow, pig, palms, flowers), faceted bubble icons, and borderless faceted streams, cliff and beach |
+| (pending) | style(garden): light meadow-green turf (`#7dc24e` / `#65a63d`), a compact sandy-clay soil ring under each tree in place of the square bed, stone-and-slate island foundation, soft contact shadows |
+| (pending) | feat(garden): low-poly, lush sprites for all 13 species × 5 stages (faceted crowns 20–35% bigger, prism trunks, cut-solid fruit, contact shadows); wider tree view box and farm anchors |
 | `1cb8a8d` | feat(rush): Daily Rush, one sudden-death run a day (8 s a card, coins = streak), server-graded and database-timed |
 | `f12a3ee` | refactor(progress): practice stores progress only; stop writing the unused mistake tally and streak mirror, migration to drop them |
 | `8b9bccf` | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
@@ -640,5 +717,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 78 files, 778 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 79 files, 794 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

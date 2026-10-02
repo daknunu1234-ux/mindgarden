@@ -12,6 +12,7 @@ import {
   depthOf,
   fenceLinks,
   footprintCenter,
+  GRID_SIZE,
   neighbourLinks,
   streamLinks,
   TILE_H,
@@ -287,6 +288,15 @@ function FarmIsometricGridImpl({
           <StreamHit key={placement.id} placement={placement} onOpen={onOpenItem} />
         ))}
       </div>
+
+      {/* Night: a navy veil over the island and everything standing on it, under the labels and
+          bubbles (so those keep their own light). Fades out towards the open sea; invisible by day
+          (`.mg-night-veil` in globals.css). Never a pointer target. */}
+      <div
+        aria-hidden
+        className="mg-night-veil pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-[50%]"
+        style={{ left: origin.x, top: origin.y + (GRID_SIZE * TILE_H) / 2 + 70, width: GRID_SIZE * TILE_W * 1.5, height: GRID_SIZE * TILE_H * 2.1, zIndex: LABEL_LAYER - 1 }}
+      />
 
       <WorldClouds world={FARM_WORLD} />
 

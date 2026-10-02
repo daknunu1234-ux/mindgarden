@@ -134,8 +134,8 @@ describe('label visibility on the farm', () => {
     expect(style).toBe(`left:${at.x}px;top:${at.y}px`)
     expect(classes).toContain('-translate-x-1/2')
     // The 💧 and 🍎 bubbles are prompts: never hidden by the toggle.
-    expect(labels).toContain('💧')
-    expect(labels).toContain('🍎')
+    expect(labels).toContain('data-icon="water"')
+    expect(labels).toContain('data-icon="fruit"')
     expect(labels).not.toMatch(/mg-tree-label[^"]*mg-bob/)
     // The labels layer is the element the CSS reaches from the tree's wrapper.
     expect(labels).toMatch(/^<div aria-hidden="true" class="mg-plot-labels /)

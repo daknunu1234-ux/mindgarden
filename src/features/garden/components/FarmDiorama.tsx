@@ -4,6 +4,7 @@
 // Pure SVG / HTML markup, no hooks; geometry from lib/diorama.ts (tested). Animations are the
 // `.mg-*` classes in globals.css (off for reduced motion).
 import { memo, type CSSProperties } from 'react'
+import { shade } from '@/shared/lib/color'
 import { seededRandom } from '@/shared/utils/seededRandom'
 import {
   BEACH_TILES,
@@ -21,34 +22,115 @@ import {
 import { GRID_SIZE } from '../lib/farmGrid'
 import { footprintPoints } from './FarmStructures'
 import { Waves } from './FarmScenery'
+import { Blade, Blossom, Solid } from './treeKit'
 
-// Tropical palette (lit left face / shaded right face). The turf is a warm, rich meadow green
-// checkerboard (lively without being neon), so trees and everything placed on it still stand out.
+// Tropical palette (lit left face / shaded right face). The turf is a warm, fresh meadow green
+// checkerboard, low in contrast (the pattern is a hint, the turf reads as one lawn), so trees and everything placed on it still stand out.
 export const TROPIC = {
   ink: '#3b1f0e',
-  grassA: '#65b035',
-  grassB: '#4d9326',
-  grassEdge: '#2f6b1a',
+  grassA: '#82cb52',
+  grassB: '#74bb47',
+  grassEdge: '#44802c',
   // Hairline between tiles: keeps the grid readable without competing with what stands on it.
-  grassSeam: 'rgba(35, 75, 18, 0.25)',
-  sandDry: '#ffe8a3',
-  sandWet: '#f3c56e',
+  grassSeam: 'rgba(45, 85, 25, 0.08)',
+  // Warm golden sand: the dry beach inland, the damper strip at the waterline.
+  sandDry: '#f4d06f',
+  sandWet: '#e0b850',
   foam: '#ffffff',
   lagoon: '#7ff0e6',
 } as const
 
-// The island's foundation: a warm stone bevel at the top edge, then muted brown earth darkening to
-// slate, so the island reads as raised above the sea without pulling the eye from the farm.
+// The island's foundation, cut from rock: a pale bevel under the beach rim, then stone darkening
+// with depth. The left face catches the sun (warm slate greys); the right face is in shade (cool
+// charcoal browns), so the island reads as raised above the sea without pulling the eye from the farm.
 const BANDS: Record<CliffBandId, { left: string; right: string }> = {
-  lip: { left: '#a59c8d', right: '#877f73' },
-  topsoil: { left: '#6f5b4b', right: '#58473b' },
-  soil: { left: '#54443c', right: '#41342e' },
-  stone: { left: '#4a4a53', right: '#383840' },
+  lip: { left: '#c2b9a8', right: '#8a8275' },
+  topsoil: { left: '#958c80', right: '#5e564f' },
+  soil: { left: '#80776d', right: '#4c4540' },
+  stone: { left: '#6b645d', right: '#3c3633' },
 }
+// The rock under the cliff, tapering to the keel: lit and shaded planes, darkest at the bottom.
+const UNDERSIDE = { left: ['#5a534e', '#4a4440'], right: ['#3a3431', '#2e2927'] } as const
 
 type Vars = CSSProperties & Record<`--mg-${string}`, string>
 
 const pts = (points: readonly Pt[], o: Pt) => points.map((p) => `${(p.x + o.x).toFixed(1)},${(p.y + o.y).toFixed(1)}`).join(' ')
+
+const between = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+
+// A flat plane of terrain. It carries a hairline of its own colour, so no seam shows between planes.
+const Plane = ({ at, origin, fill }: { at: readonly Pt[]; origin: Pt; fill: string }) => <polygon points={pts(at, origin)} fill={fill} stroke={fill} strokeWidth={0.7} />
+
+// How many facets each cliff face and each side of the beach is cut into along its length.
+const CLIFF_CUTS = 14
+const BEACH_CUTS = 8
+
+// The cliff, chiselled: every stratum of both front faces is cut into triangles whose shared corners
+// zigzag from one stratum to the next, so the rock breaks into angular planes. Each plane is a little
+// lighter or darker than its neighbours. The rim under the beach and the edge above the underside
+// stay straight, so they meet the sand and the keel exactly.
+function CliffFacets({ origin }: { origin: Pt }) {
+  const faces = cliffFaces()
+  return (
+    <g>
+      {(['left', 'right'] as const).map((side) => {
+        const bands = faces.filter((f) => f.side === side)
+        // Boundary lines, top to bottom: [start, end] of the rim, then of each stratum's lower edge.
+        const lines: [Pt, Pt][] = [[bands[0].points[0], bands[0].points[1]], ...bands.map((f): [Pt, Pt] => [f.points[3], f.points[2]])]
+        const corner = (level: number, i: number): Pt => {
+          const straight = level === 0 || level === lines.length - 1 || i === 0 || i === CLIFF_CUTS
+          const shift = straight ? 0 : (i + level) % 2 ? 0.3 : -0.3
+          return between(lines[level][0], lines[level][1], (i + shift) / CLIFF_CUTS)
+        }
+        return bands.map((f, level) =>
+          Array.from({ length: CLIFF_CUTS }, (_, i) => {
+            const [a, b, c, d] = [corner(level, i), corner(level, i + 1), corner(level + 1, i + 1), corner(level + 1, i)]
+            const base = BANDS[f.band][side]
+            const vary = (((i * 7 + level * 3) % 3) - 1) * 0.045
+            const flip = (i + level) % 2 === 0
+            return (
+              <g key={`${side}-${f.band}-${i}`}>
+                <Plane at={flip ? [a, b, d] : [a, b, c]} origin={origin} fill={shade(base, 0.07 + vary)} />
+                <Plane at={flip ? [b, c, d] : [a, c, d]} origin={origin} fill={shade(base, -0.08 + vary)} />
+              </g>
+            )
+          }),
+        )
+      })}
+    </g>
+  )
+}
+
+// The beach as planes of golden sand: a damp strip sloping to the waterline and the dry sand inland,
+// each of the island's four sides cut into facets that alternate a little in tone. No outline: the
+// sand meets the water at its own edge.
+function BeachFacets({ origin }: { origin: Pt }) {
+  const ring = (k: number) => {
+    const c = islandCorners(k)
+    return [c.top, c.right, c.bottom, c.left]
+  }
+  const [outer, mid, inner] = [ring(BEACH_TILES), ring(BEACH_TILES * 0.72), ring(0)]
+  // Per side (back right, front right, front left, back left): how much light the slope catches.
+  const light = [-0.03, -0.09, 0.02, 0.08]
+  return (
+    <g>
+      {[0, 1, 2, 3].map((side) => {
+        const next = (side + 1) % 4
+        return Array.from({ length: BEACH_CUTS }, (_, i) => {
+          const [t0, t1] = [i / BEACH_CUTS, (i + 1) / BEACH_CUTS]
+          const strip = (from: Pt[], to: Pt[]) => [between(from[side], from[next], t0), between(from[side], from[next], t1), between(to[side], to[next], t1), between(to[side], to[next], t0)]
+          const vary = light[side] + (i % 2 ? 0.035 : -0.02)
+          return (
+            <g key={`${side}-${i}`}>
+              <Plane at={strip(outer, mid)} origin={origin} fill={shade(TROPIC.sandWet, vary)} />
+              <Plane at={strip(mid, inner)} origin={origin} fill={shade(TROPIC.sandDry, vary)} />
+            </g>
+          )
+        })
+      })}
+    </g>
+  )
+}
 
 // ── Ocean ────────────────────────────────────────────────────────────────────
 
@@ -68,15 +150,11 @@ function OceanLayerImpl({ world, origin }: { world: { w: number; h: number }; or
           <stop offset="70%" stopColor="#3fdbe0" stopOpacity="0.55" />
           <stop offset="100%" stopColor="#12b5d6" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id="mg-underside" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#4f4d58" />
-          <stop offset="100%" stopColor="#33313b" />
-        </linearGradient>
       </defs>
       {/* Farthest first: the karsts stand behind the lagoon's glow. */}
       <DistantKarsts world={world} />
       {/* Shallow lagoon: a soft bright halo round the island. */}
-      <polygon points={pts(grown(BEACH_TILES + 3.2), origin)} fill="url(#mg-lagoon)" strokeLinejoin="round" />
+      <polygon points={pts(grown(BEACH_TILES + 3.2), origin)} fill="url(#mg-lagoon)" strokeLinejoin="round" className="mg-lagoon" />
       <Waves width={world.w} height={world.h} />
       {/* Swell rings rolling away from the shore. */}
       {[0, 1.7, 3.4].map((delay) => (
@@ -120,16 +198,22 @@ function Islet() {
   return (
     <g strokeLinejoin="round">
       <ellipse cx={0} cy={H + 120} rx={W * 0.8} ry={22} fill="#064e6e" opacity={0.22} />
-      <polygon points={`${-W - 12},0 0,${H + 6} 0,${H + 60} ${-W * 0.35},${H + 44}`} fill={BANDS.topsoil.left} stroke={TROPIC.ink} strokeWidth={3} />
-      <polygon points={`0,${H + 6} ${W + 12},0 ${W * 0.35},${H + 44} 0,${H + 60}`} fill={BANDS.topsoil.right} stroke={TROPIC.ink} strokeWidth={3} />
-      <polygon points={`${-W * 0.35},${H + 44} 0,${H + 60} ${W * 0.35},${H + 44} 0,${H + 105}`} fill="url(#mg-underside)" stroke={TROPIC.ink} strokeWidth={3} />
-      <polygon points={diamond(W + 12, H + 6)} fill={TROPIC.sandDry} stroke={TROPIC.ink} strokeWidth={3} />
-      <polygon points={diamond(W - 14, H - 7, -2)} fill={TROPIC.grassA} stroke={TROPIC.grassEdge} strokeWidth={2.5} />
+      {/* Cliff: a lit and a shaded face, each cut in two planes, over a keel of dark rock. */}
+      <polygon points={`${-W - 12},0 0,${H + 6} ${-W * 0.35},${H + 44}`} fill={BANDS.topsoil.left} />
+      <polygon points={`0,${H + 6} 0,${H + 60} ${-W * 0.35},${H + 44}`} fill={BANDS.soil.left} />
+      <polygon points={`0,${H + 6} ${W + 12},0 ${W * 0.35},${H + 44}`} fill={BANDS.topsoil.right} />
+      <polygon points={`0,${H + 6} ${W * 0.35},${H + 44} 0,${H + 60}`} fill={BANDS.soil.right} />
+      <polygon points={`${-W * 0.35},${H + 44} 0,${H + 60} 0,${H + 105}`} fill={UNDERSIDE.left[1]} />
+      <polygon points={`0,${H + 60} ${W * 0.35},${H + 44} 0,${H + 105}`} fill={UNDERSIDE.right[1]} />
+      <polygon points={diamond(W + 12, H + 6)} fill={TROPIC.sandWet} />
+      <polygon points={diamond(W + 4, H + 2, -1)} fill={TROPIC.sandDry} />
+      <polygon points={diamond(W - 14, H - 7, 1)} fill={TROPIC.grassEdge} />
+      <polygon points={diamond(W - 14, H - 7, -2)} fill={TROPIC.grassA} />
       <g transform="translate(-20 -6)">
         <Palm scale={0.9} flip={false} />
       </g>
-      <circle cx={34} cy={4} r={9} fill="#ff6b6b" stroke={TROPIC.ink} strokeWidth={2} />
-      <circle cx={46} cy={-4} r={6} fill="#ffd23f" stroke={TROPIC.ink} strokeWidth={2} />
+      <Solid x={34} y={4} rx={9} color="#ff6b6b" />
+      <Solid x={46} y={-4} rx={6} color="#ffd23f" />
     </g>
   )
 }
@@ -325,9 +409,9 @@ function DistantKarsts({ world }: { world: { w: number; h: number } }) {
 // tiles and the scattered tufts / flowers (`seed` = the farm, so every farm keeps its own).
 function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
   const beach = islandCorners(BEACH_TILES)
-  const wet = islandCorners(BEACH_TILES * 0.72)
   const grass = islandCorners(0)
   const under = undersidePoints()
+  const down = (p: Pt, d: number): Pt => ({ x: p.x, y: p.y + d })
   const random = seededRandom(`cliff:${seed}`)
   const face = (side: 'left' | 'right', t: number, depth: number): Pt => {
     const a = side === 'left' ? beach.left : beach.bottom
@@ -350,16 +434,23 @@ function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
 
   return (
     <g strokeLinejoin="round">
-      {/* Rocky underside tapering to a keel. */}
-      <polygon points={pts(under.left, origin)} fill="url(#mg-underside)" stroke={TROPIC.ink} strokeWidth={4} />
-      <polygon points={pts(under.right, origin)} fill="#3a3842" stroke={TROPIC.ink} strokeWidth={4} />
-      {/* Cliff strata. */}
-      {cliffFaces().map((f) => (
-        <polygon key={`${f.band}-${f.side}`} points={pts(f.points, origin)} fill={BANDS[f.band][f.side]} stroke={TROPIC.ink} strokeWidth={2.5} />
-      ))}
+      {/* Rocky underside tapering to a keel: two planes a side (edge, edge, keel / lobe). */}
+      <Plane at={[under.left[0], under.left[1], under.left[3]]} origin={origin} fill={UNDERSIDE.left[0]} />
+      <Plane at={[under.left[1], under.left[2], under.left[3]]} origin={origin} fill={UNDERSIDE.left[1]} />
+      <Plane at={[under.right[0], under.right[1], under.right[2]]} origin={origin} fill={UNDERSIDE.right[0]} />
+      <Plane at={[under.right[0], under.right[2], under.right[3]]} origin={origin} fill={UNDERSIDE.right[1]} />
+      {/* Cliff strata, chiselled into facets. */}
+      <CliffFacets origin={origin} />
       {pebbles.map((p, i) => {
         const c = face(p.side, p.t, p.d)
-        return <ellipse key={`pb${i}`} cx={c.x} cy={c.y} rx={p.r * 1.4} ry={p.r} fill={p.side === 'left' ? '#8d8a90' : '#6f6c73'} stroke={TROPIC.ink} strokeWidth={1.5} />
+        // A cut stone set in the cliff: a lit upper plane over a shaded lower one.
+        const [w, h] = [p.r * 1.4, p.r]
+        return (
+          <g key={`pb${i}`}>
+            <polygon points={pts([{ x: c.x - w, y: c.y }, { x: c.x - w * 0.4, y: c.y - h }, { x: c.x + w * 0.6, y: c.y - h * 0.8 }, { x: c.x + w, y: c.y + h * 0.1 }, { x: c.x + w * 0.3, y: c.y + h }, { x: c.x - w * 0.6, y: c.y + h * 0.8 }], { x: 0, y: 0 })} fill={p.side === 'left' ? '#6f6c73' : '#55535b'} />
+            <polygon points={pts([{ x: c.x - w, y: c.y }, { x: c.x - w * 0.4, y: c.y - h }, { x: c.x + w * 0.6, y: c.y - h * 0.8 }, { x: c.x, y: c.y - h * 0.1 }], { x: 0, y: 0 })} fill={p.side === 'left' ? '#b3b0b8' : '#8d8a90'} />
+          </g>
+        )
       })}
       {/* Hanging vines from the grass lip. */}
       {vines.map((v, i) => {
@@ -371,21 +462,31 @@ function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
           </g>
         )
       })}
-      {/* Beach: wet sand at the waterline, dry sand inland, a bright foam rim. */}
-      <polygon points={pts([beach.top, beach.right, beach.bottom, beach.left], origin)} fill={TROPIC.sandWet} stroke={TROPIC.ink} strokeWidth={4} />
-      <polygon points={pts([beach.top, beach.right, beach.bottom, beach.left], origin)} fill="none" stroke={TROPIC.foam} strokeWidth={10} opacity={0.75} className="mg-foam" />
-      <polygon points={pts([wet.top, wet.right, wet.bottom, wet.left], origin)} fill={TROPIC.sandDry} />
-      {/* Grass: a raised lip, then the checkered tiles. */}
-      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill={TROPIC.grassEdge} transform="translate(0 5)" />
-      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill={TROPIC.grassA} stroke={TROPIC.grassEdge} strokeWidth={4} />
+      {/* Beach: faceted golden sand (damp at the waterline, dry inland) and a bright foam rim. */}
+      <BeachFacets origin={origin} />
+      <polygon points={pts([beach.top, beach.right, beach.bottom, beach.left], origin)} fill="none" stroke={TROPIC.foam} strokeWidth={6} opacity={0.75} className="mg-foam" />
+      {/* Grass: a crisp bevel on its two front edges (lit left, shaded right), then the checkered tiles. */}
+      <Plane at={[grass.left, grass.bottom, down(grass.bottom, 6), down(grass.left, 6)]} origin={origin} fill="#5a9a3a" />
+      <Plane at={[grass.bottom, grass.right, down(grass.right, 6), down(grass.bottom, 6)]} origin={origin} fill={TROPIC.grassEdge} />
+      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill={TROPIC.grassA} />
       {tiles}
-      {/* Soft top-left sheen across the field. */}
-      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill="url(#mg-grass-sheen)" />
+      {/* Light falling across the field from the upper left, so the turf is never uniformly flat: a
+          warm pool of sun by day (`.mg-sun-pool`), a pale silver pool of moonlight by night
+          (`.mg-moon-pool`); globals.css cross-fades them. Both dim towards the lower right. */}
+      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill="url(#mg-sun-pool)" className="mg-sun-pool" />
+      <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill="url(#mg-moon-pool)" className="mg-moon-pool" />
       <defs>
-        <linearGradient id="mg-grass-sheen" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.1" />
-          <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
-          <stop offset="100%" stopColor="#142d0f" stopOpacity="0.14" />
+        <linearGradient id="mg-sun-pool" x1="0.05" y1="0.2" x2="0.95" y2="0.85">
+          <stop offset="0%" stopColor="#fff5c8" stopOpacity="0.36" />
+          <stop offset="30%" stopColor="#fff5c8" stopOpacity="0.18" />
+          <stop offset="62%" stopColor="#fff5c8" stopOpacity="0" />
+          <stop offset="100%" stopColor="#14280f" stopOpacity="0.1" />
+        </linearGradient>
+        <linearGradient id="mg-moon-pool" x1="0.05" y1="0.2" x2="0.95" y2="0.85">
+          <stop offset="0%" stopColor="#e0f4ff" stopOpacity="0.3" />
+          <stop offset="32%" stopColor="#b4e4ff" stopOpacity="0.14" />
+          <stop offset="62%" stopColor="#b4e4ff" stopOpacity="0" />
+          <stop offset="100%" stopColor="#060c1c" stopOpacity="0.22" />
         </linearGradient>
       </defs>
       <GrassDetails origin={origin} seed={seed} />
@@ -399,22 +500,29 @@ function GrassDetails({ origin, seed }: { origin: Pt; seed: string }) {
       {grassDetails(seed).map((d, i) => {
         const x = d.x + origin.x
         const y = d.y + origin.y
+        const s = d.scale
         if (d.kind === 'tuft') {
+          // Three cut blades: each a sunlit left plane and a shaded right one.
           return (
-            <path
-              key={i}
-              d={`M ${x - 5 * d.scale} ${y} l ${2 * d.scale} ${-8 * d.scale} M ${x} ${y} l 0 ${-10 * d.scale} M ${x + 5 * d.scale} ${y} l ${-2 * d.scale} ${-8 * d.scale}`}
-              stroke={d.color}
-              strokeWidth={2.6}
-              fill="none"
-            />
+            <g key={i}>
+              {[
+                [-5, -3, -8],
+                [0, 0, -11],
+                [5, 3.4, -8],
+              ].map(([base, lean, tip]) => (
+                <g key={base}>
+                  <polygon points={`${x + (base - 1.8) * s},${y} ${x + base * s},${y} ${x + lean * s},${y + tip * s}`} fill="#8fd35a" />
+                  <polygon points={`${x + base * s},${y} ${x + (base + 1.8) * s},${y} ${x + lean * s},${y + tip * s}`} fill={d.color} />
+                </g>
+              ))}
+            </g>
           )
         }
         return (
           <g key={i}>
-            <path d={`M ${x} ${y} l 0 -7`} stroke={TROPIC.grassEdge} strokeWidth={2} />
-            <circle cx={x} cy={y - 8} r={3.6 * d.scale} fill={d.color} stroke={TROPIC.ink} strokeWidth={1.2} />
-            <circle cx={x} cy={y - 8} r={1.3 * d.scale} fill="#ffb703" />
+            <ellipse cx={x + 1} cy={y + 0.6} rx={4 * s} ry={1.5 * s} fill="rgba(20, 40, 15, 0.35)" className="mg-contact" />
+            <polygon points={`${x - 0.9},${y} ${x + 0.9},${y} ${x + 0.9},${y - 7} ${x - 0.9},${y - 7}`} fill={TROPIC.grassEdge} />
+            <Blossom x={x} y={y - 8} r={3 * s} petal={d.color} center="#ffb703" />
           </g>
         )
       })}
@@ -424,32 +532,32 @@ function GrassDetails({ origin, seed }: { origin: Pt; seed: string }) {
 
 // ── Standing scenery ─────────────────────────────────────────────────────────
 
-// A chunky cartoon palm (local (0, 0) = its foot): ringed curved trunk, coconuts, glossy fronds
-// that sway from the crown.
+// A chunky low-poly palm (local (0, 0) = its foot): a bent trunk of ringed segments (lit left face,
+// shaded right face), cut coconuts and two-plane fronds that sway from the crown.
+const PALM_TRUNK: [x: number, y: number, half: number][] = [[0, 0, 7.5], [1, -20, 6.2], [4, -42, 5.8], [9, -64, 5.4], [16, -85, 5.2]]
+const PALM_FRONDS: [number, number][] = [[-52, 4], [-44, -26], [30, -38], [54, 2], [40, 24], [-38, 26]]
 export function Palm({ scale = 1, flip = false }: { scale?: number; flip?: boolean }) {
-  const fronds = [
-    'M 0 0 q -26 -14 -52 4 q 24 -6 52 -4',
-    'M 0 0 q -20 -26 -44 -26 q 22 8 44 26',
-    'M 0 0 q 6 -30 30 -38 q -14 18 -30 38',
-    'M 0 0 q 28 -14 54 2 q -26 -4 -54 -2',
-    'M 0 0 q 24 4 40 24 q -20 -12 -40 -24',
-    'M 0 0 q -22 4 -38 26 q 16 -16 38 -26',
-  ]
   return (
     <g transform={`scale(${flip ? -scale : scale} ${scale})`} strokeLinejoin="round" strokeLinecap="round">
-      <ellipse cx={4} cy={2} rx={26} ry={9} fill="#0b5d2a" opacity={0.22} />
-      <path d="M -4 0 q -2 -40 16 -84 l 10 3 q -16 42 -14 81 z" fill="#c98a4b" stroke={TROPIC.ink} strokeWidth={3} />
-      {[14, 30, 46, 62].map((y) => (
-        <path key={y} d={`M ${-3 + y * 0.18} ${-y} l 11 2`} stroke="#8a5a2b" strokeWidth={2.5} />
-      ))}
+      <ellipse cx={4} cy={2} rx={26} ry={9} fill="rgba(20, 40, 15, 0.35)" className="mg-contact" />
+      {PALM_TRUNK.slice(0, -1).map(([x, y, w], i) => {
+        const [nx, ny, nw] = PALM_TRUNK[i + 1]
+        const ridge = (cx: number, half: number) => cx - half * 0.15
+        return (
+          <g key={y}>
+            <polygon points={`${x - w},${y} ${ridge(x, w)},${y + 2} ${ridge(nx, nw)},${ny + 2} ${nx - nw},${ny}`} fill={i % 2 ? '#e8b074' : '#f2c088'} />
+            <polygon points={`${ridge(x, w)},${y + 2} ${x + w},${y} ${nx + nw},${ny} ${ridge(nx, nw)},${ny + 2}`} fill={i % 2 ? '#a36a34' : '#b77a40'} />
+          </g>
+        )
+      })}
       <g transform="translate(18 -84)">
         <g className="mg-sway" style={{ '--mg-delay': `${-scale * 3}s` } as Vars}>
-          {fronds.map((d, i) => (
-            <path key={i} d={d} fill={i % 2 === 0 ? '#2fb84a' : '#4fd35a'} stroke="#1c6b2c" strokeWidth={2.5} />
+          {PALM_FRONDS.map((tip, i) => (
+            <Blade key={i} from={[0, 0]} to={tip} half={10} light={i % 2 ? '#b6f23c' : '#8fdc5a'} dark={i % 2 ? '#2f9140' : '#1f6b2a'} occlusion="#0b5d2a" />
           ))}
-          <circle cx={-5} cy={4} r={6} fill="#8a4f22" stroke={TROPIC.ink} strokeWidth={2} />
-          <circle cx={5} cy={5} r={6} fill="#a0612b" stroke={TROPIC.ink} strokeWidth={2} />
-          <circle cx={0} cy={11} r={5.5} fill="#8a4f22" stroke={TROPIC.ink} strokeWidth={2} />
+          <Solid x={-5} y={4} rx={6} color="#8a4f22" />
+          <Solid x={5} y={5} rx={6} color="#a0612b" />
+          <Solid x={0} y={11} rx={5.5} color="#8a4f22" />
         </g>
       </g>
     </g>

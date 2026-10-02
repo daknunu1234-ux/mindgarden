@@ -67,7 +67,7 @@ describe('65 tree sprites (13 species × 5 stages)', () => {
 
   it('grows: a mature tree paints more than its sapling and its sprout', () => {
     for (const id of TREE_TYPE_IDS) {
-      const shapes = [1, 2, 4].map((stage) => (render(id, stage as TreeStage).match(/<(path|circle|ellipse|rect)\b/g) ?? []).length)
+      const shapes = [1, 2, 4].map((stage) => (render(id, stage as TreeStage).match(/<(path|circle|ellipse|rect|polygon)\b/g) ?? []).length)
       expect(shapes[2], `${id} mature vs sprout`).toBeGreaterThan(shapes[0])
       expect(shapes[2], `${id} mature vs sapling`).toBeGreaterThan(shapes[1])
     }
@@ -117,43 +117,74 @@ describe('lit, not outlined', () => {
   })
 })
 
-describe('low-poly oak (stages 2, 3 and 5 trial)', () => {
-  const LOW_POLY: TreeStage[] = [2, 3, 5]
-  const facetsOf = (stage: TreeStage) => [...render('oak', stage).matchAll(/<polygon points="([^"]+)" fill="(#[0-9a-f]{6})"/g)]
+describe('low-poly sprites: flat facets, one key light, lush crowns', () => {
+  // Every painted polygon's points: facets, creases, halos, contact shadows.
+  const pointsOf = (svg: string) => [...svg.matchAll(/<polygon points="([^"]+)"/g)].flatMap((m) => m[1].split(' ').map((p) => p.split(',').map(Number)))
+  const facetsOf = (svg: string) => [...svg.matchAll(/<polygon points="[^"]+" fill="(#[0-9a-f]{6})"/g)].map((m) => m[1])
+  // The soft, rounded set's footprint at stage 4: 47 units either side of the trunk, 103 above the ground.
+  const OLD_HALF = 47
+  const OLD_TOP = 103
 
-  it('builds the oak from flat facets in many tones, with no filter or gradient', () => {
-    for (const stage of LOW_POLY) {
-      const facets = facetsOf(stage)
-      expect(facets.length, `stage ${stage}`).toBeGreaterThan(50)
-      expect(new Set(facets.map((f) => f[2])).size, `stage ${stage}`).toBeGreaterThan(20)
-      expect(render('oak', stage)).not.toMatch(/<filter|filter:|filter=|Gradient/)
-      // The polygonal contact shadow under the base.
-      expect(render('oak', stage)).toContain('fill="#0a2e1a"')
+  it('builds every natural species at every stage from flat facets in many tones, with no filter or gradient', () => {
+    for (const id of NATURAL) {
+      for (const stage of STAGES) {
+        const svg = render(id, stage)
+        const facets = facetsOf(svg)
+        expect(facets.length, `${id} ${stage}`).toBeGreaterThan(stage === 1 ? 8 : 20)
+        expect(new Set(facets).size, `${id} ${stage}`).toBeGreaterThan(stage === 1 ? 5 : 8)
+        expect(svg, `${id} ${stage}`).not.toMatch(/<filter|filter:|filter=|Gradient/)
+        // The polygonal contact shadow under the base.
+        expect(svg, `${id} ${stage}`).toContain('fill="#14280f"')
+      }
     }
   })
 
-  it('grows: one or two puffs on the sapling, more facets at every low-poly stage', () => {
-    const counts = LOW_POLY.map((stage) => facetsOf(stage).length)
-    expect(counts[0]).toBeLessThan(counts[1])
-    expect(counts[1]).toBeLessThan(counts[2])
+  it('gives the surreal species chiselled trunks and a contact shadow too, and keeps their light effects', () => {
+    for (const id of SURREAL) {
+      for (const stage of [2, 3, 4, 5] as TreeStage[]) {
+        const svg = render(id, stage)
+        expect(facetsOf(svg).length, `${id} ${stage}`).toBeGreaterThanOrEqual(9)
+        expect(svg, `${id} ${stage}`).toContain('fill="#14280f"')
+        expect(svg, `${id} ${stage}`).not.toMatch(/<filter|filter:|filter=/)
+      }
+    }
   })
 
-  it('keeps the trial to the oak, and off its sprout and stage 4', () => {
-    for (const stage of [1, 4] as TreeStage[]) expect(render('oak', stage)).not.toContain('<polygon')
-    for (const id of NATURAL.filter((n) => n !== 'oak')) for (const stage of LOW_POLY) expect(render(id, stage), `${id} ${stage}`).not.toContain('<polygon')
+  it('grows: more facets at every stage past the sprout, and the mastered tree has the most', () => {
+    for (const id of NATURAL) {
+      const counts = ([2, 3, 4, 5] as TreeStage[]).map((stage) => facetsOf(render(id, stage)).length)
+      for (let i = 1; i < counts.length; i++) expect(counts[i], `${id} stage ${i + 2}`).toBeGreaterThan(counts[i - 1])
+    }
   })
 
-  it('stays inside the crown and trunk footprint of the soft oak it replaces', () => {
-    // [stage, half-width from the trunk (x = 60), highest point]: the soft oak's extent at that stage.
-    for (const [stage, half, top] of [[2, 28, 50], [3, 38, 27], [5, 50, 3]] as [TreeStage, number, number][]) {
-      const points = facetsOf(stage).flatMap((f) => f[1].split(' ').map((p) => p.split(',').map(Number)))
-      const xs = points.map((p) => p[0])
-      const ys = points.map((p) => p[1])
-      expect(Math.min(...xs), `stage ${stage}`).toBeGreaterThanOrEqual(60 - half)
-      expect(Math.max(...xs), `stage ${stage}`).toBeLessThanOrEqual(60 + half)
-      expect(Math.min(...ys), `stage ${stage}`).toBeGreaterThanOrEqual(top)
-      // The trunk's front ridges and the contact shadow end just under the ground line (y = 108).
-      expect(Math.max(...ys), `stage ${stage}`).toBeLessThanOrEqual(116)
+  it('makes the broad crowns 20–35% wider and taller than the rounded set at stages 4 and 5', () => {
+    for (const id of ['oak', 'cherry', 'citrus', 'maple']) {
+      for (const stage of [4, 5] as TreeStage[]) {
+        const points = pointsOf(render(id, stage))
+        const half = Math.max(...points.map((p) => Math.abs(p[0] - 60)))
+        const top = 108 - Math.min(...points.map((p) => p[1]))
+        expect(half / OLD_HALF, `${id} ${stage} width`).toBeGreaterThanOrEqual(1.2)
+        expect(half / OLD_HALF, `${id} ${stage} width`).toBeLessThanOrEqual(1.5)
+        expect(top / OLD_TOP, `${id} ${stage} height`).toBeGreaterThanOrEqual(1.15)
+        expect(top / OLD_TOP, `${id} ${stage} height`).toBeLessThanOrEqual(1.35)
+      }
+    }
+  })
+
+  it('never clips: every crown, halo and sparkle fits the view box, and the trunk base keeps its place', () => {
+    const view = /viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/.exec(render('oak', 5))!.slice(1).map(Number)
+    const [vx, vy, vw, vh] = view
+    // The base point (60, 108) sits at half the width and nine tenths of the height, as before.
+    expect((60 - vx) / vw).toBeCloseTo(0.5, 6)
+    expect((108 - vy) / vh).toBeCloseTo(0.9, 6)
+    for (const id of NATURAL) {
+      for (const stage of STAGES) {
+        const points = pointsOf(render(id, stage))
+        expect(Math.min(...points.map((p) => p[0])), `${id} ${stage} left`).toBeGreaterThanOrEqual(vx + 3)
+        expect(Math.max(...points.map((p) => p[0])), `${id} ${stage} right`).toBeLessThanOrEqual(vx + vw - 3)
+        expect(Math.min(...points.map((p) => p[1])), `${id} ${stage} top`).toBeGreaterThanOrEqual(vy + 3)
+        expect(Math.max(...points.map((p) => p[1])), `${id} ${stage} bottom`).toBeLessThanOrEqual(vy + vh - 3)
+      }
     }
   })
 })

@@ -3,13 +3,18 @@ import { PLOT_HALF_H, PLOT_HALF_W } from './farmLayout'
 // Pure geometry for one planted plot on the farm (unit-tested): where the tree is drawn, which
 // region is the plot's click target, and where its labels float, for a given size-tier scale.
 
-// TreeStageSvg's drawing space: a VIEW×VIEW box whose trunk meets the ground at (TRUNK_X, GROUND_Y).
-export const TREE_VIEW = 120
+// TreeStageSvg's drawing space: the trunk meets the ground at (TRUNK_X, GROUND_Y), and the view box is
+// a VIEW×VIEW square from (VIEW_X, VIEW_Y). It reaches past the trunk's original 120 × 120 box on the
+// sides and above, so the lush crowns are never clipped, and is placed so the trunk base stays at
+// half the width and nine tenths of the height (TREE_BASE_RATIO), as every scene expects.
+export const TREE_VIEW = 150
 export const TREE_TRUNK_X = 60
 export const TREE_GROUND_Y = 108
-export const TREE_BASE_RATIO = { x: TREE_TRUNK_X / TREE_VIEW, y: TREE_GROUND_Y / TREE_VIEW } as const
-// Topmost painted point of the tallest drawing (stage 5 aura/sparkles), in view units.
-const TREE_TOP_Y = 2
+export const TREE_VIEW_X = TREE_TRUNK_X - TREE_VIEW / 2
+export const TREE_VIEW_Y = TREE_GROUND_Y - TREE_VIEW * 0.9
+export const TREE_BASE_RATIO = { x: (TREE_TRUNK_X - TREE_VIEW_X) / TREE_VIEW, y: (TREE_GROUND_Y - TREE_VIEW_Y) / TREE_VIEW } as const
+// Topmost painted point of the tallest crown (stage 5), in view units.
+const TREE_TOP_Y = -20
 
 // Scale about the trunk base (bottom-centre anchor) as one SVG matrix:
 // x' = s·x + (1 − s)·ax, y' = s·y + (1 − s)·ay, so (ax, ay) maps onto itself.
@@ -20,7 +25,8 @@ export function bottomCenterScale(s: number, ax = TREE_TRUNK_X, ay = TREE_GROUND
 }
 
 // Rendered box size of a farm tree at scale 1; tiers scale the drawing inside it (overflow visible).
-export const FARM_TREE_SIZE = 132
+// 1.1 world pixels per view unit, as before the view box grew.
+export const FARM_TREE_SIZE = 165
 
 type Box = { left: number; top: number; width: number; height: number }
 type Anchor = { x: number; y: number }
@@ -59,7 +65,7 @@ export function plotSprite(x: number, y: number, scale = 1): PlotSprite {
     // the tree's base. Below the crown and its bubbles for every tier.
     label: { x, y: y + PLOT_HALF_H * 0.5 },
     // Bubbles ride just above the crown, spreading with it.
-    thirsty: { x: x + 30 * s, y: treeTop + 2 },
-    mighty: { x: x - 46 * s, y: treeTop + 4 },
+    thirsty: { x: x + 36 * s, y: treeTop + 2 },
+    mighty: { x: x - 56 * s, y: treeTop + 4 },
   }
 }

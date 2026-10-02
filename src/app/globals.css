@@ -585,3 +585,101 @@
 @media (prefers-reduced-motion: reduce) {
   .mg-puff { display: none; }
 }
+
+/* ── Day / night light on the farm (garden/lib/dayNight, hooks/useDayNight) ───
+   The farm's root (`.mg-farm`) takes `.mg-night` from 18:00 to 06:00 local time (or when the player
+   pins it). Everything that changes with the light hangs on that one class, through colour variables
+   and a few opacity cross-fades, so no tree or tile re-renders. Gradients and flat fills only.
+   Day: warm sun from the upper left, shadows a warm deep green. Night: a navy veil over the island,
+   a vignette round the screen, pale moonlight from the upper left, shadows a midnight blue, silver
+   sheens on water and leaves, and lamplight / halos on what glows.
+   No flash of daylight at night: the page is server-rendered in daylight (no clock there), so a boot
+   script in the root layout (shared/lib/lightingBoot) marks <html data-mg-light="night"> before the
+   first paint, and every night rule also matches a farm under that mark until it is hydrated. A live
+   farm carries [data-lighting] and answers to its own `.mg-night` class alone. */
+:root {
+  --mg-shadow-rgb: 20 40 15;
+  --mg-shadow-a: 0.35;
+}
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) {
+  --mg-shadow-rgb: 6 12 28;
+  --mg-shadow-a: 0.58;
+}
+
+/* Contact shadows: SVG ellipses under props and soil rings, the flat polygons under tree sprites,
+   and the two soft CSS shadows under each farm tree. */
+.mg-contact { fill: rgb(var(--mg-shadow-rgb) / var(--mg-shadow-a)); }
+.mg-contact-soft { fill: rgb(var(--mg-shadow-rgb)); }
+.mg-tree-contact {
+  background: radial-gradient(closest-side,
+    rgb(var(--mg-shadow-rgb) / var(--mg-shadow-a)) 0%,
+    rgb(var(--mg-shadow-rgb) / calc(var(--mg-shadow-a) * 0.7)) 50%,
+    rgb(var(--mg-shadow-rgb) / calc(var(--mg-shadow-a) * 0.2)) 82%,
+    rgb(var(--mg-shadow-rgb) / 0) 100%);
+}
+.mg-tree-cast {
+  background: radial-gradient(closest-side,
+    rgb(var(--mg-shadow-rgb) / calc(var(--mg-shadow-a) * 0.62)) 0%,
+    rgb(var(--mg-shadow-rgb) / calc(var(--mg-shadow-a) * 0.42)) 45%,
+    rgb(var(--mg-shadow-rgb) / calc(var(--mg-shadow-a) * 0.12)) 78%,
+    rgb(var(--mg-shadow-rgb) / 0) 100%);
+}
+
+/* The sea behind the island. */
+.mg-farm:is(.mg-night, html[data-mg-light="night"] :not([data-lighting])) {
+  background-image: radial-gradient(ellipse at 50% 45%, #1f6f93 0%, #124a73 38%, #0b2c52 75%, #071a38 100%);
+}
+
+/* Screen-space light: the sun's glow by day; by night the moon's pale glow from the same corner and
+   a navy vignette round the perimeter. */
+.mg-sunlight, .mg-moonlight, .mg-night-veil, .mg-sun-pool, .mg-moon-pool, .mg-night-only, .mg-lagoon {
+  transition: opacity 900ms ease-in-out;
+}
+.mg-moonlight {
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at 10% 0%, rgb(180 228 255 / 0.3), rgb(180 228 255 / 0) 52%),
+    radial-gradient(ellipse at 50% 50%, rgb(10 20 45 / 0) 42%, rgb(10 20 45 / 0.35) 100%);
+}
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-moonlight { opacity: 1; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-sunlight { opacity: 0; }
+
+/* The veil over the island (in the world, under labels and bubbles). */
+.mg-night-veil {
+  opacity: 0;
+  background: radial-gradient(closest-side, rgb(14 24 60 / 0.3) 0%, rgb(12 22 52 / 0.38) 62%, rgb(10 20 45 / 0.2) 84%, rgb(10 20 45 / 0) 100%);
+}
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-night-veil { opacity: 1; }
+
+/* Light pooled on the turf. */
+.mg-moon-pool { opacity: 0; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-moon-pool { opacity: 1; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-sun-pool { opacity: 0; }
+
+/* Things that only show at night: lamplight, the surreal trees' steady halo. */
+.mg-night-only { opacity: 0; pointer-events: none; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-night-only { opacity: 1; }
+
+/* Moonlight on water and on the crowns' lit chips. */
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-lagoon { opacity: 0.4; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-stream-shine { opacity: 0.95; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-stream-shine polygon { fill: #b4e4ff; stroke: #b4e4ff; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-swell { stroke: #b4e4ff; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-foam { stroke: #e0f4ff; }
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-glint { fill: #e0f4ff; opacity: 1; }
+
+/* The floating bubbles (water, fruit, mastered) glow against the dark island: a ring of pale light
+   round each, drawn as a gradient behind it. It never takes a click. */
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-bob::after,
+:is(.mg-night, html[data-mg-light="night"] .mg-farm:not([data-lighting])) .mg-glow::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  z-index: -1;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, rgb(180 228 255 / 0) 0%, rgb(180 228 255 / 0) 56%, rgb(224 244 255 / 0.8) 66%, rgb(180 228 255 / 0.45) 80%, rgb(180 228 255 / 0) 100%);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-sunlight, .mg-moonlight, .mg-night-veil, .mg-sun-pool, .mg-moon-pool, .mg-night-only, .mg-lagoon { transition: none; }
+}

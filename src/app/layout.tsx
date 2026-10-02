@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
 import { CoinsBadge, getFarmHud, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
 import { CoinShopModal, GameButton } from "@/shared/components/game";
+import { LIGHTING_BOOT_SCRIPT } from "@/shared/lib/lightingBoot";
 import { LoginDialogProvider } from "@/shared/stores/LoginDialogProvider";
 import { StreakProvider } from "@/shared/stores/StreakProvider";
 import { ToastProvider } from "@/shared/stores/ToastProvider";
@@ -43,11 +44,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const streak = hud?.streak ?? null;
 
   return (
+    // suppressHydrationWarning: the lighting boot script below marks <html> before React hydrates.
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${baloo.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        {/* Decides day or night for the farm before the first paint (no flash of daylight at night). */}
+        <script dangerouslySetInnerHTML={{ __html: LIGHTING_BOOT_SCRIPT }} />
         <LoginDialogProvider>
           <ToastProvider>
           <CoinsProvider>

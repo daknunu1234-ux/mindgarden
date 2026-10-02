@@ -14,6 +14,7 @@ import { cn } from '@/shared/utils/cn'
 import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
+import { useDayNight } from '../hooks/useDayNight'
 import { useTreeLabels } from '../hooks/useTreeLabels'
 import { getTreeStage } from '../hooks/useTreeStage'
 import { dropOutcome } from '../lib/dragGesture'
@@ -21,11 +22,12 @@ import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
 import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
 import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
+import { lightingModeClass } from '../lib/dayNight'
 import { treeLabelsModeClass } from '../lib/treeLabels'
 import type { FarmHudView, FarmPlotView } from '../types'
 import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
-import { BuffPills, FarmDock, GardenBanner, SignInInvite, TreeLabelsToggle, ZoomControls, type FarmBuffSummary } from './FarmHud'
+import { BuffPills, FarmDock, GardenBanner, LightingToggle, SignInInvite, TreeLabelsToggle, ZoomControls, type FarmBuffSummary } from './FarmHud'
 import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
 import { FarmItemDialog } from './FarmItemDialog'
 import { FarmPlotDialog } from './FarmPlotDialog'
@@ -94,6 +96,8 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const isOwner = signedIn && !visitor
   // Show every tree's sign and badge, or only the hovered / tapped tree's (remembered per browser).
   const labels = useTreeLabels()
+  // Day or night light, from the player's clock unless they pinned one (remembered per browser).
+  const lighting = useDayNight()
 
   const world = useMemo(() => ({ w: FARM_WORLD.w, h: FARM_WORLD.h }), [])
   const focus = useMemo(() => ({ x: FARM_WORLD.w / 2, y: FARM_WORLD.h / 2 + 40 }), [])
@@ -370,12 +374,17 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   return (
     // The labels mode is one class here (hover mode hides tree labels in CSS), so flipping the toggle
     // re-renders no tree.
+    // The light is one class too (`mg-night`: globals.css swaps the sea, the shadows and the glows).
+    // `data-lighting` is set only once the farm is live: until then (server HTML, hydration) the CSS
+    // reads the mark the boot script left on <html>, so a night visit never flashes daylight.
     <div
       className={cn(
-        'relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]',
+        'mg-farm relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]',
         treeLabelsModeClass(labels.showAll),
+        lightingModeClass(lighting.mode),
       )}
       data-tree-labels={labels.showAll ? 'all' : 'hover'}
+      data-lighting={lighting.live ? lighting.mode : undefined}
     >
       <div
         ref={scrollRef}
@@ -431,11 +440,13 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         </div>
       </div>
 
-      {/* Tropical sunlight from the upper left, and clouds sailing over the sea (never block input). */}
+      {/* Tropical sunlight from the upper left by day; by night a pale moon glow from the same corner
+          and a navy vignette round the screen. Then clouds sailing over the sea. None block input. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_10%_0%,rgba(255,236,150,0.5),transparent_55%)]"
+        className="mg-sunlight pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_10%_0%,rgba(255,236,150,0.5),transparent_55%)]"
       />
+      <div aria-hidden className="mg-moonlight pointer-events-none absolute inset-0" />
       <SkyClouds />
 
       {/* HUD top: a soft sea-blue wash for contrast, then the island banner + buffs. The level,
@@ -464,6 +475,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
       </div>
       {leftEdge && !build && <div className="pointer-events-none absolute top-1/2 left-0 z-10 -translate-y-1/2">{leftEdge}</div>}
       <div className="pointer-events-none absolute bottom-24 left-2 flex flex-col items-center gap-3 sm:bottom-6 sm:left-4">
+        <LightingToggle preference={lighting.preference} mode={lighting.mode} onCycle={lighting.cycle} />
         <TreeLabelsToggle showAll={labels.showAll} onToggle={labels.toggle} />
         <ZoomControls
           zoom={zoom}

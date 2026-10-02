@@ -9,6 +9,7 @@ import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
 import { FARM_TREE_SIZE, plotSprite, TREE_BASE_RATIO } from '../lib/plotSprite'
 import type { FarmPlotView } from '../types'
+import { AppleIcon, SparkleIcon, WaterDropIcon } from './BubbleIcons'
 import { Bees, FallingParticles, useWateredSplash, WaterSplash } from './FarmAmbience'
 import { TreeStageSvg } from './TreeStageSvg'
 
@@ -143,19 +144,22 @@ export function PlotButton({ geometry, plot, animate, phase = 0, onOpen }: PlotB
 // which would cost GPU fill-rate on every tree every frame): a dark
 // contact shadow hugging the trunk, and a longer cast shadow thrown back and to the right (sun from
 // the upper left), so the tree reads as standing up off the ground. Drawn outside the swaying tree.
+// Their colour follows the light (`.mg-tree-contact` / `.mg-tree-cast` in globals.css): a warm deep
+// green by day, a midnight blue at night.
 function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: number; scale: number }) {
-  const contact = { w: 62 * scale * (0.5 + 0.5 * reach), h: 18 * scale * (0.6 + 0.4 * reach) }
-  const cast = { w: 128 * scale * reach, h: 34 * scale * reach }
+  // Sized for the lush crowns: a quarter wider than the first, rounder trees needed.
+  const contact = { w: 78 * scale * (0.5 + 0.5 * reach), h: 22 * scale * (0.6 + 0.4 * reach) }
+  const cast = { w: 160 * scale * reach, h: 42 * scale * reach }
   return (
     <>
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(20,45,15,0.26)_0%,rgba(20,45,15,0.16)_40%,rgba(20,45,15,0.05)_75%,rgba(20,45,15,0)_100%)]"
+        className="mg-tree-cast pointer-events-none absolute rounded-[50%]"
         style={{ left: x - cast.w / 2 + 30 * scale * reach, top: y - cast.h / 2 - 12 * scale * reach, width: cast.w, height: cast.h, transform: 'rotate(-22deg)' }}
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(20,45,15,0.4)_0%,rgba(20,45,15,0.27)_45%,rgba(20,45,15,0.1)_80%,rgba(20,45,15,0)_100%)]"
+        className="mg-tree-contact pointer-events-none absolute rounded-[50%]"
         style={{ left: x - contact.w / 2 + 2, top: y - contact.h / 2 + 1, width: contact.w, height: contact.h }}
       />
     </>
@@ -233,7 +237,7 @@ export function PlotLabels({
           className="mg-bob pointer-events-auto absolute flex size-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border-[2.5px] border-[#1c6fa8] bg-gradient-to-b from-white to-[#dff4ff] text-base shadow-[inset_0_2px_0_#fff,0_3px_0_#1c6fa8]"
           style={at(thirstyAt)}
         >
-          💧
+          <WaterDropIcon />
         </span>
       )}
       {/* Ripe fruit (practised yesterday): one tap harvests it. Beside the 💧 when both show. */}
@@ -249,7 +253,7 @@ export function PlotLabels({
           className="mg-bob pointer-events-auto absolute flex h-8 -translate-x-1/2 items-center gap-0.5 rounded-full border-[2.5px] border-[#b45309] bg-gradient-to-b from-[#fff7d6] to-[#ffd36b] px-1.5 font-game text-xs font-extrabold text-[#7c2d12] shadow-[inset_0_2px_0_#fff,0_3px_0_#b45309] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
           style={at({ x: thirstyAt.x + (thirsty ? 38 : 0), y: thirstyAt.y })}
         >
-          <span aria-hidden className="text-base">🍎</span>+{FRUIT_COINS}
+          <AppleIcon />+{FRUIT_COINS}
         </button>
       )}
       {mighty && (
@@ -258,7 +262,7 @@ export function PlotLabels({
           className="mg-glow pointer-events-auto absolute flex size-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border-[2.5px] border-[#b7830c] bg-gradient-to-b from-[#fffbe0] to-[#ffe28a] text-base shadow-[inset_0_2px_0_#fff,0_3px_0_#b7830c]"
           style={at(mightyAt)}
         >
-          ✨
+          <SparkleIcon />
         </span>
       )}
       {/* One compact capsule at the tree's base: its name and how far it has grown. */}

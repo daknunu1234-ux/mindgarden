@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { LayoutGrid, Map as MapIcon, Maximize, Minus, Plus, Tag, Tags } from 'lucide-react'
+import { LayoutGrid, Map as MapIcon, Maximize, Minus, Moon, Plus, Sun, SunMoon, Tag, Tags } from 'lucide-react'
 import { ActionDock, DOCK_BUTTON, DockOrb, GameButton, GameIcon, PodShadow } from '@/shared/components/game'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
+import { lightingToggleTitle, type LightingMode, type LightingPreference } from '../lib/dayNight'
 import { treeLabelsToggleTitle } from '../lib/treeLabels'
 
 // Floating game HUD for the farm. The overlay around these pieces is pointer-events-none so drags
@@ -56,6 +57,16 @@ function TreeLabelsToggle({ showAll, onToggle }: { showAll: boolean; onToggle: (
   return (
     <GameButton tone={showAll ? 'leaf' : 'cream'} size="icon-sm" onClick={onToggle} aria-pressed={showAll} aria-label={title} title={title} className="pointer-events-auto">
       {showAll ? <Tags strokeWidth={2.5} /> : <Tag strokeWidth={2.5} />}
+    </GameButton>
+  )
+}
+
+// Day / night light: follows the player's clock, or pins day or night (one press steps through them).
+function LightingToggle({ preference, mode, onCycle }: { preference: LightingPreference; mode: LightingMode; onCycle: () => void }) {
+  const title = lightingToggleTitle(preference, mode)
+  return (
+    <GameButton tone={preference === 'auto' ? 'cream' : mode === 'night' ? 'sky' : 'sun'} size="icon-sm" onClick={onCycle} aria-label={title} title={title} className="pointer-events-auto" data-lighting={preference}>
+      {preference === 'auto' ? <SunMoon strokeWidth={2.5} /> : mode === 'night' ? <Moon strokeWidth={2.5} /> : <Sun strokeWidth={2.5} />}
     </GameButton>
   )
 }
@@ -201,4 +212,4 @@ function BuffPills({ summary, hint }: { summary: FarmBuffSummary; hint: boolean 
   )
 }
 
-export { BuffPills, FarmDock, GardenBanner, SignInInvite, TreeLabelsToggle, ViewToggle, ZoomControls }
+export { BuffPills, FarmDock, GardenBanner, LightingToggle, SignInInvite, TreeLabelsToggle, ViewToggle, ZoomControls }

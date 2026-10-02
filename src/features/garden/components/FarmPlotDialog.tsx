@@ -10,6 +10,7 @@ import { isImmune } from '@/shared/lib/treeVitality'
 import { cn } from '@/shared/utils/cn'
 import { useTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
+import { BoltIcon } from './BubbleIcons'
 import { GrowthBar } from './GrowthBar'
 import { TreeStageSvg } from './TreeStageSvg'
 
@@ -132,7 +133,7 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDeta
                     title="Daily Rush: 8 seconds a card, one mistake ends it, 1 coin for every card in a row. Once a day, on one tree"
                     className={cn(RUSH, 'mg-rush-pulse bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 text-white shadow-lg hover:brightness-110 active:scale-95')}
                   >
-                    ⚡ Daily Rush
+                    <BoltIcon size={22} className="mr-1.5" /> Daily Rush
                   </Link>
                 )
               )}
