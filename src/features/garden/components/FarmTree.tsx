@@ -150,12 +150,12 @@ function TreeShadows({ x, y, reach, scale }: { x: number; y: number; reach: numb
     <>
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(8,48,24,0.32)_0%,rgba(8,48,24,0.2)_40%,rgba(8,48,24,0.07)_75%,rgba(8,48,24,0)_100%)]"
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(20,45,15,0.26)_0%,rgba(20,45,15,0.16)_40%,rgba(20,45,15,0.05)_75%,rgba(20,45,15,0)_100%)]"
         style={{ left: x - cast.w / 2 + 30 * scale * reach, top: y - cast.h / 2 - 12 * scale * reach, width: cast.w, height: cast.h, transform: 'rotate(-22deg)' }}
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(40,20,6,0.55)_0%,rgba(40,20,6,0.32)_45%,rgba(40,20,6,0.08)_80%,rgba(40,20,6,0)_100%)]"
+        className="pointer-events-none absolute rounded-[50%] bg-[radial-gradient(closest-side,rgba(20,45,15,0.4)_0%,rgba(20,45,15,0.27)_45%,rgba(20,45,15,0.1)_80%,rgba(20,45,15,0)_100%)]"
         style={{ left: x - contact.w / 2 + 2, top: y - contact.h / 2 + 1, width: contact.w, height: contact.h }}
       />
     </>

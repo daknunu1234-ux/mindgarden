@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-01.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-02.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -368,6 +368,16 @@ are cosmetic like the rest: same seed price, same planting, moving, chopping, dr
   - a sun-kissed rim light along the upper contours (warm sunlight, soft cyan on pine, pastel on
     cherry / mystic), plus lifted highlights, a sunlit cap, glints and a warm bounce light below;
   - stage 5 wraps the silhouette in a soft translucent golden halo (no hard rim).
+- **Low-poly trial: the oak at stages 2, 3 and 5** (`TreeStageSvg.tsx` `OakStage2` / `OakStage3` /
+  `OakStage5`, one `LowPolyOak` drawing fed by the `LOW_POLY_OAK` table): a chunky faceted look to
+  judge before other species follow. The crown is overlapping volumes of flat triangular facets (two
+  small puffs on the sapling, three creasing masses on the young tree, four on the mastered one), the
+  trunk a chiselled prism (stage 3 adds root wedges, stage 5 branches and acorns), all `<polygon>`s
+  in flat colours picked by how much each plane faces one key light (upper left): warm lime / amber
+  in the sun, emerald / bark in front, cool deep green / espresso in the creases and undersides. A
+  flat two-step contact shadow sits under every base. No filters, no gradients; same view box and
+  trunk base, inside the soft oak's crown extent at each stage; stage 5 keeps its golden halo, aura
+  and sparkles. The oak's sprout (1) and stage 4, and every other species, are unchanged (tested).
 - **Depth on the ground**: two soft shadows, blurred CSS radial gradients on the farm (outside the
   swaying tree, so they stay put): a dark contact shadow hugging the trunk and a longer cast shadow
   thrown back and to the right (sun upper left), growing with the stage and size tier. Elsewhere
@@ -414,8 +424,13 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
   rippling from the rock bases (`.mg-shorefoam`); transform / opacity only, gradients instead of blur
   filters, still for reduced motion. Decorative only (`pointer-events: none`, in the ocean layer under
   the island): they are not placements and touch no grid, drag or harvest logic.
-- **Palette**: emerald / lime grass, turquoise water, citrus sand, terracotta soil and roofs, coral
-  flowers; thick dark-brown outlines (`#3b1f0e`), lit left faces and shaded right faces (sun upper left).
+- **Palette**: a warm meadow-green turf, lively but not neon: `#65b035` / `#4d9326` checkered
+  tiles with a `rgba(35, 75, 18, 0.25)` seam (`TROPIC` in `FarmDiorama.tsx`), a warm stone bevel under the beach, then
+  muted brown earth darkening to slate cliff and a dark slate keel; turquoise water, citrus sand,
+  terracotta roofs, coral flowers; thick dark-brown outlines (`#3b1f0e`), lit left faces and shaded
+  right faces (sun upper left). Contact shadows under trees and structures are a deep grass tint,
+  `rgba(20, 45, 15, 0.4)` (the tree's fades out as a gradient; no blur filters). Tile geometry,
+  click targets and the camera are unchanged.
 - **Chunky toy sprites** (`FarmStructures.tsx`):
   - Farmer's House: a cottage with an oversized terracotta hip roof, a rounded brick chimney puffing
     smoke, and glowing windows and door.
@@ -583,11 +598,12 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(rush): Daily Rush, one sudden-death run a day (8 s a card, coins = streak), server-graded and database-timed |
-| (pending) | refactor(progress): practice stores progress only; stop writing the unused mistake tally and streak mirror, migration to drop them |
-| (pending) | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
-| (pending) | feat(decks): surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
-| (pending) | feat(garden): three surreal tree species (Crystal Flora, Cosmic Nebula, Chrono Willow) with their own light effects, in prismatic / rainbow palettes |
+| (pending) | style(garden): warm meadow-green turf (`#65b035` / `#4d9326`), stone-and-slate island foundation, deep grass contact shadows |
+| (pending) | feat(garden): low-poly faceted trial for the oak at stages 2, 3 and 5 (flat lit facets, chiselled trunk, contact shadow) |
+| `1cb8a8d` | feat(rush): Daily Rush, one sudden-death run a day (8 s a card, coins = streak), server-graded and database-timed |
+| `f12a3ee` | refactor(progress): practice stores progress only; stop writing the unused mistake tally and streak mirror, migration to drop them |
+| `8b9bccf` | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
+| `e7ba90b` | feat(garden): three surreal tree species (Crystal Flora, Cosmic Nebula, Chrono Willow) with their own light effects, in prismatic / rainbow palettes. The same commit also carries: surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
 | `a896a62` | feat(streak): streak milestone coins (7, 30, every 100 days) on the day's first watering; level / XP system removed. The same commit also carries: coins and streak pills in the site header; the compact tree popover (no Edit, no Store); the Tree Workshop layout (editor first, settings bar, inline Add root); the distant karst islands |
 | `eb884e1` | feat(auth): Google 1-click sign-in in the login dialog |
 | `12f6cb3` | feat(garden): withering after 72 h, evergreen trees from stage 4, and daily tree fruit (+2 🪙) |
@@ -624,5 +640,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 78 files, 774 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 78 files, 778 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

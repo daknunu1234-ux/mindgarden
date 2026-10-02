@@ -441,17 +441,20 @@ const OAK: Design[] = [
 const ACORNS: [number, number][] = [[-24, 46], [20, 50], [-6, 36], [30, 64], [-34, 62]]
 
 function Oak({ g, skin }: FormProps) {
+  if (g.stage === 2) return <OakStage2 g={g} skin={skin} />
+  if (g.stage === 3) return <OakStage3 g={g} skin={skin} />
+  if (g.stage === 5) return <OakStage5 g={g} skin={skin} />
+  // Stage 4: the soft crown (the low-poly trial has not reached it yet).
   return (
     <g>
-      <Limb d={trunkPath(g, 48)} w={7 + 7 * g.k} skin={skin} golden={g.golden} />
-      {g.stage >= 3 && <Limb d={`M${g.x(0)} ${g.y(34)} q${-9 * g.k} ${-4 * g.k} ${-18 * g.k} ${-14 * g.k}`} w={4 + 2 * g.k} skin={skin} golden={g.golden} />}
-      {g.stage >= 3 && <Limb d={`M${g.x(0)} ${g.y(38)} q${9 * g.k} ${-4 * g.k} ${18 * g.k} ${-13 * g.k}`} w={4 + 2 * g.k} skin={skin} golden={g.golden} />}
+      <Limb d={trunkPath(g, 48)} w={7 + 7 * g.k} skin={skin} />
+      <Limb d={`M${g.x(0)} ${g.y(34)} q${-9 * g.k} ${-4 * g.k} ${-18 * g.k} ${-14 * g.k}`} w={4 + 2 * g.k} skin={skin} />
+      <Limb d={`M${g.x(0)} ${g.y(38)} q${9 * g.k} ${-4 * g.k} ${18 * g.k} ${-13 * g.k}`} w={4 + 2 * g.k} skin={skin} />
       <Flare g={g} skin={skin} />
-      <Canopy clumps={place(g, g.stage === 2 ? OAK.slice(0, 5) : OAK)} skin={skin} golden={g.golden} />
-      {g.stage >= 4 &&
-        ACORNS.slice(0, g.golden ? 5 : 3).map(([dx, dy]) => {
+      <Canopy clumps={place(g, OAK)} skin={skin} />
+      {ACORNS.slice(0, 3).map(([dx, dy]) => {
           const [x, y] = [g.x(dx), g.y(dy)]
-          const nut = g.golden ? '#f59e0b' : '#c98a3a'
+          const nut = '#c98a3a'
           return (
             <g key={dx}>
               <ellipse cx={x + 0.7} cy={y + 1} rx="3.4" ry="4.2" fill={skin.occlusion} opacity="0.45" />
@@ -462,6 +465,225 @@ function Oak({ g, skin }: FormProps) {
             </g>
           )
         })}
+    </g>
+  )
+}
+
+// ── Oak, stages 2, 3 and 5: chunky low-poly trial (flat facets, one key light) ──
+// An experiment on the oak before other species follow (stage 4 still has the soft crown): the crown
+// is overlapping faceted volumes and the trunk a chiselled prism, every plane a flat fill picked by
+// how much it faces the sun (upper left). No gradients on the facets, no filters. Same view box, trunk
+// base and crown extent as the soft oak of each stage, so the farm's anchors, bubbles and labels fit.
+
+// Unit vector towards the sun in screen space (up and to the left).
+const KEY_LIGHT: readonly [number, number] = [-0.6, -0.8]
+// Uneven ring radii, so a volume reads as a cut gem rather than a ball.
+const FACET_JITTER = [1, 0.9, 1.04, 0.93, 1.02, 0.88, 1, 0.95]
+const FACET_SIDES = FACET_JITTER.length
+
+type Point = readonly [number, number]
+type Facet = { points: string; tone: number }
+// A trunk cross-section at height dy: left edge, the two front ridges, right edge (design space).
+type Ring = readonly [dy: number, left: number, frontLeft: number, frontRight: number, right: number]
+// A flat plane and how much it faces the sun (0 away, 1 straight at it).
+type Plane = { tone: number; points: Point[] }
+type LowPolyOakDesign = {
+  // Crown volumes, back to front.
+  volumes: Design[]
+  // From the root flare up into the crown.
+  rings: Ring[]
+  // Roots and branches, drawn under the trunk faces.
+  limbs: Plane[]
+  // Chisel marks on the front face.
+  chips: Plane[]
+  // Half-width of the contact shadow (view units).
+  shadow: number
+  acorns: number
+  // Stage 5: the trunk's outline, for the golden halo.
+  halo?: Point[]
+}
+
+const LOW_POLY_OAK: Record<2 | 3 | 5, LowPolyOakDesign> = {
+  // Sapling: a stout baby trunk under two small puffs, the lit one in front.
+  2: {
+    volumes: [[8, 76, 24], [-9, 62, 22]],
+    rings: [[0, -13, -6, 5, 12], [20, -9, -4, 4, 9], [48, -8, -3, 4, 9]],
+    limbs: [],
+    chips: [{ tone: 0.85, points: [[-3, 8], [0, 13], [-3, 18]] }],
+    shadow: 11,
+    acorns: 0,
+  },
+  // Young tree: a thicker prism with its first roots, and three masses creasing into each other.
+  3: {
+    volumes: [[0, 80, 24], [-22, 60, 20], [20, 58, 21]],
+    rings: [[0, -12, -5.5, 4.5, 11], [14, -8, -3.5, 4, 8], [30, -7, -2.5, 4.5, 8.5], [48, -8, -3, 4, 9]],
+    limbs: [
+      { tone: 0.8, points: [[-8, 9], [-18, -0.5], [-11, -1.5]] },
+      { tone: 0, points: [[8, 9], [17, -0.5], [10, -1.5]] },
+    ],
+    chips: [
+      { tone: 0.85, points: [[-2.5, 10], [0.5, 14], [-2, 19]] },
+      { tone: 0.05, points: [[4, 4], [6, 9], [3.5, 10.5]] },
+    ],
+    shadow: 17,
+    acorns: 0,
+  },
+  5: {
+    volumes: [[0, 79, 24], [-25, 60, 21], [25, 62, 22], [0, 52, 22]],
+    rings: [[0, -11, -5, 4, 10], [14, -7, -3, 3.5, 7], [28, -6, -2, 4.5, 8], [46, -8, -2.5, 4, 9]],
+    limbs: [
+      // Roots: a lit wedge on the left, a shaded one on the right.
+      { tone: 0.8, points: [[-7, 9], [-18, -0.5], [-10, -1.5]] },
+      { tone: 0.6, points: [[-7, 9], [-10, -1.5], [-5, -2]] },
+      { tone: 0, points: [[7, 9], [17, -0.5], [9, -1.5]] },
+      { tone: 0.3, points: [[7, 9], [9, -1.5], [4, -2]] },
+      // Branches: a top plane and the underside it shades.
+      { tone: 1, points: [[-6, 28], [-2, 34], [-20, 50], [-23, 45]] },
+      { tone: 0.3, points: [[-6, 28], [-23, 45], [-22, 41], [-5, 23]] },
+      { tone: 0.6, points: [[8, 30], [4, 36], [20, 50], [24, 46]] },
+      { tone: 0, points: [[8, 30], [24, 46], [24, 42], [8, 25]] },
+    ],
+    chips: [
+      { tone: 0.85, points: [[-2.5, 12], [1, 16], [-2, 21]] },
+      { tone: 0.05, points: [[4, 5], [6.5, 10], [3.5, 12]] },
+    ],
+    shadow: 23,
+    acorns: ACORNS.length,
+    halo: [
+      [-18, -0.5], [-10, -1.5], [-5, -2], [4, -2], [9, -1.5], [17, -0.5], [7, 9], [7, 14], [8, 28], [24, 42], [24, 46],
+      [20, 50], [9, 46], [-8, 46], [-20, 50], [-23, 45], [-6, 28], [-7, 14], [-7, 9],
+    ],
+  },
+}
+
+const pointList = (points: readonly Point[]) => points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+
+// A colour on a dark → light ramp; `t` 0 faces away from the sun, 1 straight at it.
+function rampColor(ramp: readonly string[], t: number) {
+  const at = Math.min(1, Math.max(0, t)) * (ramp.length - 1)
+  const low = Math.floor(at)
+  return mix(ramp[low], ramp[Math.min(ramp.length - 1, low + 1)], at - low)
+}
+
+// One faceted volume: an outer ring, an inner ring pushed towards the sun and a peak, joined by
+// triangles. A facet's tone is how far its centre lies towards the light; the cap is brighter, the
+// underside darkest, and neighbours alternate a little so every plane stays readable.
+function facetedVolume([cx, cy, r]: Clump, turn: number): { outline: string; facets: Facet[] } {
+  const ring = (radius: number, ox: number, oy: number, phase: number): Point[] =>
+    FACET_JITTER.map((_, i) => {
+      const a = (((i * 360) / FACET_SIDES + phase) * Math.PI) / 180
+      const rr = radius * FACET_JITTER[(i + turn) % FACET_SIDES]
+      return [cx + ox + Math.cos(a) * rr, cy + oy + Math.sin(a) * rr * 0.92]
+    })
+  const outer = ring(r, 0, 0, turn * 17)
+  const inner = ring(r * 0.56, -r * 0.14, -r * 0.2, turn * 17 + 180 / FACET_SIDES)
+  const peak: Point = [cx - r * 0.18, cy - r * 0.3]
+
+  const facet = (points: Point[], base: number, gain: number, i: number): Facet => {
+    const mx = points.reduce((sum, p) => sum + p[0], 0) / points.length - cx
+    const my = points.reduce((sum, p) => sum + p[1], 0) / points.length - cy
+    const facing = (mx * KEY_LIGHT[0] + my * KEY_LIGHT[1]) / (Math.hypot(mx, my) || 1)
+    return { points: pointList(points), tone: base + gain * facing + (i % 2 ? 0.05 : -0.05) }
+  }
+
+  const facets: Facet[] = []
+  for (let i = 0; i < FACET_SIDES; i++) {
+    const j = (i + 1) % FACET_SIDES
+    facets.push(facet([outer[i], outer[j], inner[i]], 0.42, 0.42, i))
+    facets.push(facet([inner[i], outer[j], inner[j]], 0.5, 0.38, i + 1))
+    facets.push(facet([inner[i], inner[j], peak], 0.74, 0.2, i))
+  }
+  return { outline: pointList(outer), facets }
+}
+
+const OakStage2 = (props: FormProps) => <LowPolyOak {...props} design={LOW_POLY_OAK[2]} />
+const OakStage3 = (props: FormProps) => <LowPolyOak {...props} design={LOW_POLY_OAK[3]} />
+const OakStage5 = (props: FormProps) => <LowPolyOak {...props} design={LOW_POLY_OAK[5]} />
+
+function LowPolyOak({ g, skin, design }: FormProps & { design: LowPolyOakDesign }) {
+  const at =(points: readonly Point[]) => pointList(points.map(([dx, dy]) => [g.x(dx), g.y(dy)] as const))
+
+  // Leaves: cool deep forest green in the creases → balanced emerald → warm lime in the sun.
+  const leaf = [
+    mix(skin.occlusion, '#06343a', 0.4),
+    mix(skin.canopyDark, skin.occlusion, 0.55),
+    mix(skin.canopyDark, skin.canopyLight, 0.22),
+    mix(skin.canopyLight, '#b6f23c', 0.5),
+    mix('#d6f545', SUNLIGHT, 0.3),
+  ]
+  // Wood: warm amber on the lit face, core bark in front, espresso on the shaded face.
+  const woodLit = mix(skin.bark, '#f2b566', 0.55)
+  const woodShade = mix(skin.barkDeep, '#2a1a2e', 0.35)
+  const wood = (t: number) => rampColor([woodShade, skin.bark, woodLit], t)
+
+  const { rings } = design
+  const trunk = rings.slice(1).flatMap(([dy, l, fl, fr, r], i) => {
+    const [dy0, l0, fl0, fr0, r0] = rings[i]
+    const bump = i % 2 ? -0.08 : 0.06
+    // The front ridges dip below the edges at the ground: the base is seen from above.
+    const y0 = i === 0 ? dy0 - 2 : dy0
+    return [
+      { points: at([[l0, dy0], [fl0, y0], [fl, dy], [l, dy]]), fill: wood(0.92 + bump) },
+      { points: at([[fl0, y0], [fr0, y0], [fr, dy], [fl, dy]]), fill: wood(0.52 + bump) },
+      { points: at([[fr0, y0], [r0, dy0], [r, dy], [fr, dy]]), fill: wood(0.1 + bump) },
+    ]
+  })
+  const plane = ({ tone, points }: Plane) => ({ points: at(points), fill: wood(tone) })
+  const volumes = place(g, design.volumes).map((clump, i) => facetedVolume(clump, i))
+  // Contact shadow: two flat octagons hugging the base, a touch to the right of the trunk.
+  const contact = (rx: number, ry: number) =>
+    pointList(FACET_JITTER.map((_, i) => {
+      const a = ((i + 0.5) * 2 * Math.PI) / FACET_SIDES
+      return [TRUNK_X + 2.5 + Math.cos(a) * rx, GROUND_Y + 1 + Math.sin(a) * ry] as const
+    }))
+
+  return (
+    <g strokeLinejoin="round">
+      <polygon points={contact(design.shadow, design.shadow * 0.29)} fill="#0a2e1a" opacity="0.2" />
+      <polygon points={contact(design.shadow * 0.63, design.shadow * 0.18)} fill="#0a2e1a" opacity="0.3" />
+
+      {design.halo && (
+        <Halo>
+          <polygon points={at(design.halo)} strokeWidth="7" />
+        </Halo>
+      )}
+      {/* Facets carry a hairline of their own colour, so no seam shows between neighbours. */}
+      {[...design.limbs.map(plane), ...trunk, ...design.chips.map(plane)].map(({ points, fill }) => (
+        <polygon key={points} points={points} fill={fill} stroke={fill} strokeWidth="0.5" />
+      ))}
+
+      <Foliage>
+        {design.halo && (
+          <Halo>
+            {volumes.map(({ outline }) => (
+              <polygon key={outline} points={outline} strokeWidth="9" />
+            ))}
+          </Halo>
+        )}
+        {volumes.map(({ outline, facets }) => (
+          <g key={outline}>
+            {/* The crease this volume carves into the ones behind it. */}
+            <polygon points={outline} fill={leaf[0]} opacity="0.75" transform={`translate(${(1.8 * g.k).toFixed(2)} ${(3.2 * g.k).toFixed(2)})`} />
+            <polygon points={outline} fill={leaf[2]} />
+            {facets.map(({ points, tone }) => {
+              const fill = rampColor(leaf, tone)
+              return <polygon key={points} points={points} fill={fill} stroke={fill} strokeWidth="0.5" />
+            })}
+          </g>
+        ))}
+        {ACORNS.slice(0, design.acorns).map(([dx, dy]) => {
+          const [x, y] = [g.x(dx), g.y(dy)]
+          const p =(points: Point[]) => pointList(points.map(([ox, oy]) => [x + ox, y + oy] as const))
+          return (
+            <g key={dx}>
+              <polygon points={p([[0, -2], [3.4, -1], [3, 2.6], [0, 4.6]])} fill="#b45309" />
+              <polygon points={p([[0, -2], [-3.4, -1], [-3, 2.6], [0, 4.6]])} fill="#fbbf24" />
+              <polygon points={p([[-4, -1], [-2.4, -4], [0, -4.8], [0, -1.6]])} fill="#a8763f" />
+              <polygon points={p([[4, -1], [2.4, -4], [0, -4.8], [0, -1.6]])} fill="#6b4423" />
+            </g>
+          )
+        })}
+      </Foliage>
     </g>
   )
 }

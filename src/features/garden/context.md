@@ -41,6 +41,9 @@ placements are this feature's table.
 | `type DeckCardView` | `{ id, slug, title, description, treeType, masteryPercent }` |
 | `type TreeStage` | `1 \| 2 \| 3 \| 4 \| 5` |
 
+## Low-poly trial (oak, stages 2, 3 and 5)
+`TreeStageSvg.tsx` `OakStage2` / `OakStage3` / `OakStage5` = `LowPolyOak` with that stage's entry of `LOW_POLY_OAK` (crown volumes, trunk rings, root / branch planes, chisel marks, contact-shadow width, acorns, halo outline): the oak is drawn as flat `<polygon>` facets (2 / 3 / 4 crown volumes from `facetedVolume`, a chiselled trunk, a flat contact shadow), each plane's colour picked from a dark → light ramp by how much it faces the key light (`KEY_LIGHT`, upper left). No filters or gradients; same view box and trunk base, inside the soft oak's crown extent at each stage, so farm anchors, bubbles and labels are untouched. The oak's sprout and stage 4, and every other species, keep the soft `Canopy` / `Limb` drawing. Tests: `__tests__/treeSprites.test.ts` "low-poly oak".
+
 ## Not built yet
 `TreeCanvas` (client, cross-fade between stages), stage-up confetti
 

@@ -22,23 +22,28 @@ import { GRID_SIZE } from '../lib/farmGrid'
 import { footprintPoints } from './FarmStructures'
 import { Waves } from './FarmScenery'
 
-// Tropical palette (lit left face / shaded right face).
+// Tropical palette (lit left face / shaded right face). The turf is a warm, rich meadow green
+// checkerboard (lively without being neon), so trees and everything placed on it still stand out.
 export const TROPIC = {
   ink: '#3b1f0e',
-  grassA: '#74de4c',
-  grassB: '#5fd044',
-  grassEdge: '#2e9e3a',
+  grassA: '#65b035',
+  grassB: '#4d9326',
+  grassEdge: '#2f6b1a',
+  // Hairline between tiles: keeps the grid readable without competing with what stands on it.
+  grassSeam: 'rgba(35, 75, 18, 0.25)',
   sandDry: '#ffe8a3',
   sandWet: '#f3c56e',
   foam: '#ffffff',
   lagoon: '#7ff0e6',
 } as const
 
+// The island's foundation: a warm stone bevel at the top edge, then muted brown earth darkening to
+// slate, so the island reads as raised above the sea without pulling the eye from the farm.
 const BANDS: Record<CliffBandId, { left: string; right: string }> = {
-  lip: { left: '#46c24a', right: '#32a13b' },
-  topsoil: { left: '#ea8043', right: '#c9622b' },
-  soil: { left: '#ad5a2e', right: '#8c4420' },
-  stone: { left: '#9a95a8', right: '#7b7689' },
+  lip: { left: '#a59c8d', right: '#877f73' },
+  topsoil: { left: '#6f5b4b', right: '#58473b' },
+  soil: { left: '#54443c', right: '#41342e' },
+  stone: { left: '#4a4a53', right: '#383840' },
 }
 
 type Vars = CSSProperties & Record<`--mg-${string}`, string>
@@ -64,8 +69,8 @@ function OceanLayerImpl({ world, origin }: { world: { w: number; h: number }; or
           <stop offset="100%" stopColor="#12b5d6" stopOpacity="0" />
         </radialGradient>
         <linearGradient id="mg-underside" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#8f89a3" />
-          <stop offset="100%" stopColor="#5b566b" />
+          <stop offset="0%" stopColor="#4f4d58" />
+          <stop offset="100%" stopColor="#33313b" />
         </linearGradient>
       </defs>
       {/* Farthest first: the karsts stand behind the lagoon's glow. */}
@@ -339,7 +344,7 @@ function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
   const tiles = []
   for (let x = 0; x < GRID_SIZE; x++) {
     for (let y = 0; y < GRID_SIZE; y++) {
-      tiles.push(<polygon key={`${x}-${y}`} points={footprintPoints({ x, y, width: 1, height: 1 }, origin)} fill={(x + y) % 2 === 0 ? TROPIC.grassA : TROPIC.grassB} />)
+      tiles.push(<polygon key={`${x}-${y}`} points={footprintPoints({ x, y, width: 1, height: 1 }, origin)} fill={(x + y) % 2 === 0 ? TROPIC.grassA : TROPIC.grassB} stroke={TROPIC.grassSeam} strokeWidth={1.2} />)
     }
   }
 
@@ -347,22 +352,22 @@ function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
     <g strokeLinejoin="round">
       {/* Rocky underside tapering to a keel. */}
       <polygon points={pts(under.left, origin)} fill="url(#mg-underside)" stroke={TROPIC.ink} strokeWidth={4} />
-      <polygon points={pts(under.right, origin)} fill="#6a6479" stroke={TROPIC.ink} strokeWidth={4} />
+      <polygon points={pts(under.right, origin)} fill="#3a3842" stroke={TROPIC.ink} strokeWidth={4} />
       {/* Cliff strata. */}
       {cliffFaces().map((f) => (
         <polygon key={`${f.band}-${f.side}`} points={pts(f.points, origin)} fill={BANDS[f.band][f.side]} stroke={TROPIC.ink} strokeWidth={2.5} />
       ))}
       {pebbles.map((p, i) => {
         const c = face(p.side, p.t, p.d)
-        return <ellipse key={`pb${i}`} cx={c.x} cy={c.y} rx={p.r * 1.4} ry={p.r} fill={p.side === 'left' ? '#b9b4c6' : '#96919f'} stroke={TROPIC.ink} strokeWidth={1.5} />
+        return <ellipse key={`pb${i}`} cx={c.x} cy={c.y} rx={p.r * 1.4} ry={p.r} fill={p.side === 'left' ? '#8d8a90' : '#6f6c73'} stroke={TROPIC.ink} strokeWidth={1.5} />
       })}
       {/* Hanging vines from the grass lip. */}
       {vines.map((v, i) => {
         const a = face(v.side, v.t, 6)
         return (
-          <g key={`v${i}`} stroke="#2e9e3a" strokeLinecap="round" fill="none">
+          <g key={`v${i}`} stroke={TROPIC.grassB} strokeLinecap="round" fill="none">
             <path d={`M ${a.x} ${a.y} q 3 ${v.len / 2} 0 ${v.len}`} strokeWidth={4} />
-            <circle cx={a.x} cy={a.y + v.len} r={3.2} fill="#46c24a" strokeWidth={0} />
+            <circle cx={a.x} cy={a.y + v.len} r={3.2} fill={TROPIC.grassA} strokeWidth={0} />
           </g>
         )
       })}
@@ -378,9 +383,9 @@ function IslandBaseImpl({ origin, seed }: { origin: Pt; seed: string }) {
       <polygon points={pts([grass.top, grass.right, grass.bottom, grass.left], origin)} fill="url(#mg-grass-sheen)" />
       <defs>
         <linearGradient id="mg-grass-sheen" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.1" />
           <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
-          <stop offset="100%" stopColor="#0b5d2a" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="#142d0f" stopOpacity="0.14" />
         </linearGradient>
       </defs>
       <GrassDetails origin={origin} seed={seed} />
@@ -407,7 +412,7 @@ function GrassDetails({ origin, seed }: { origin: Pt; seed: string }) {
         }
         return (
           <g key={i}>
-            <path d={`M ${x} ${y} l 0 -7`} stroke="#2e9e3a" strokeWidth={2} />
+            <path d={`M ${x} ${y} l 0 -7`} stroke={TROPIC.grassEdge} strokeWidth={2} />
             <circle cx={x} cy={y - 8} r={3.6 * d.scale} fill={d.color} stroke={TROPIC.ink} strokeWidth={1.2} />
             <circle cx={x} cy={y - 8} r={1.3 * d.scale} fill="#ffb703" />
           </g>

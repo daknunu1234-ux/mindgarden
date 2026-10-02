@@ -48,7 +48,7 @@ describe('65 tree sprites (13 species × 5 stages)', () => {
       expect(svg).toContain(`data-stage="${stage}"`)
       expect(svg).not.toMatch(/NaN|undefined|Infinity/)
       // A real drawing, not an empty frame.
-      expect((svg.match(/<(path|circle|ellipse|rect)\b/g) ?? []).length, `${id} ${stage}`).toBeGreaterThan(5)
+      expect((svg.match(/<(path|circle|ellipse|rect|polygon)\b/g) ?? []).length, `${id} ${stage}`).toBeGreaterThan(5)
     }
   })
 
@@ -113,6 +113,47 @@ describe('lit, not outlined', () => {
       if (stage > 1) expect(svg, `${id} ${stage}`).toContain('mg-foliage')
       expect(svg.includes('mg-aura'), `${id} ${stage}`).toBe(stage === 5)
       expect(svg.includes('mg-sparkle'), `${id} ${stage}`).toBe(stage === 5)
+    }
+  })
+})
+
+describe('low-poly oak (stages 2, 3 and 5 trial)', () => {
+  const LOW_POLY: TreeStage[] = [2, 3, 5]
+  const facetsOf = (stage: TreeStage) => [...render('oak', stage).matchAll(/<polygon points="([^"]+)" fill="(#[0-9a-f]{6})"/g)]
+
+  it('builds the oak from flat facets in many tones, with no filter or gradient', () => {
+    for (const stage of LOW_POLY) {
+      const facets = facetsOf(stage)
+      expect(facets.length, `stage ${stage}`).toBeGreaterThan(50)
+      expect(new Set(facets.map((f) => f[2])).size, `stage ${stage}`).toBeGreaterThan(20)
+      expect(render('oak', stage)).not.toMatch(/<filter|filter:|filter=|Gradient/)
+      // The polygonal contact shadow under the base.
+      expect(render('oak', stage)).toContain('fill="#0a2e1a"')
+    }
+  })
+
+  it('grows: one or two puffs on the sapling, more facets at every low-poly stage', () => {
+    const counts = LOW_POLY.map((stage) => facetsOf(stage).length)
+    expect(counts[0]).toBeLessThan(counts[1])
+    expect(counts[1]).toBeLessThan(counts[2])
+  })
+
+  it('keeps the trial to the oak, and off its sprout and stage 4', () => {
+    for (const stage of [1, 4] as TreeStage[]) expect(render('oak', stage)).not.toContain('<polygon')
+    for (const id of NATURAL.filter((n) => n !== 'oak')) for (const stage of LOW_POLY) expect(render(id, stage), `${id} ${stage}`).not.toContain('<polygon')
+  })
+
+  it('stays inside the crown and trunk footprint of the soft oak it replaces', () => {
+    // [stage, half-width from the trunk (x = 60), highest point]: the soft oak's extent at that stage.
+    for (const [stage, half, top] of [[2, 28, 50], [3, 38, 27], [5, 50, 3]] as [TreeStage, number, number][]) {
+      const points = facetsOf(stage).flatMap((f) => f[1].split(' ').map((p) => p.split(',').map(Number)))
+      const xs = points.map((p) => p[0])
+      const ys = points.map((p) => p[1])
+      expect(Math.min(...xs), `stage ${stage}`).toBeGreaterThanOrEqual(60 - half)
+      expect(Math.max(...xs), `stage ${stage}`).toBeLessThanOrEqual(60 + half)
+      expect(Math.min(...ys), `stage ${stage}`).toBeGreaterThanOrEqual(top)
+      // The trunk's front ridges and the contact shadow end just under the ground line (y = 108).
+      expect(Math.max(...ys), `stage ${stage}`).toBeLessThanOrEqual(116)
     }
   })
 })

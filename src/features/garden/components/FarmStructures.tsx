@@ -218,8 +218,8 @@ export function BuffAura({ kind, tile, origin }: { kind: 'stream' | 'farmer_hous
 
 // ── Standing miniatures ((0, 0) = ground point) ──────────────────────────────
 
-// Soft contact shadow under a standing thing.
-const Contact = ({ rx, ry, dx = 6 }: { rx: number; ry: number; dx?: number }) => <ellipse cx={dx} cy={4} rx={rx} ry={ry} fill="#0b5d2a" opacity={0.28} />
+// Soft contact shadow under a standing thing: a deep grass tint that grounds it on the turf.
+const Contact = ({ rx, ry, dx = 6 }: { rx: number; ry: number; dx?: number }) => <ellipse cx={dx} cy={4} rx={rx} ry={ry} fill="rgba(20, 45, 15, 0.4)" />
 
 // Farmer's House (2 × 2): cream timber cottage on a stone plinth, oversized terracotta hip roof with
 // a thick glossy rim, a rounded brick chimney puffing smoke, warm glowing windows and door.
