@@ -6,7 +6,7 @@ import type { TreeStage } from '../types'
 
 import { bottomCenterScale, TREE_GROUND_Y as GROUND_Y, TREE_TRUNK_X as TRUNK_X, TREE_VIEW as VIEW, TREE_VIEW_X as VIEW_X, TREE_VIEW_Y as VIEW_Y } from '../lib/plotSprite'
 import { Heap, NATURAL_FORMS, Sprout } from './NaturalTrees'
-import { ContactShadow, Crown, Foliage, geo, Halo, leafRamp, Limb, Roots, trunkNodes, woodRamp, type Design, type FormProps, type Geo } from './treeKit'
+import { ContactShadow, Crown, Facet, facetedVolume, Foliage, geo, Halo, leafRamp, Limb, pointList, rampColor, Roots, trunkNodes, woodRamp, type Design, type FormProps, type Geo } from './treeKit'
 
 // Where the trunk meets the ground, as a fraction of the drawn size. Every species, stage and size
 // tier grows from this point, so a scene can line the tree up with its own ground (roots attach here).
@@ -359,133 +359,241 @@ function Crystal({ g, skin }: FormProps) {
   )
 }
 
-// ── Cosmic Nebula: an obsidian bonsai trunk holding a slowly turning galaxy ──
+// ── Cosmic Nebula: a galaxy mushroom with miniature planets in orbit ─────────
+// A chunky obsidian stem veined with light holds a faceted violet cap over glowing gills. Little
+// faceted planets circle it on two tilted orbits (one passing behind the mushroom, one in front),
+// and the older the tree, the more of them: none on the sprout, then 1, 2, 4 and 6.
 
-// One spiral arm in the disc's own plane (centre 0, 0), winding outwards from `phase`.
-function spiralArm(radius: number, phase: number, turns = 0.95) {
-  const points: string[] = []
-  for (let i = 0; i <= 14; i++) {
-    const t = i / 14
-    const a = phase + t * turns * Math.PI * 2
-    const r = radius * (0.2 + 0.78 * t)
-    points.push(`${fx(Math.cos(a) * r)} ${fx(Math.sin(a) * r)}`)
-  }
-  return `M${points.join(' L')}`
-}
-
-const STARS: [number, number, number][] = [
-  [-34, 96, 3], [40, 88, 2.6], [-6, 112, 2.4], [44, 62, 2.2], [-40, 66, 2.6], [22, 108, 2],
-  [-22, 54, 1.8], [52, 78, 1.8], [-46, 84, 2], [30, 50, 1.8], [8, 116, 1.8], [-14, 44, 1.6],
-]
-
-// The vortex, from its blazing solar-gold core outwards: hot magenta, cosmic indigo, azure, a vivid
-// emerald aurora at the rim.
-const NEBULA_DISC: readonly [number, string, number][] = [
-  [0, '#ffffff', 1],
-  [0.14, '#ffc21a', 1],
-  [0.36, '#ff2d95', 0.96],
-  [0.6, '#4338ca', 0.92],
-  [0.82, '#0ea5e9', 0.82],
-  [1, '#10e39a', 0.4],
-]
-const NEBULA_ARMS = ['#ff4fb0', '#8b5cf6', '#22c7ff']
-const AURORA = '#10e39a'
+// The cap, shade → neon: deep space violet, cosmic magenta, purple-pink where the light hits.
+const SHROOM_CAP = ['#1c0a33', '#3b1259', '#5f1d91', '#8a2be2', '#c45cff', '#ff7ae6']
+// Gills under the cap, glowing from the stem outwards: cyan at the heart, pink at the rim.
+const GILL_CYAN = ['#b8fbff', '#22e6ff']
+const GILL_PINK = ['#ff9ad8', '#ff4fb0']
 const STAR_DUST = ['#ffd23f', '#22e6ff', '#ff7ac8']
 const NEBULA_GLOW = [
-  [0, '#ffc21a', 0.42],
-  [0.45, '#ff2d95', 0.24],
-  [0.75, '#4338ca', 0.14],
-  [1, '#10e39a', 0],
+  [0, '#ff7ae6', 0.4],
+  [0.45, '#8a2be2', 0.26],
+  [0.75, '#22e6ff', 0.12],
+  [1, '#3b1259', 0],
 ] as const
-// Where the rim nodes glint, in degrees round the disc.
-const RIM_NODES = [20, 110, 200, 290]
+
+// A miniature world: its dark → light ramp, its radius (design units) and, for the gas giants, a ring.
+type PlanetKind = { ramp: readonly string[]; r: number; ring?: readonly [lit: string, shade: string]; rays?: boolean }
+const PLANETS = {
+  azure: { ramp: ['#0b3a6b', '#1f6fb8', '#3aa0f0', '#7cc8ff', '#d6f0ff'], r: 5 },
+  lava: { ramp: ['#5a0b14', '#a3172a', '#e0343c', '#ff7a4a', '#ffd08a'], r: 5.5 },
+  ice: { ramp: ['#0b4a4f', '#12867f', '#2cc7b5', '#7df0dc', '#e0fff8'], r: 4.6 },
+  saturn: { ramp: ['#6a3d12', '#b06a24', '#e0a04a', '#f6cf8a', '#fff0c8'], r: 8, ring: ['#ffe2a3', '#c98a3a'] },
+  sun: { ramp: ['#b45309', '#f08c00', '#ffc21a', '#ffe066', '#fffbe0'], r: 6.4, rays: true },
+  emerald: { ramp: ['#064e3b', '#0f8a5f', '#10e39a', '#7df0b8', '#e0fff0'], r: 6.8, ring: ['#b8fff0', '#2cc7b5'] },
+  crimson: { ramp: ['#4a0a1e', '#8f1239', '#e11d48', '#fb7185', '#ffd0d8'], r: 4.6 },
+} satisfies Record<string, PlanetKind>
+type PlanetId = keyof typeof PLANETS
+
+// The two orbits round the cap (design space): the back one is drawn before the mushroom, so its
+// planets pass behind it; the front one after. They turn in opposite directions at different speeds.
+// Wide, open ellipses (the `squash` is how deep the arc reads), as wide as the view box allows.
+const ORBITS = {
+  back: { dy: 84, radius: 63, tilt: 18, squash: 0.5, spin: 'mg-fringe', counter: 'mg-fringe-back' },
+  front: { dy: 76, radius: 60, tilt: -14, squash: 0.42, spin: 'mg-nebula', counter: 'mg-nebula-back' },
+} as const
+// Which planets ride which orbit at each stage, and where on it they start (degrees).
+type Riders = readonly (readonly [PlanetId, number])[]
+const PLANET_PLAN: Record<2 | 3 | 4 | 5, { back: Riders; front: Riders }> = {
+  2: { back: [], front: [['azure', 200]] },
+  3: { back: [['ice', 320]], front: [['lava', 190]] },
+  4: { back: [['sun', 215], ['lava', 20]], front: [['saturn', 205], ['azure', 340]] },
+  5: { back: [['emerald', 200], ['sun', 325], ['azure', 80]], front: [['saturn', 210], ['crimson', 335], ['ice', 95]] },
+}
+
+// A faceted planet at (0, 0), radius r (view units): a cut sphere lit from the upper left, with the
+// far half of its ring behind it and the near half in front; the sun-orb wears a crown of rays.
+function Planet({ kind, r }: { kind: PlanetKind; r: number }) {
+  const { outline, facets } = facetedVolume([0, 0, r], 3, 1)
+  // Half of a tilted ring as a band: the outer arc, then the inner arc back.
+  const band = (from: number) => {
+    const arc = (radius: number, reverse: boolean) =>
+      Array.from({ length: 7 }, (_, i) => {
+        const a = ((from + (reverse ? 6 - i : i) * 30) * Math.PI) / 180
+        return [Math.cos(a) * radius, Math.sin(a) * radius * 0.34] as const
+      })
+    return pointList([...arc(r * 1.95, false), ...arc(r * 1.45, true)])
+  }
+  return (
+    <g>
+      {kind.rays && (
+        <g>
+          <circle r={fx(r * 1.9)} fill={kind.ramp[2]} opacity="0.22" />
+          <polygon points={pointList(Array.from({ length: 16 }, (_, i) => [Math.cos((i * Math.PI) / 8) * r * (i % 2 ? 1.25 : 1.7), Math.sin((i * Math.PI) / 8) * r * (i % 2 ? 1.25 : 1.7)] as const))} fill={kind.ramp[3]} />
+        </g>
+      )}
+      {kind.ring && (
+        <g transform="rotate(-20)">
+          <polygon points={band(180)} fill={kind.ring[1]} />
+        </g>
+      )}
+      <polygon points={outline} fill={kind.ramp[2]} />
+      {facets.map(({ points, tone }, i) => (
+        <Facet key={i} points={points} fill={rampColor(kind.ramp, tone)} />
+      ))}
+      <polygon points={pointList([[-r * 0.5, -r * 0.34], [-r * 0.26, -r * 0.6], [-r * 0.2, -r * 0.3]])} fill="#ffffff" opacity="0.9" />
+      {kind.ring && (
+        <g transform="rotate(-20)">
+          <polygon points={band(0)} fill={kind.ring[0]} />
+        </g>
+      )}
+    </g>
+  )
+}
+
+// One orbit: a faint ring of dust that turns round the cap, carrying its planets. The orbit is a
+// circle seen at an angle (tilted and squashed); each planet counter-turns and is un-squashed, so
+// it travels the ellipse while staying upright and round. Transforms only; still for reduced motion
+// and for withered trees. Never a pointer target.
+function Orbit({ g, orbit, riders }: { g: Geo; orbit: (typeof ORBITS)[keyof typeof ORBITS]; riders: Riders }) {
+  if (riders.length === 0) return null
+  const radius = orbit.radius * g.k
+  return (
+    <g pointerEvents="none" transform={`translate(${fx(g.x(0))} ${fx(g.y(orbit.dy))}) rotate(${orbit.tilt}) scale(1 ${orbit.squash})`}>
+      <g className={orbit.spin}>
+        {/* The orbit line; it also keeps the group's box centred, so it turns about its middle. */}
+        <circle r={fx(radius)} fill="none" stroke="#e9d5ff" strokeWidth="1.2" opacity="0.22" />
+        {Array.from({ length: 9 }, (_, i) => (
+          <circle key={i} cx={fx(Math.cos((i * 40 * Math.PI) / 180) * radius)} cy={fx(Math.sin((i * 40 * Math.PI) / 180) * radius)} r={i % 3 === 0 ? 1.6 : 1} fill={STAR_DUST[i % STAR_DUST.length]} opacity="0.85" />
+        ))}
+        {riders.map(([id, deg]) => {
+          const kind: PlanetKind = PLANETS[id]
+          const r = g.r(kind.r)
+          return (
+            <g key={id} data-planet={id} transform={`rotate(${deg}) translate(${fx(radius)} 0) rotate(${-deg})`}>
+              <g className={orbit.counter}>
+                {/* Centres the box on the planet, so it counter-turns about its own middle. */}
+                <circle r={fx(r * 6)} fill="none" />
+                <g transform={`scale(1 ${(1 / orbit.squash).toFixed(4)}) rotate(${-orbit.tilt})`}>
+                  <Planet kind={kind} r={r} />
+                </g>
+              </g>
+            </g>
+          )
+        })}
+      </g>
+    </g>
+  )
+}
+
+// Cap geometry (design space): the rim and two rings above it, then the peak, leaning to the light.
+const CAP_RIM_DY = 62
+const CAP_RINGS: readonly (readonly [radius: number, rise: number])[] = [[47, 0], [39, 22], [23, 39]]
+const CAP_PEAK: readonly [number, number] = [-3, 49]
+// Pale spots on the cap, where the stars settle: dx, dy.
+const CAP_SPOTS: readonly (readonly [number, number])[] = [[-20, 84], [14, 92], [-4, 104], [28, 74], [-34, 70], [4, 76], [-16, 98]]
+// Veins of light climbing the stem: dy of each crack, alternating sides.
+const STEM_VEINS = [8, 22, 36]
 
 function Nebula({ g, skin }: FormProps) {
   const id = useId()
-  const w = 6 + 7 * g.k
-  const trunk = `M${g.x(0)} ${GROUND_Y} C${g.x(10)} ${g.y(12)} ${g.x(18)} ${g.y(22)} ${g.x(8)} ${g.y(34)} C${g.x(-2)} ${g.y(44)} ${g.x(-12)} ${g.y(46)} ${g.x(-6)} ${g.y(58)}`
-  const [cx, cy] = [g.x(4), g.y(80)]
-  const radius = g.r(42)
-  const arms = g.stage === 2 ? 1 : g.stage === 3 ? 2 : 3
-  const tint = (c: string) => (g.golden ? mix(c, '#fde047', 0.15) : c)
+  // The surreal sprout is the same drawing in miniature (SPROUT_GEO): no planets yet, one spark.
+  const sprout = g.k < 0.5
+  const plan = sprout ? { back: [], front: [] } : PLANET_PLAN[g.stage]
   // Obsidian: near-black in the shade, slate in front, a cold silver sheen on the lit face.
   const obsidian = woodRamp(skin, '#cbd5e1', '#05060d')
+  const at = (dx: number, dy: number): readonly [number, number] => [g.x(dx), g.y(dy)]
+  // The front half of each ring of the cap: seven points from its left edge round to its right edge.
+  const ring = ([radius, rise]: readonly [number, number]) =>
+    Array.from({ length: 7 }, (_, i) => {
+      const a = Math.PI + (i * Math.PI) / 6
+      return at(Math.cos(a) * radius, CAP_RIM_DY + rise - Math.sin(a) * radius * -0.26)
+    })
+  const rings = CAP_RINGS.map(ring)
+  const peak = at(CAP_PEAK[0], CAP_RIM_DY + CAP_PEAK[1])
+  const heart = at(0, CAP_RIM_DY + 18)
+  // A cap facet's tone: how far it faces the key light (upper left), brighter towards the peak.
+  const tone = (points: readonly (readonly [number, number])[], lift: number, i: number) => {
+    const mx = points.reduce((sum, p) => sum + p[0], 0) / points.length - heart[0]
+    const my = points.reduce((sum, p) => sum + p[1], 0) / points.length - heart[1]
+    const facing = (mx * -0.6 + my * -0.8) / (Math.hypot(mx, my) || 1)
+    return 0.4 + lift + 0.42 * facing + (i % 2 ? 0.05 : -0.04)
+  }
+  const cap: { points: readonly (readonly [number, number])[]; tone: number }[] = []
+  for (let j = 0; j < rings.length; j++) {
+    for (let i = 0; i < 6; i++) {
+      const upper = rings[j + 1]
+      const quads = upper ? [[rings[j][i], rings[j][i + 1], upper[i]], [rings[j][i + 1], upper[i + 1], upper[i]]] : [[rings[j][i], rings[j][i + 1], peak]]
+      for (const [n, points] of quads.entries()) cap.push({ points, tone: tone(points, j * 0.1, i + j + n) })
+    }
+  }
+  const outline = pointList([...rings[0], ...rings.slice(1).map((r) => r[6]), peak, ...rings.slice(1).reverse().map((r) => r[0])])
+  // Gills: a fan from the top of the stem out to the rim, cyan near the stem and pink towards the edge.
+  const stemTop = at(0, 37)
+  const gills = Array.from({ length: 6 }, (_, i) => {
+    const edge = Math.abs(i - 2.5) > 1.5
+    return { points: [stemTop, rings[0][i], rings[0][i + 1]] as const, fill: (edge ? GILL_PINK : GILL_CYAN)[i % 2] }
+  })
+  const veins = (g.stage === 2 ? STEM_VEINS.slice(0, 2) : STEM_VEINS).map((dy, i) => {
+    const side = i % 2 ? 1 : -1
+    const [x, y] = at(side * 2.4, dy)
+    const s = 2 + 2.6 * g.k
+    return { key: dy, d: `M${fx(x)} ${fx(y)} l${fx(side * s)} ${fx(-s * 1.1)} l${fx(-side * s * 0.9)} ${fx(-s)} l${fx(side * s * 0.8)} ${fx(-s * 1.2)}`, delay: `${-i * 0.9}s` }
+  })
+  const glints = sprout ? 1 : [2, 4, 5, 7][g.stage - 2]
+
   return (
-    <g>
-      <defs>
-        <radialGradient id={`${id}d`}>
-          {NEBULA_DISC.map(([offset, color, opacity]) => (
-            <stop key={offset} offset={offset} stopColor={tint(color)} stopOpacity={opacity} />
-          ))}
-        </radialGradient>
-      </defs>
-      {/* The radiant backglow behind the galaxy. */}
-      <Backglow id={`${id}g`} cx={cx} cy={cy} r={radius * 1.55} stops={NEBULA_GLOW} />
+    <g strokeLinejoin="round">
+      {/* The radiant backglow behind the cap. */}
+      <Backglow id={`${id}g`} cx={g.x(0)} cy={g.y(86)} r={g.r(58)} stops={NEBULA_GLOW} />
       <ContactShadow w={[0, 0, 12, 20, 28, 30][g.stage]} />
-      {g.stage >= 3 && <Limb g={g} nodes={[[6, 36, 3.6], [19, 42, 3.2], [26, 56, 2.9]]} ramp={obsidian} />}
-      <Limb g={g} nodes={[[0, 0, 9.6], [9, 12, 7.2], [14, 23, 6.8], [7, 35, 6.4], [-5, 46, 6], [-6, 60, 5.6]]} ramp={obsidian} foot />
-      {/* A silver vein up the obsidian. */}
-      <path d={trunk} stroke={skin.rim} strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.5" transform={`translate(${-w * 0.08} 0)`} />
+      {/* A soft glow on the ground round the base. */}
+      {!sprout && (
+        <g pointerEvents="none">
+          <ellipse cx={TRUNK_X} cy={GROUND_Y + 1} rx={30 * g.k} ry={7.5 * g.k} fill={skin.glow} opacity="0.2" />
+          <ellipse cx={TRUNK_X} cy={GROUND_Y + 1} rx={17 * g.k} ry={4.2 * g.k} fill="#22e6ff" opacity="0.22" />
+        </g>
+      )}
+      <Orbit g={g} orbit={ORBITS.back} riders={plan.back} />
+      {/* The stem: a chunky prism of obsidian, flaring at the foot and again under the cap. */}
+      <Limb g={g} nodes={[[0, 0, 14], [-1, 12, 10.5], [1, 32, 9.5], [0, 52, 11.5]]} ramp={obsidian} foot />
+      {/* Energy cracks up the stem, pulsing in turn: a wide glow, a bright core. */}
+      <g pointerEvents="none" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {veins.map((v) => (
+          <g key={v.key} className="mg-rune" style={{ '--mg-delay': v.delay } as Vars}>
+            <path d={v.d} stroke="#ff4fb0" strokeWidth="4.9" opacity="0.42" />
+            <path d={v.d} stroke="#22e6ff" strokeWidth="2.3" />
+            <path d={v.d} stroke="#ffffff" strokeWidth="0.95" />
+          </g>
+        ))}
+      </g>
       <Foliage>
         {g.golden && (
           <Halo>
-            <ellipse cx={cx} cy={cy} rx={radius + 6} ry={radius * 0.62 + 6} stroke="none" transform={`rotate(-18 ${fx(cx)} ${fx(cy)})`} />
+            <polygon points={outline} strokeWidth="9" />
           </Halo>
         )}
-        <ellipse cx={cx} cy={cy} rx={radius} ry={radius * 0.62} fill={skin.occlusion} opacity={DEPTH_OPACITY} transform={`${DEPTH} rotate(-18 ${fx(cx)} ${fx(cy)})`} />
-        {/* The galaxy: a tilted disc whose arms turn in their own plane. */}
-        <g transform={`translate(${fx(cx)} ${fx(cy)}) rotate(-18) scale(1 0.62)`}>
-          {/* Deep space under the gas, for contrast. */}
-          <circle r={radius} fill={skin.occlusion} opacity="0.7" />
-          {/* The rainbow disc: solar-gold core, hot magenta, cosmic indigo, azure, emerald at the rim. */}
-          <circle r={radius} fill={`url(#${id}d)`} />
-          {/* Emerald aurora fringe, drifting the other way round the rim. */}
-          {g.stage >= 3 && (
-            <g className="mg-fringe">
-              <circle r={radius * 1.06} fill="none" />
-              <circle r={radius * 0.99} fill="none" stroke={tint(AURORA)} strokeWidth={radius * 0.13} strokeDasharray={`${fx(radius * 0.7)} ${fx(radius * 0.45)}`} strokeLinecap="round" opacity="0.85" />
-            </g>
-          )}
-          <g className="mg-nebula">
-            {/* Keeps the group's box centred on the disc, so it spins about its middle. */}
-            <circle r={radius} fill="none" />
-            {Array.from({ length: arms }, (_, i) => {
-              const d = spiralArm(radius, (i * Math.PI * 2) / arms)
-              const hue = tint(NEBULA_ARMS[i % NEBULA_ARMS.length])
-              return (
-                <g key={i} fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={d} stroke={hue} strokeWidth={radius * 0.3} opacity="0.55" />
-                  <path d={d} stroke={mix(hue, '#ffffff', 0.25)} strokeWidth={radius * 0.15} opacity="0.9" />
-                  <path d={d} stroke="#ffffff" strokeWidth={Math.max(1, radius * 0.04)} opacity="0.8" />
-                </g>
-              )
-            })}
-          </g>
-          <circle r={radius * 0.34} fill={tint('#ffc21a')} opacity="0.75" />
-          <circle r={radius * 0.18} fill="#ffffff" />
-        </g>
-      </Foliage>
-      {/* Star dust twinkling round the canopy, and cross-sparkles on the galaxy's rim nodes. */}
-      <g pointerEvents="none">
-        {STARS.slice(0, g.stage * 3 - 3).map(([dx, dy, r], i) => (
-          <path key={`${dx}:${dy}`} className="mg-star" d={star(g.x(dx), g.y(dy), r)} fill={STAR_DUST[i % STAR_DUST.length]} style={{ '--mg-delay': `${-i * 0.45}s`, '--mg-dur': `${1.7 + ((i * 7) % 5) * 0.5}s` } as Vars} />
+        {/* The underside: glowing gills, and the shade the cap throws on the stem below them. */}
+        <polygon points={pointList([rings[0][1], rings[0][5], at(8, 30), at(-8, 30)])} fill={skin.occlusion} opacity="0.6" />
+        {gills.map(({ points, fill }, i) => (
+          <Facet key={i} points={points} fill={fill} />
         ))}
-        {RIM_NODES.slice(0, g.stage === 2 ? 2 : 4).map((deg, i) => {
-          // A point on the rim of the tilted disc: scale(1 0.62), then rotate(−18°), then to (cx, cy).
-          const a = (deg * Math.PI) / 180
-          const [px, py] = [Math.cos(a) * radius, Math.sin(a) * radius * 0.62]
-          const tilt = (-18 * Math.PI) / 180
-          return (
-            <Glint
-              key={deg}
-              x={cx + px * Math.cos(tilt) - py * Math.sin(tilt)}
-              y={cy + px * Math.sin(tilt) + py * Math.cos(tilt)}
-              r={2.6 + g.k * 2}
-              color={[AURORA, ...STAR_DUST][i % 4]}
-              beat={i + 2}
-            />
-          )
+        {/* The cap: the crease it throws down-right, then its facets from rim to peak. */}
+        <polygon points={outline} fill={skin.occlusion} opacity="0.55" transform={`translate(${fx(1.8 * g.k)} ${fx(3 * g.k)})`} />
+        <polygon points={outline} fill={SHROOM_CAP[2]} />
+        {cap.map(({ points, tone: t }, i) => (
+          <Facet key={i} points={points} fill={rampColor(SHROOM_CAP, t)} />
+        ))}
+        {/* A neon lip along the rim, and pale spots where the stars have settled. */}
+        <polygon points={pointList([...rings[0], ...[...rings[0]].reverse().map(([x, y]) => [x, y - 2.2 * g.k] as const)])} fill="#ff4fb0" />
+        {(sprout ? CAP_SPOTS.slice(0, 2) : CAP_SPOTS.slice(0, g.stage + 2)).map(([dx, dy]) => {
+          const [x, y] = at(dx, dy)
+          const s = g.r(3.4)
+          return <polygon key={`${dx}:${dy}`} points={pointList([[x, y - s * 0.7], [x + s, y], [x, y + s * 0.7], [x - s, y]])} fill="#ffd6fb" opacity="0.92" />
         })}
+        <polygon points={pointList([at(-24, 96), at(-14, 104), at(-12, 95)])} fill={skin.rim} opacity="0.85" className="mg-glint" />
+      </Foliage>
+      <Orbit g={g} orbit={ORBITS.front} riders={plan.front} />
+      {/* Stardust: cross-sparkles round the cap, each on its own beat. */}
+      <g pointerEvents="none">
+        {CAP_SPOTS.slice(0, glints).map(([dx, dy], i) => (
+          <Glint key={`${dx}:${dy}`} x={g.x(dx * 1.7 + (i % 2 ? 6 : -6))} y={g.y(dy * 1.12 + 6)} r={2.4 + g.k * 1.8} color={STAR_DUST[i % STAR_DUST.length]} beat={i + 2} />
+        ))}
       </g>
     </g>
   )

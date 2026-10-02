@@ -241,8 +241,7 @@ describe('surreal species: Crystal Flora, Cosmic Nebula, Chrono Willow', () => {
     expect(render('chrono_willow', 4)).not.toContain('mg-nebula')
   })
 
-  it('draws the galaxy as a tilted disc and drops each grain of sand exactly to the ground', () => {
-    expect(render('cosmic_nebula', 4)).toMatch(/rotate\(-18\) scale\(1 0\.62\)/)
+  it('drops each grain of sand exactly to the ground', () => {
     const grains = [...render('chrono_willow', 4).matchAll(/class="mg-sand" cx="[\d.]+" cy="([\d.]+)"[^>]*--mg-drop:([\d.]+)px/g)]
     expect(grains.length).toBeGreaterThanOrEqual(5)
     const ground = Number(grains[0][1]) + Number(grains[0][2])
@@ -262,9 +261,9 @@ describe('surreal species: Crystal Flora, Cosmic Nebula, Chrono Willow', () => {
     expect((crystal.match(/<linearGradient/g) ?? []).length).toBe(2)
     expect((crystal.match(/class="mg-prism"/g) ?? []).length).toBe(2)
     expect((crystal.match(/class="mg-star"/g) ?? []).length).toBe(9)
-    // Nebula: solar-gold core, hot magenta, cosmic indigo, azure, emerald fringe; gold, cyan and pink star dust.
+    // Nebula (the galaxy mushroom): a deep space violet and cosmic magenta cap, cyan and pink gills; gold, cyan and pink star dust.
     const nebula = render('cosmic_nebula', 4)
-    expect(hues(nebula, ['#ffc21a', '#ff2d95', '#4338ca', '#0ea5e9', '#10e39a'])).toHaveLength(5)
+    expect(hues(nebula, ['#3b1259', '#8a2be2', '#ff4fb0', '#22e6ff'])).toHaveLength(4)
     expect(nebula).toContain('<radialGradient')
     expect(nebula).toContain('class="mg-fringe"')
     expect(hues(nebula, ['#ffd23f', '#22e6ff', '#ff7ac8'])).toHaveLength(3)
@@ -373,6 +372,112 @@ describe('surreal species: Crystal Flora, Cosmic Nebula, Chrono Willow', () => {
     const block = css.slice(css.indexOf('@keyframes mg-core'), css.indexOf('Compositing hints'))
     expect(block).toContain('@media (prefers-reduced-motion: no-preference)')
     expect(block).not.toMatch(/filter|blur/)
+  })
+})
+
+describe('Cosmic Nebula: a galaxy mushroom with planets in orbit', () => {
+  const planets = (stage: TreeStage) => [...render('cosmic_nebula', stage).matchAll(/data-planet="([a-z]+)"/g)].map((m) => m[1])
+
+  it('gains planets as it grows: none on the sprout, then 1, 2, 4 and 6, each world only once', () => {
+    expect(STAGES.map((stage) => planets(stage).length)).toEqual([0, 1, 2, 4, 6])
+    for (const stage of STAGES) expect(new Set(planets(stage)).size, `stage ${stage}`).toBe(planets(stage).length)
+    expect(planets(2)).toEqual(['azure'])
+    expect(planets(3).sort()).toEqual(['ice', 'lava'])
+    // The mature shroom has a ringed gas giant and a golden sun-orb among its worlds.
+    expect(planets(4)).toEqual(expect.arrayContaining(['saturn', 'sun']))
+    expect(planets(5)).toEqual(expect.arrayContaining(['saturn', 'emerald', 'crimson', 'sun']))
+  })
+
+  it('is a faceted cap over glowing gills on a veined obsidian stem', () => {
+    const svg = render('cosmic_nebula', 4)
+    const fills = [...svg.matchAll(/<polygon points="[^"]+" fill="(#[0-9a-f]{6})"/g)].map((m) => m[1])
+    // Many flat planes in many tones: the cap, the gills, the stem and four planets.
+    expect(fills.length).toBeGreaterThan(120)
+    expect(new Set(fills).size).toBeGreaterThan(40)
+    // Gills in cyan and pink under the cap; energy veins pulsing up the stem.
+    for (const gill of ['#b8fbff', '#22e6ff', '#ff9ad8', '#ff4fb0']) expect(svg, gill).toContain(`fill="${gill}"`)
+    expect((svg.match(/class="mg-rune"/g) ?? []).length).toBe(3)
+    expect(svg).not.toMatch(/<filter|filter:|filter=/)
+  })
+
+  it('carries its planets on two orbits, one behind the mushroom and one in front, turning opposite ways', () => {
+    const svg = render('cosmic_nebula', 5)
+    const cap = svg.indexOf('class="mg-foliage"')
+    const back = svg.indexOf('class="mg-fringe"')
+    const front = svg.indexOf('class="mg-nebula"')
+    expect(back).toBeGreaterThan(0)
+    expect(back).toBeLessThan(cap)
+    expect(front).toBeGreaterThan(cap)
+    // Every planet counter-turns on its orbit and is un-squashed, so it stays upright and round.
+    expect((svg.match(/class="mg-fringe-back"/g) ?? []).length).toBe(3)
+    expect((svg.match(/class="mg-nebula-back"/g) ?? []).length).toBe(3)
+    for (const [squash, tilt] of [[0.5, 18], [0.42, -14]]) {
+      expect(svg).toContain(`rotate(${tilt}) scale(1 ${squash})`)
+      expect(svg).toContain(`scale(1 ${(1 / squash).toFixed(4)}) rotate(${-tilt})`)
+    }
+    // The orbits never take a click: the mushroom stays the target.
+    for (const orbit of [back, front]) expect(svg.lastIndexOf('<g pointer-events="none"', orbit)).toBeGreaterThan(svg.lastIndexOf('</g></g></g>', orbit) - 400)
+  })
+
+  it('counter-turns at the same speed as each orbit, and stands still when withered or with reduced motion', () => {
+    const css = readFileSync(join(__dirname, '..', '..', '..', 'app', 'globals.css'), 'utf8')
+    expect(css).toContain('.mg-nebula { animation: mg-nebula 28s linear infinite;')
+    expect(css).toContain('.mg-nebula-back { animation: mg-nebula 28s linear infinite reverse;')
+    expect(css).toContain('.mg-fringe { animation: mg-fringe 46s linear infinite;')
+    expect(css).toContain('.mg-fringe-back { animation: mg-fringe 46s linear infinite reverse;')
+    for (const name of ['mg-nebula-back', 'mg-fringe-back']) {
+      expect(css).toContain(`.mg-withered .${name}`)
+      // Switched on only inside the motion media block (indented).
+      expect(css).toMatch(new RegExp('\\n\\s+\\.' + name + ' \\{ animation:'))
+    }
+  })
+
+  it('keeps every planet inside the view box when the tree fits its frame', () => {
+    const fitted = renderToStaticMarkup(createElement(TreeStageSvg, { stage: 5, treeType: 'cosmic_nebula', label: '', ground: false, fit: true }))
+    const [vx, vy, vw, vh] = /viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/.exec(fitted)!.slice(1).map(Number)
+    // Each orbit: centre, radius, tilt, squash and the reach of its widest rider (a ringed planet's
+    // ring: 1.95 × its radius) → the box its ellipse needs.
+    for (const [dy, radius, tilt, squash, reach] of [[84, 63, 18, 0.5, 6.8 * 1.95], [76, 60, -14, 0.42, 8 * 1.95]]) {
+      const t = (tilt * Math.PI) / 180
+      const halfW = Math.hypot(radius * Math.cos(t), radius * squash * Math.sin(t)) + reach
+      const halfH = Math.hypot(radius * Math.sin(t), radius * squash * Math.cos(t)) + reach
+      expect(60 - halfW).toBeGreaterThanOrEqual(vx)
+      expect(60 + halfW).toBeLessThanOrEqual(vx + vw)
+      expect(108 - dy - halfH).toBeGreaterThanOrEqual(vy)
+      expect(108 - dy + halfH).toBeLessThanOrEqual(vy + vh)
+    }
+  })
+})
+
+describe('tree motion: a visible breeze, a planted foot', () => {
+  const css = readFileSync(join(__dirname, '..', '..', '..', 'app', 'globals.css'), 'utf8')
+  const frames = (name: string) => new RegExp('@keyframes ' + name + ' \\{([\\s\\S]*?)\\n\\}').exec(css)![1]
+  const degrees = (body: string) => [...body.matchAll(/rotate\((-?[\d.]+)deg\)/g)].map((m) => Math.abs(Number(m[1])))
+
+  it('sways the tree 10–20% further than the first ±1.5°, and the crown than its ±0.8°', () => {
+    const tree = Math.max(...degrees(frames('mg-tree-sway')))
+    const crown = Math.max(...degrees(frames('mg-foliage')))
+    expect(tree / 1.5).toBeGreaterThanOrEqual(1.1)
+    expect(tree / 1.5).toBeLessThanOrEqual(1.2)
+    expect(crown / 0.8).toBeGreaterThanOrEqual(1.1)
+    expect(crown / 0.8).toBeLessThanOrEqual(1.2)
+    // The crown also drifts sideways with the breeze.
+    expect(frames('mg-foliage')).toMatch(/translate\(-0\.7px, 0\)/)
+    expect(frames('mg-foliage')).toMatch(/translate\(0\.7px, 0\)/)
+  })
+
+  it('moves with transforms only, eased, about the foot, and only when motion is welcome', () => {
+    for (const name of ['mg-tree-sway', 'mg-foliage']) {
+      const properties = [...frames(name).matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1])
+      for (const property of properties) expect(property, name).toBe('transform')
+      // Switched on inside the motion media block only (indented), with a gentle easing.
+      expect(css).toMatch(new RegExp('\\n\\s+\\.' + name + ' \\{\\s*animation: ' + name + ' 5\\.2s ease-in-out'))
+      expect(css).toContain('.mg-withered .mg-foliage')
+    }
+    // The crown turns about the bottom centre of its own box; the tree about its trunk base.
+    expect(css).toMatch(/\.mg-foliage \{[^}]*transform-origin: 50% 100%;/)
+    const farmTree = readFileSync(join(__dirname, '..', 'components', 'FarmTree.tsx'), 'utf8')
+    expect(farmTree).toContain('transformOrigin: `${TREE_BASE_RATIO.x * 100}% ${TREE_BASE_RATIO.y * 100}%`')
   })
 })
 

@@ -332,7 +332,7 @@ are cosmetic like the rest: same seed price, same planting, moving, chopping, dr
 | Species (id) | Look | Effect (CSS class) |
 |--------------|------|--------------------|
 | 💠 Crystal Flora (`crystal_flora`) | A crystal stalk fanning into faceted shards in saturated jewel tones, each in its own hue pair (vivid lit facet, deep shaded facet): neon cyan, electric magenta, radiant amber gold, royal amethyst; small crystals at the base | A prismatic radial backglow breathing behind the crown (`.mg-core`); two faint rainbow sweeps cross-fading over the facets (`.mg-prism`); a cross-sparkle on every facet peak (`.mg-star`); dense rainbow motes drifting up (`.mg-mote`) |
-| 🌌 Cosmic Nebula (`cosmic_nebula`) | An obsidian bonsai trunk with a silver vein, holding a tilted high-contrast vortex over deep space: blazing solar-gold core, hot magenta, cosmic indigo, azure, a vivid emerald aurora rim | A gold-to-magenta backglow (`.mg-core`); magenta, violet and azure arms turning in their disc (`.mg-nebula`, 28 s); the emerald fringe drifting the other way (`.mg-fringe`); cross-sparkles on the rim nodes and gold, cyan and pink star dust (`.mg-star`) |
+| 🌌 Cosmic Nebula (`cosmic_nebula`) | A galaxy mushroom: a faceted cap in deep space violet `#3b1259`, cosmic magenta `#8a2be2` and neon purple-pink, with a neon lip and pale star spots, over glowing cyan and pink gills, on a chunky obsidian prism stem. Faceted miniature planets circle it, more with every stage: none on the sprout, then 1 (an azure moon), 2 (a lava planet, an icy turquoise moon), 4 (a ringed gas giant, a golden sun-orb, …) and 6 (ringed gas and emerald worlds, a crimson moon, …) | A violet-to-cyan backglow (`.mg-core`); two tilted orbits of dust carrying the planets, one behind the mushroom (`.mg-fringe`, 46 s) and one in front (`.mg-nebula`, 28 s, the other way), each planet counter-turning (`.mg-fringe-back` / `.mg-nebula-back`) so it stays upright and round; energy cracks pulsing up the stem (`.mg-rune`); cross-sparkles of stardust round the cap (`.mg-star`); a soft glow on the ground |
 | ⏳ Chrono Willow (`chrono_willow`) | A bronze fossil trunk with rings, verdigris and brightly glowing platinum-and-gold runes; optic threads running sunset copper → molten gold → turquoise → celestial violet from root to tip, each ending in a bead of light | A warm golden backglow (`.mg-core`); runes pulsing in turn (`.mg-rune`); cross-sparkles at the thread ends (`.mg-star`); drifting motes (`.mg-mote`); rainbow grains of light-sand falling to the tile (`.mg-sand`) into spreading prismatic rings (`.mg-ring`) |
 
 - **Bigger than natural trees**: every surreal sprite is drawn `SURREAL_SCALE` = 1.18× (`speciesScale`,
@@ -404,8 +404,10 @@ are cosmetic like the rest: same seed price, same planting, moving, chopping, dr
   swaying tree, so they stay put): a dark contact shadow hugging the trunk and a longer cast shadow
   thrown back and to the right (sun upper left), growing with the stage and size tier. Elsewhere
   (cards, Shop) the SVG draws the same pair as stacked translucent ellipses (`shadow` prop).
-- **Alive**: the tree sways about its trunk base (±1.5°) and breathes (scale 0.99 × 1.02) on a 5.2 s
-  loop (`.mg-tree-sway`); its crown (`.mg-foliage`) follows 0.45 s later for a bouncy lag. The phase
+- **Alive**: the tree sways about its trunk base (±1.75°) and breathes (scale 0.988 × 1.023) on a
+  5.2 s loop (`.mg-tree-sway`); its crown (`.mg-foliage`) follows 0.45 s later for a bouncy lag,
+  tilting ±0.95° about its own foot, drifting ±0.7 px sideways and lifting 1.4 px. That is about a
+  sixth more than the first, subtler motion (±1.5° / ±0.8°); eased, transforms only (tested). The phase
   comes from the tile, `((x + 7y) mod 5) × 0.4 s` (`treeSwayPhase`, tested: side-by-side trees always
   differ), so the island never sways in unison. Stage 5's aura pulses (`.mg-aura`) and its sparkles
   twinkle out of step (`.mg-sparkle`). All off for reduced motion.
@@ -673,6 +675,7 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | feat(garden): Cosmic Nebula redrawn as a low-poly galaxy mushroom with faceted planets in orbit (0 / 1 / 2 / 4 / 6 by stage); tree sway and crown motion about a sixth stronger, wider orbits, brighter stem cracks |
 | (pending) | feat(garden): day / night lighting on the farm (local clock or a pinned light): sun and moon pools, night veil and vignette, tinted shadows, lamplight and glows; decided before the first paint (no flash of daylight at night); fresher low-contrast turf (`#82cb52` / `#74bb47`) |
 | (pending) | feat(garden): low-poly farm props (house, woodshop, rockery, fence, cow, pig, palms, flowers), faceted bubble icons, and borderless faceted streams, cliff and beach |
 | (pending) | style(garden): light meadow-green turf (`#7dc24e` / `#65a63d`), a compact sandy-clay soil ring under each tree in place of the square bed, stone-and-slate island foundation, soft contact shadows |
@@ -717,5 +720,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 79 files, 794 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 79 files, 801 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

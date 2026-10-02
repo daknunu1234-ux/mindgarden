@@ -392,11 +392,14 @@
    per sway). Its crown (`.mg-foliage`) follows a beat later for a bouncy, toy-like lag. Each tree
    sets --mg-sway-delay from its tile, so the island never sways in unison. Stage 5: the golden aura
    pulses and the sparkles twinkle. Transform / opacity only; all off for reduced motion. */
+/* The whole tree leans about its trunk base (FarmTree sets the origin there, so the foot never
+   leaves its soil ring) and breathes on the way through. ±1.75° and a 1.2% / 2.3% breath: about a
+   sixth more than the first, subtler sway, still slow and eased. */
 @keyframes mg-tree-sway {
-  0%, 100% { transform: rotate(-1.5deg) scale(1, 1); }
-  25% { transform: rotate(0deg) scale(0.99, 1.02); }
-  50% { transform: rotate(1.5deg) scale(1, 1); }
-  75% { transform: rotate(0deg) scale(0.99, 1.02); }
+  0%, 100% { transform: rotate(-1.75deg) scale(1, 1); }
+  25% { transform: rotate(0deg) scale(0.988, 1.023); }
+  50% { transform: rotate(1.75deg) scale(1, 1); }
+  75% { transform: rotate(0deg) scale(0.988, 1.023); }
 }
 /* A withered tree (shared/lib/treeVitality) stands still: its crown, aura and sparkles stop too. */
 .mg-withered .mg-foliage,
@@ -405,6 +408,8 @@
 .mg-withered .mg-core,
 .mg-withered .mg-mote,
 .mg-withered .mg-nebula,
+.mg-withered .mg-nebula-back,
+.mg-withered .mg-fringe-back,
 .mg-withered .mg-star,
 .mg-withered .mg-sand,
 .mg-withered .mg-prism,
@@ -462,19 +467,24 @@
   .mg-core { animation: mg-core 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .mg-mote { animation: mg-mote var(--mg-dur, 4s) ease-out var(--mg-delay, 0s) infinite; }
   .mg-nebula { animation: mg-nebula 28s linear infinite; transform-box: fill-box; transform-origin: center; }
+  /* A planet riding a turning orbit counter-turns at the same speed, so it stays upright. */
+  .mg-nebula-back { animation: mg-nebula 28s linear infinite reverse; transform-box: fill-box; transform-origin: center; }
   .mg-star { animation: mg-star var(--mg-dur, 2.4s) ease-in-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
   .mg-sand { animation: mg-sand var(--mg-dur, 2.6s) linear var(--mg-delay, 0s) infinite; }
   .mg-prism { animation: mg-prism 5.2s ease-in-out var(--mg-delay, 0s) infinite; }
   .mg-fringe { animation: mg-fringe 46s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-fringe-back { animation: mg-fringe 46s linear infinite reverse; transform-box: fill-box; transform-origin: center; }
   .mg-rune { animation: mg-rune 2.8s ease-in-out var(--mg-delay, 0s) infinite; }
   .mg-ring { animation: mg-ring 3.3s ease-out var(--mg-delay, 0s) infinite; transform-box: fill-box; transform-origin: center; }
 }
 
+/* The crown follows a beat behind the trunk, about its own foot: it tilts (±0.95°), drifts sideways
+   with the breeze (±0.7px) and lifts as it passes the middle (1.4px). */
 @keyframes mg-foliage {
-  0%, 100% { transform: rotate(-0.8deg) translateY(0); }
-  25% { transform: rotate(0deg) translateY(-1.2px); }
-  50% { transform: rotate(0.8deg) translateY(0); }
-  75% { transform: rotate(0deg) translateY(-1.2px); }
+  0%, 100% { transform: rotate(-0.95deg) translate(-0.7px, 0); }
+  25% { transform: rotate(0deg) translate(0, -1.4px); }
+  50% { transform: rotate(0.95deg) translate(0.7px, 0); }
+  75% { transform: rotate(0deg) translate(0, -1.4px); }
 }
 @keyframes mg-aura {
   0%, 100% { opacity: 0.75; transform: scale(0.96); }
