@@ -100,6 +100,7 @@ features/[feature]/
 | `progress` | `user_progress`, `practice_days`, `deck_practice_days`, `tree_harvests`, `streak_rewards`, `users.coins` (mastery payouts, streak rewards, fruit, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
 | `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `tournament` | `deck_tournament_participants`, `deck_tournament_item_progress` | `submitTournamentAnswer` (service role writes via `record_tournament_answer`), `getTournamentBoards` | `shared`, `decks/server` |
+| `rush` | `daily_rush_runs` (and `users.coins` through its RPCs) | `getDailyRushStatus`, `startDailyRush`, `answerDailyRush` (service role writes via `start_daily_rush` / `answer_daily_rush` / `settle_daily_rush`) | `shared`, `decks/server` |
 | `garden` | `garden_placements` (the farm grid) | `getFarmPlacements`, `placeFarmItem`, `removeFarmPlacement` | `shared` |
 | `mindmap` | none (UI only) | none | `shared` |
 

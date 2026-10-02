@@ -520,6 +520,47 @@
   .mg-tree-label { transition: opacity 120ms linear; }
 }
 
+/* ── Daily Rush (rush/DailyRushArena, garden/FarmPlotDialog) ──────────────────
+   The card's clock: the bar shrinks to nothing over --mg-dur while a fiery red layer fades in over
+   the amber one (`.mg-rush-timer` / `.mg-rush-heat`); `.mg-rush-paused` freezes both while a pick is
+   checked. The clock is information, so it runs for reduced motion too. The heartbeat of the last
+   seconds, the flash that ends a run and the ⚡ button's pulse are decoration: off for reduced
+   motion. Transform / opacity only. */
+@keyframes mg-rush-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@keyframes mg-rush-heat {
+  0%, 25% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes mg-rush-beat {
+  0%, 100% { transform: scale(1); }
+  12% { transform: scale(1.014); }
+  24% { transform: scale(1); }
+  36% { transform: scale(1.01); }
+  48% { transform: scale(1); }
+}
+@keyframes mg-rush-flash {
+  0% { opacity: 0; }
+  18% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+@keyframes mg-rush-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.92; }
+}
+.mg-rush-timer { animation: mg-rush-timer var(--mg-dur, 8s) linear both; }
+.mg-rush-heat { animation: mg-rush-heat var(--mg-dur, 8s) linear both; }
+.mg-rush-paused,
+.mg-rush-paused .mg-rush-heat { animation-play-state: paused; }
+.mg-rush-flash { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .mg-rush-beat { animation: mg-rush-beat 1s ease-in-out infinite; }
+  .mg-rush-flash { animation: mg-rush-flash 480ms ease-out both; }
+  .mg-rush-pulse { animation: mg-rush-pulse 2.2s ease-in-out infinite; }
+}
+
 /* ── Compositing hints for the farm's always-moving pieces ────────────────────
    Each swaying tree, drifting cloud, floating ghost and wandering animal gets its own GPU layer
    (will-change + translate3d), so its animation is a cheap composite instead of repainting the

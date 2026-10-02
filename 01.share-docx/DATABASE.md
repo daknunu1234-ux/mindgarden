@@ -44,7 +44,7 @@
 | display_name | VARCHAR(30) | NULLABLE, CHECK 2–30 chars after trim and no `<` `>` | The public **Garden Name** the player chose (migration `20260928001000`). Shown on tournament boards, in other gardeners' Visited Gardens, on the visitor banner and in the header. NULL = the id-derived pseudonym ("Mossy Owl") everywhere. Players update only their own (column grant + RLS "users: update self"); the app sanitizes first (`auth/lib/displayName.ts`). Others read it only through `get_display_names(ids)` (`SECURITY DEFINER`, display names only, 200 ids max) and the board functions |
 | avatar_url | VARCHAR(500) | NULLABLE | Profile picture |
 | ~~streak_count~~, ~~last_active_at~~ | — | dropped by migration `20261007000000` | Were a copy of the current streak that nothing read. The app no longer writes them; the streak is always computed from `practice_days` |
-| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit), `award_streak_reward` (streak milestones) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
+| coins | INT | NOT NULL, DEFAULT 300, CHECK ≥ 0 | 🪙 Gold balance. Starts at **300** (3 tree seeds): the default, and set explicitly by `handle_new_user()`. +1 the first time the player masters an item (5/5). **−100 per tree planted** (`plant_deck`), **−min(100 + statements, 150) per tree cloned** (`clone_deck`). Mastery coins are ×1.2 / ×1.5 / ×1.8 with farm buffs (fraction kept in `coin_carry`); **−price per Shop item** (`purchase_and_place_item`), **+Woodshop refund** on a chop (`uproot_deck`). Written only by `award_mastery_coin`, `plant_deck`, `clone_deck`, `purchase_and_place_item`, `uproot_deck`, `harvest_tree_fruit` (+2 🪙 fruit), `award_streak_reward` (streak milestones), `answer_daily_rush` / `settle_daily_rush` (Daily Rush: +streak, at most 30) and `dev_grant_coins`; see *Gold coins*, *Seed economy* and *Farm Grid* |
 | coin_carry | NUMERIC(6,3) | NOT NULL, DEFAULT 0, 0 ≤ x < 1 | Fraction of a coin carried between buffed mastery payouts (migration `20260930000000`) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 
@@ -260,6 +260,35 @@ Written by `recordDrillResult` (service role, `progress/services/fruit.ts`) afte
 
 **Tree fruit** (`public.harvest_tree_fruit(user, deck, today)`, `SECURITY DEFINER`, EXECUTE for **service_role only**; the `harvestTreeFruit` action computes `today` from the server clock and the player's timezone, so players can't pick the day): the tree must be the player's, they must have a `deck_practice_days` row for `today - 1`, and today's `tree_harvests` insert must be the first (`ON CONFLICT DO NOTHING` → `FRUIT_NOT_READY`); then `users.coins + 2` in the same transaction under a row lock. Any growth stage bears fruit. **Withering** (grey, still farm trees after 72 h without practice; immune from growth stage 4) is computed in the app from `user_progress.last_practiced_at` (and the deck's `created_at` for never-practised trees): nothing is stored.
 
+**daily_rush_runs** — *Daily Rush (migration `20261008000000_daily_rush.sql`, owned by the `rush` feature): one row per player per local day, today's run*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
+| day | DATE | NOT NULL | The player's local day when the run started (computed on the server) |
+| deck_id | UUID | FK → decks, ON DELETE SET NULL | The one tree played. Chopping it ends the card supply; the day stays used |
+| seed | TEXT | NOT NULL | The server rebuilds the run's cards from it; cards are never stored |
+| time_zone | TEXT | NOT NULL, DEFAULT 'UTC' | Zone used for `day`; the status check reuses it |
+| streak | INT | NOT NULL, DEFAULT 0, CHECK 0–30 | Cards answered in a row, updated in place |
+| status | TEXT | 'active' or 'finished' | |
+| coins | INT | NOT NULL, DEFAULT 0, CHECK 0–30 | 🪙 paid when the run finished (= streak) |
+| question_started_at | TIMESTAMPTZ | NOT NULL | When the current card was dealt: the database times the answer from it |
+| started_at, finished_at | TIMESTAMPTZ | | |
+| *(user_id, day)* | — | PK | Strictly one run per player per day |
+
+**Daily Rush** (all three functions `SECURITY DEFINER`, EXECUTE for **service_role only**; rules mirrored in `features/rush/lib/rules.ts`, tested):
+
+| Rule | Enforced by |
+|------|-------------|
+| One run a day, on a tree the player owns | `start_daily_rush(user, deck, day, seed, zone)`: owner check, then insert `ON CONFLICT (user_id, day) DO NOTHING` → `RUSH_ALREADY_PLAYED` |
+| The client never decides the verdict or the time | The app server grades the pick and calls `answer_daily_rush(user, day, expected, correct, timed_out, last, limit_ms)`; the function compares `clock_timestamp()` with `question_started_at` itself: late is a timeout whatever was picked |
+| Right and in time: next card. Otherwise game over | Under `FOR UPDATE` on the run: streak + 1 and a new `question_started_at`, or `status = 'finished'` |
+| Coins = the streak, paid once, atomically | The same call that finishes the run sets `coins = streak` and adds it to `users.coins`. A finished run raises `RUSH_NOT_ACTIVE`; `p_expected` must equal the stored streak (`RUSH_OUT_OF_SYNC`), so a replayed answer can't count twice |
+| A run can't pay without end | Each statement is dealt at most once and at most 30 cards (app), and `streak` / `coins` are CHECKed ≤ 30 |
+| An abandoned run is paid what it had | `settle_daily_rush(user, stale_ms)` finishes active runs whose card is long overdue |
+| Players can't write runs | RLS read own; no INSERT / UPDATE / DELETE grants |
+
+No per-answer rows: the run's streak is updated in place.
+
 **practice_days** — *Streak log: one row per player per local day with at least one saved answer*
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -389,6 +418,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | deck_practice_days | Owner | ✗ (service role: `recordDrillResult`) | ✗ | ✗ (cascades only) |
 | tree_harvests | Owner | ✗ (service role: `harvest_tree_fruit()`) | ✗ | ✗ (cascades only) |
 | streak_rewards | Owner | ✗ (service role: `award_streak_reward()`) | ✗ | ✗ (cascades only) |
+| daily_rush_runs | Owner | ✗ (service role: `start_daily_rush()`) | ✗ (service role: `answer_daily_rush()`, `settle_daily_rush()`) | ✗ (cascades only) |
 | deck_tournament_participants | Owner (boards through the two board functions) | ✗ (service role: `record_tournament_answer`) | ✗ (same) | ✗ (cascades only) |
 | deck_tournament_item_progress | Owner (through the participant) | ✗ (service role) | ✗ (service role) | ✗ (cascades only) |
 
@@ -479,6 +509,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs` (RLS: read own; server writes only), `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one run a day, database-timed answers, coins = streak paid atomically) |
   | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at`: written on every answer, read by nothing. Destructive and optional |
   | 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (surreal species 180 🪙, others 100); `plant_deck()` and `clone_deck()` re-created to charge by species; trigger `decks_charge_species_upgrade` (the price difference when a tree changes to a pricier species) |
   | 17 | `20261005000000_surreal_tree_species.sql` | `decks_tree_type_check` widened from the ten natural ids to thirteen (adds `crystal_flora`, `cosmic_nebula`, `chrono_willow`); no row changes |
@@ -495,6 +526,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 20** can run any time after file 18 (it does not need file 19), before or with the deploy. Until it runs, the ⚡ button shows as ready but starting a run answers "Could not start the Daily Rush" (the log names the migration); nothing else is affected
 - **File 19** runs only **after** the code that stopped writing those columns is deployed: older code sends `mistake_count` with every answer, so answers would fail to save against the dropped column. It is optional (the unused columns are harmless) and irreversible (the values are lost). Never re-run file 4 after it: its column grant names `mistake_count`
 - **File 18** runs after file 17, together with the deploy of the code that shows the species prices. Until it runs, the database still charges 100 🪙 for a surreal seed and nothing for a species change (the app shows 180 / +80 but the purse loses 100 / 0); with it applied under older code, players are charged 180 while that code still shows 100
 - **File 17** runs **before or together with** deploying the surreal-species code (the opposite of file 13): it is safe with older code, which only writes the first ten ids, while the new code planting or switching to a surreal species before it runs is refused by the old check ("Could not plant" / the species change rolls back). Never re-run file 13 after it: that would turn surreal trees into oaks and narrow the check again

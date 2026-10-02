@@ -7,7 +7,7 @@
 
 - **What**: Gamified micro-learning. A Deck is a living Tree, mindmap nodes are underground Roots, knowledge items are plain-text statements drilled with trap choices. Mastery goes 0 → 5 per user per item (`shared/lib/mastery.ts`, `MAX_MASTERY`). Planting a tree costs 🪙 coins; only a tree's owner can practise it (visitors read, then clone).
 - **Stack**: Next.js App Router (React 19, TypeScript strict), Tailwind + shadcn/ui, Supabase (PostgreSQL + Auth + RLS)
-- **Architecture**: Monolith, feature-based. One folder per feature for server + UI: `src/features/{auth,decks,progress,drill,garden,mindmap,user-profile,tournament}` + `src/shared/`
+- **Architecture**: Monolith, feature-based. One folder per feature for server + UI: `src/features/{auth,decks,progress,drill,garden,mindmap,user-profile,tournament,rush}` + `src/shared/`
 - **Team**: Solo developer + AI assistants. Docs are the shared memory: keep them in sync with code.
 
 ## Read before you code
@@ -51,7 +51,7 @@ Also: `ARCHITECTURE.md` / `PROJECT-RULES.md` without a folder means the file in 
 7. Service role key only in `src/shared/lib/supabase/admin.ts` (`import 'server-only'`).
 8. `src/shared/lib/trapEngine.ts` stays pure and deterministic: no `Math.random()`, no DB, no network.
 9. Every new table gets RLS enabled + policies in the same migration.
-10. No hearts, lives, or lockout timers in the UI. Feedback is gold (mastery) or amber (needs practice).
+10. No hearts, lives, or lockout timers in the UI. Feedback is gold (mastery) or amber (needs practice). One exception, asked for by the owner: the opt-in **Daily Rush** (`src/features/rush`) has an 8-second clock per card and ends on the first mistake. It still shows no countdown to the next run, and its end-of-run flash is amber. Normal practice and the Mind Tournament keep the rule.
 
 ## Commands
 

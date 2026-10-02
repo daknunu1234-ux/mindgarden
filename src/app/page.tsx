@@ -19,6 +19,7 @@ import {
   type FarmPlotView,
 } from '@/features/garden'
 import { getFarmHud, getProgressByDecks, type DeckProgress } from '@/features/progress'
+import { getDailyRushStatus } from '@/features/rush'
 
 type View = 'farm' | 'grid'
 
@@ -90,7 +91,9 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const { page, login, view: rawView, visit: rawVisit, refund: rawRefund } = await searchParams
   const view: View = rawView === 'grid' ? 'grid' : 'farm'
 
-  const [userRes, hudRes, visitedRes] = await Promise.all([getCurrentUser(), getFarmHud(), getVisitedGardens()])
+  const [userRes, hudRes, visitedRes, rushRes] = await Promise.all([getCurrentUser(), getFarmHud(), getVisitedGardens(), getDailyRushStatus()])
+  // Today's Daily Rush already used? (null when signed out: no ⚡ button.)
+  const rushPlayed = rushRes.success && rushRes.data ? rushRes.data.playedToday : null
   const userId = userRes.success ? (userRes.data?.id ?? null) : null
   // Visiting yourself is just your own garden.
   const visitOwnerId = view === 'farm' && typeof rawVisit === 'string' && UUID.test(rawVisit) && rawVisit !== userId ? rawVisit : null
@@ -178,6 +181,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           hud={hudView}
           gardenName={gardenName}
           signedIn={userId !== null}
+          rushPlayed={rushPlayed}
           gridHref={hrefFor('grid', currentPage)}
           visitor={visitName ? { name: visitName, backHref: '/' } : null}
           leftEdge={<VisitedGardensDrawer gardens={visitedGardens} signedIn={userId !== null} visitingOwnerId={visitOwnerId} />}

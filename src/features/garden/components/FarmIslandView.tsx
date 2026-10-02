@@ -60,6 +60,9 @@ type FarmIslandViewProps = {
   // Owner: collect a ripe tree's fruit (the page wires progress' harvestTreeFruit; garden imports no
   // other feature). The farm takes the fruit off and credits the coins at once, then settles.
   onHarvest?: HarvestRun
+  // Owner: whether today's Daily Rush is already used (the page reads the rush feature's status;
+  // garden imports no other feature). Greys the ⚡ button in every tree's popover. Null: no button.
+  rushPlayed?: boolean | null
 }
 
 // The server side of a chop, supplied by the page: resolves with the refund and the purse after it.
@@ -83,7 +86,7 @@ type BuildRequest =
 // go, and putting it down moves it (Esc / Cancel leaves it where it was).
 // Every edit is optimistic (lib/optimistic.ts): planting, buying, moving and picking up show at once
 // and sync in the background (no page refresh); a refusal rolls the farm back with a toast.
-function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot, onHarvest }: FarmIslandViewProps) {
+function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot, onHarvest, rushPlayed = null }: FarmIslandViewProps) {
   const { toast } = useToast()
   const { setCoins } = useCoins()
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
@@ -527,6 +530,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         plot={selectedPlot}
         onOpenChange={(open) => !open && setSelectedPlot(null)}
         onHarvest={isOwner && onHarvest ? harvest : undefined}
+        rushPlayed={isOwner ? rushPlayed : null}
         onMove={
           isOwner
             ? (plot) => {

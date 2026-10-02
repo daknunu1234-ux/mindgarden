@@ -22,7 +22,14 @@ type FarmPlotDialogProps = {
   onMove?: (plot: FarmPlotView) => void
   // Owners only: harvest today's fruit (practised yesterday).
   onHarvest?: (plot: FarmPlotView) => void
+  // Owners only: whether today's Daily Rush is already used (it is one run a day for the whole
+  // island, so every tree's ⚡ button greys out together). Undefined / null: no button.
+  rushPlayed?: boolean | null
 }
+
+// The ⚡ Daily Rush button beside Water Tree (ready: fiery gradient; played: muted grey).
+const RUSH =
+  'inline-flex h-12 shrink-0 items-center justify-center rounded-full px-5 font-game text-base font-bold whitespace-nowrap transition focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none'
 
 // One segment of the owner's compact action row.
 const TOOL =
@@ -31,20 +38,20 @@ const TOOL =
 // Tree popover: 💧 water (practise), then one compact row for the owner: roots (the tree's page:
 // mindmap + Workshop), ↔️ move and 🪓 chop (a planted tree can't go back to the Shop). Visitors (strict read-only
 // mode) explore the roots, clone to practise, and ⚔️ compete while the owner hosts a Mind Tournament.
-function FarmPlotDialog({ plot, onOpenChange, onUproot, onMove, onHarvest }: FarmPlotDialogProps) {
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onMove, onHarvest, rushPlayed }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onMove={onMove} onHarvest={onHarvest} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onMove={onMove} onHarvest={onHarvest} rushPlayed={rushPlayed} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onMove' | 'onHarvest'> & { plot: FarmPlotView }
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onMove' | 'onHarvest' | 'rushPlayed'> & { plot: FarmPlotView }
 
-function PlotDetails({ plot, onUproot, onMove, onHarvest }: PlotDetailsProps) {
+function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -107,11 +114,29 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest }: PlotDetailsProps) {
           </>
         ) : canWater ? (
           <>
-            <GameButton asChild tone="sky" size="lg">
-              <Link href={waterHref}>
-                <Droplets aria-hidden /> {allMastered ? 'Review Mastered 🌿' : reviewing ? 'Water Tree (Review Mode)' : 'Water Tree'}
-              </Link>
-            </GameButton>
+            {/* Water, and right beside it the day's ⚡ Daily Rush (one run a day, on one tree). */}
+            <div className="flex flex-wrap items-stretch gap-3">
+              <GameButton asChild tone="sky" size="lg" className="min-w-0 flex-1">
+                <Link href={waterHref}>
+                  <Droplets aria-hidden /> {allMastered ? 'Review Mastered 🌿' : reviewing ? 'Water Tree (Review Mode)' : 'Water Tree'}
+                </Link>
+              </GameButton>
+              {rushPlayed === true ? (
+                <button type="button" disabled title="You played today's Daily Rush. See you tomorrow!" className={cn(RUSH, 'cursor-not-allowed bg-stone-300 text-stone-600')}>
+                  See you tomorrow
+                </button>
+              ) : (
+                rushPlayed === false && (
+                  <Link
+                    href={`/deck/${plot.slug}/rush`}
+                    title="Daily Rush: 8 seconds a card, one mistake ends it, 1 coin for every card in a row. Once a day, on one tree"
+                    className={cn(RUSH, 'mg-rush-pulse bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 text-white shadow-lg hover:brightness-110 active:scale-95')}
+                  >
+                    ⚡ Daily Rush
+                  </Link>
+                )
+              )}
+            </div>
             {allMastered ? (
               <p className="text-center font-game text-sm font-bold text-emerald-800">🌳 Fully cultivated: every statement is at 5/5.</p>
             ) : (

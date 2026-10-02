@@ -297,6 +297,65 @@ export type Database = {
           },
         ]
       }
+      // Migration 20261008000000_daily_rush.sql. One row per player per local day (today's Daily Rush
+      // run). Players read their own rows; only the rush functions (service role) write.
+      daily_rush_runs: {
+        Row: {
+          user_id: string
+          day: string
+          deck_id: string | null
+          seed: string
+          time_zone: string
+          streak: number
+          status: string
+          coins: number
+          question_started_at: string
+          started_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          user_id: string
+          day: string
+          deck_id?: string | null
+          seed: string
+          time_zone?: string
+          streak?: number
+          status?: string
+          coins?: number
+          question_started_at?: string
+          started_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          user_id?: string
+          day?: string
+          deck_id?: string | null
+          seed?: string
+          time_zone?: string
+          streak?: number
+          status?: string
+          coins?: number
+          question_started_at?: string
+          started_at?: string
+          finished_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'daily_rush_runs_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'daily_rush_runs_deck_id_fkey'
+            columns: ['deck_id']
+            isOneToOne: false
+            referencedRelation: 'decks'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       // Migration 20261004000000_streak_rewards.sql. Players read their own rows; only
       // award_streak_reward() (service role) writes.
       streak_rewards: {
@@ -569,6 +628,19 @@ export type Database = {
       award_streak_reward: {
         Args: { p_user_id: string; p_day: string }
         Returns: { streak: number; coins_earned: number; total_coins: number }[]
+      }
+      // Migration 20261008000000_daily_rush.sql. Service role only.
+      start_daily_rush: {
+        Args: { p_user_id: string; p_deck_id: string; p_day: string; p_seed: string; p_time_zone: string }
+        Returns: undefined
+      }
+      answer_daily_rush: {
+        Args: { p_user_id: string; p_day: string; p_expected: number; p_correct: boolean; p_timed_out: boolean; p_last: boolean; p_limit_ms: number }
+        Returns: { run_streak: number; is_finished: boolean; outcome: string; coins_earned: number; total_coins: number | null }[]
+      }
+      settle_daily_rush: {
+        Args: { p_user_id: string; p_stale_ms: number }
+        Returns: number
       }
       // Migration 20260928000500_seed_economy.sql. Runs as the caller (auth.uid()); charges 100 🪙.
       plant_deck: {

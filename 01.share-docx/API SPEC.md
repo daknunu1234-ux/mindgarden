@@ -72,6 +72,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `TOURNAMENT_GRADUATED` | 409 | Mind Tournament: you already mastered this tree (engraved in the Hall of Fame); your run is frozen |
 | `DRILL_ALL_MASTERED` | 422 | Every drillable item in the deck/branch is at 5/5 and review mode is off ("fully cultivated"); retry with `includeMastered: true` |
 | `TILE_UNAVAILABLE` | 409 | Farm grid: the spot is taken or off the 16 × 16 grid, or the tree is already planted (`placeFarmItem`) |
+| `RUSH_ALREADY_PLAYED` | 409 | Daily Rush: today's one run is already used, on this or any other tree (`startDailyRush`) |
+| `RUSH_NOT_ACTIVE` | 409 | Daily Rush: the run is over (wrong answer, timeout, finished) or was never started (`answerDailyRush`) |
 | `FRUIT_NOT_READY` | 409 | Tree fruit: the tree wasn't practised yesterday, or today's fruit is already harvested (`harvestTreeFruit`) |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
@@ -116,6 +118,9 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm's Shop items (no refund; trees are refused: move or chop them) | Required |
 | Progress | `harvestTreeFruit` | Action/POST | Collect today's fruit of a tree you practised yesterday: +2 🪙, once per tree per day | Required (owner) |
+| Rush | `getDailyRushStatus` | Action | Whether today's Daily Rush is used, and the last run's result (null when signed out) | Optional |
+| Rush | `startDailyRush` | Action/POST | Claim today's one Daily Rush on one of your trees and get the first card | Required (owner) |
+| Rush | `answerDailyRush` | Action/POST | One pick (or a timeout) of the running Daily Rush: next card, or game over + coins | Required |
 | Decks | `chopDeck` | Action/POST | Owner uproots a whole tree (cascades roots, statements, progress, farm tile; Woodshop refund), answers `{ id, refund, totalCoins }` (no redirect, no revalidate). The farm's 🪓 Chop and the deck page's Danger Zone | Required |
 | Drill | `getDrillQuestion` | Action/POST | Not built (superseded by `getDrillSession({ nodeId })`) | Optional |
 | Drill | `getDrillSession` | Action/POST | Shuffled practice round for a whole deck or one branch (one 2–4 choice question per item: cloze, recall, true/false, recognition…). Owner only | Required (owner) |
@@ -507,6 +512,25 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - "Today" = the server clock in the player's timezone (never sent by the client); `harvest_tree_fruit()` (service role, DATABASE.md "Tree fruit") checks ownership, a practice day for the tree yesterday and today's first harvest, then pays in one transaction
 - A tree bears fruit when the player saved at least one practice answer on it yesterday (their local day; `deck_practice_days`, written by `submitDrillResult`). Any growth stage, including the stage 4+ trees that never wither
 - UI: a 🍎 +2 bubble on the farm tree and "🍎 Harvest fruit" in its popover. Optimistic: the fruit goes and the purse grows at once; a refusal puts both back with a toast. No `revalidatePath`. Wired in `app/_components/FarmWorld.tsx` (garden imports no other feature)
+
+### `getDailyRushStatus` / `startDailyRush` / `answerDailyRush` (rush)
+```typescript
+// getDailyRushStatus() → { playedToday: boolean; lastRun: { day; streak; coins } | null } | null   // null when signed out
+// startDailyRush({ deckId: string; timeZone?: string })
+//   → { day: string /* the run's id: the player's local day */; total: number /* cards this run can deal */; card: RushCard }
+//   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, DECK_NOT_FOUND (not your tree), DRILL_NO_ITEMS, RUSH_ALREADY_PLAYED, INTERNAL_ERROR
+// answerDailyRush({ day: string; tag: 'A' | 'B' | 'C' | 'D' | null /* null = the clock ran out */ })
+//   → { isCorrect; correctTag; streak } & ( { finished: false; next: RushCard }
+//                                          | { finished: true; outcome: 'wrong' | 'timeout' | 'complete'; coinsEarned: number; totalCoins: number | null } )
+//   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, RUSH_NOT_ACTIVE, INTERNAL_ERROR
+type RushCard = { index: number; kind; context: string[]; prompt: string; instruction: string; choices: { tag; text }[] }   // no correctTag
+```
+- **One run a day, on one tree**: the day is the player's local day (browser timezone, UTC fallback), computed on the server; `start_daily_rush()` claims it by primary key `(user_id, day)` (DATABASE.md "Daily Rush"). The farm greys every tree's ⚡ button once it is used ("See you tomorrow", no countdown)
+- **Sudden death, 8 s a card**: a right answer in time returns the next card; a wrong answer, a timeout (`tag: null`) or an answer that reaches the database more than 8 s + 2.5 s network grace after the card was dealt ends the run. The database clock decides, never the client
+- **Reward**: coins = cards answered in a row, paid by `answer_daily_rush()` in the same transaction that ends the run. A run asks each statement at most once and at most 30 cards (`RUSH_MAX_STREAK`), so it pays at most 30 🪙; answering them all is `outcome: 'complete'`
+- **Server-graded**: the payload carries only the pick. Cards are rebuilt from the run's seed and the tree (`rushOrder`, `rushQuestionSeed`); nothing about the answer is sent before the pick
+- **Isolated**: never touches `user_progress`, `practice_days`, tree fruit or withering. `getDailyRushStatus` is read-only except that it settles a run abandoned mid-card (pays the streak it had)
+- UI: ⚡ Daily Rush beside 💧 Water Tree in the farm's tree popover → `/deck/[slug]/rush` (`DailyRushArena`: the run starts on the Start button, never on page load). No `revalidatePath`; the result pushes `totalCoins` into `CoinsProvider`
 
 ### `getFarmHud` (progress)
 ```typescript

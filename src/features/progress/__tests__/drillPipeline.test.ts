@@ -73,6 +73,8 @@ describe('the schema has no per-answer log', () => {
         'roles', 'users', 'decks', 'mindmap_nodes', 'knowledge_items', 'user_progress',
         'practice_days', 'tree_visits', 'deck_tournament_participants', 'deck_tournament_item_progress',
         'garden_placements', 'deck_practice_days', 'tree_harvests', 'streak_rewards',
+        // Daily Rush: one row per player per day (today's run), its streak updated in place.
+        'daily_rush_runs',
       ].sort(),
     )
     for (const name of tables) expect(name).not.toMatch(/log|attempt|answer|event|history|telemetry/)

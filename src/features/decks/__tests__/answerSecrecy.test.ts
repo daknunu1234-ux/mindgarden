@@ -18,6 +18,8 @@ const ADMIN_USERS = [
   // fruit: write deck_practice_days, call harvest_tree_fruit (the only other writer of users.coins).
   ['features', 'progress', 'services', 'fruit.ts'].join(sep),
   ['features', 'tournament', 'services', 'answers.ts'].join(sep),
+  // rush: start / answer / settle the Daily Rush run (the only writer of daily_rush_runs; pays the streak).
+  ['features', 'rush', 'services', 'rush.ts'].join(sep),
 ]
 
 function sourceFiles(dir: string): string[] {

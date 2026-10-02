@@ -24,4 +24,8 @@ export type ErrorCode =
   | 'TILE_UNAVAILABLE'
   // Tree fruit: not practised yesterday, or today's fruit is already harvested.
   | 'FRUIT_NOT_READY'
+  // Daily Rush: today's one run is already used.
+  | 'RUSH_ALREADY_PLAYED'
+  // Daily Rush: the run is over (answered wrong, timed out, finished) or was never started.
+  | 'RUSH_NOT_ACTIVE'
   | 'INTERNAL_ERROR'

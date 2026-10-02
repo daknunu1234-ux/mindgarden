@@ -49,7 +49,27 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Shop item | −1 to −50 (catalogue below) | `purchase_and_place_item()` |
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
+| Daily Rush (one run a day, one tree) | +1 per card answered in a row, at most 30 | `answer_daily_rush()` |
 | Streak milestone (first watering that day) | +7 at 7 days, +30 at 30, +N at every 100 (100, 200, …) | `award_streak_reward()` |
+
+### Daily Rush ⚡ (`src/features/rush`)
+
+- **What**: once per calendar day, one sudden-death run on one of your own trees. 8 seconds a card; a
+  right answer deals the next card at once; a wrong answer or a timeout ends the run; the run pays
+  1 🪙 per card answered in a row.
+- **Button**: ⚡ Daily Rush beside 💧 Water Tree in the farm's tree popover, a pulsing amber → rose
+  pill. Once today's run is used, every tree shows a grey "See you tomorrow" (no countdown).
+- **Play screen** (`/deck/[slug]/rush`): rules and a Start button (the run starts only on that
+  press), then cards with a clock bar that shrinks from amber to red, a heartbeat in the last 3
+  seconds, keys 1–4 / A–D and instant pointer-down picks, an amber flash when the run ends, and a
+  result panel with the streak, the coins bursting into the purse and the card that ended it.
+- **Server-enforced** (migration 20): one run per player per day by primary key; the server deals
+  and grades every card (the client only sends the pick); the database clock times each answer
+  (8 s + 2.5 s network grace); the streak is paid in the same transaction that ends the run.
+- **Limits**: a run asks each statement once and at most 30 cards, so it pays at most 30 🪙.
+- **Isolated**: a rush changes no mastery, streak, watering or fruit. Only coins.
+- **Rule 10 exception**: this is the one mode with a clock and sudden death (recorded in
+  `01.share-docx/AGENTS.md`).
 
 ### Practice stores progress, not history
 
@@ -550,6 +570,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 17 | `20261005000000_surreal_tree_species.sql` | `decks_tree_type_check` widened to thirteen ids (adds `crystal_flora`, `cosmic_nebula`, `chrono_willow`). Run **before or with** deploying the code |
 | 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (180 for the three surreal ids, else 100); `plant_deck()` and `clone_deck()` charge by species; trigger `decks_charge_species_upgrade` charges the difference when a tree changes to a pricier species. Run **with** the deploy |
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
+| 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -562,6 +583,7 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | feat(rush): Daily Rush, one sudden-death run a day (8 s a card, coins = streak), server-graded and database-timed |
 | (pending) | refactor(progress): practice stores progress only; stop writing the unused mistake tally and streak mirror, migration to drop them |
 | (pending) | feat(garden): toggle to show all tree labels or only the hovered / tapped tree's, remembered in localStorage |
 | (pending) | feat(decks): surreal seeds cost 180 🪙; price tags on every seed card; cloning and Workshop species changes priced by species |
@@ -602,5 +624,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 77 files, 745 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 78 files, 774 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).
