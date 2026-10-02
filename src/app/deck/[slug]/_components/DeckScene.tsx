@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
-import { getTreeSizeTier, getTreeSpecies, treeScale } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, getTreeSpecies } from '@/shared/lib/treeSkins'
 import { DisplayNameEditor } from '@/features/auth'
 import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchContext } from '@/features/drill'
 import {
@@ -54,10 +54,6 @@ type DeckSceneProps = {
   tournament: DeckTournament
 }
 
-// Rendered size of a Standard (md) tree in the scene; its trunk base is where the roots attach.
-// The sprite's view box holds the whole lush crown, so the box is a quarter bigger than the trunk's own.
-const TREE_SIZE = 220
-
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
 // ground line and the mindmap roots grow out of its trunk into the soil. A client component so the
 // owner's edits are optimistic (decks' deck draft): a new species or new statements show across the
@@ -72,11 +68,6 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
   const { stage, name, emoji } = useTreeStage(masteryPercent)
   // Size tier = subject scope (knowledge items only); growth stage = mastery. Independent axes.
   const size = getTreeSizeTier(itemCount)
-  // The scene reserves sky above the surface box, so here the box itself grows (from the trunk
-  // base), rather than scaling inside a fixed box. Base point = box × TREE_BASE_RATIO either way,
-  // so the root conduit still attaches exactly at the trunk.
-  // Surreal species are bigger still (treeScale = tier × species), so the drawing below fills the box (`fit`).
-  const treeBox = Math.round(TREE_SIZE * treeScale(deck.treeType, itemCount))
   const levels: ItemLevels = Object.fromEntries(progress?.items.map((i) => [i.itemId, i.masteryLevel]) ?? [])
   const masteredCount = progress?.items.filter((i) => isMastered(i.masteryLevel)).length ?? 0
   // Statement texts for the mindmap: the owner's from the editor (their own tree, a clone included),
@@ -217,13 +208,15 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
             {tree.length === 0
               ? 'Every concept you add becomes a root under this tree.'
               : visitor
-                ? 'Tap 🔍 on a root to read its statements. This tree is read-only: clone it to your garden to practise it.'
+                ? 'Open a root to read its statements (drag to move, scroll or pinch to zoom). This tree is read-only: clone it to your garden to practise it.'
                 : editor
-                  ? 'Tap 🔍 to inspect a root, ✏️ to rename it or add and remove statements. Roots glow brighter as they are mastered.'
-                  : 'Tap 🔍 on a root to see its statements and practise that branch. Roots glow brighter as you master them.'}
+                  ? 'Every root and sub-root is a card under the tree: open one to see its statements, hover it for ✏️ rename, 🗑️ delete and ⚙️ manage. Drag to move, scroll or pinch to zoom.'
+                  : 'Every root and sub-root is a card under the tree: open one to see its statements and practise that branch. Drag to move, scroll or pinch to zoom.'}
           </p>
           <DeckRootsPanel
             deckId={deck.id}
+            title={deck.title}
+            stageLabel={`${emoji} ${name}`}
             treeType={deck.treeType}
             tree={tree}
             levels={mapLevels}
@@ -231,10 +224,8 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
             practiceMode={launchMode}
             statements={statementTexts}
             surface={{
-              width: treeBox,
-              height: treeBox,
-              baseX: treeBox * TREE_BASE_RATIO.x,
-              baseY: treeBox * TREE_BASE_RATIO.y,
+              // Where the trunk meets the ground in the drawing: the roots sprout from there.
+              base: TREE_BASE_RATIO,
               content: (
                 <TreeStageSvg
                   stage={stage}
@@ -316,9 +307,9 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
 function CanvasFrame() {
   return (
     <div aria-hidden className="space-y-3">
-      {/* The toolbar row, then the wooden-framed canvas. */}
+      {/* The toolbar row, then the wooden-framed canvas (the same box as mindmap's RootChart). */}
       <div className="h-8" />
-      <div className="h-[72vh] max-h-[860px] min-h-[460px] rounded-[24px] border-[5px] border-amber-800/60 bg-gradient-to-b from-sky-100 via-emerald-50 to-[#f1e4cc] motion-safe:animate-pulse" />
+      <div className="h-[68vh] max-h-[760px] min-h-[420px] rounded-[24px] border-[5px] border-amber-800/60 bg-gradient-to-b from-[#eaf7e4] via-[#f4ecd6] to-[#f1e4cc] motion-safe:animate-pulse" />
     </div>
   )
 }

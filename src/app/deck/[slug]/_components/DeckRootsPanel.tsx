@@ -19,10 +19,13 @@ import {
   useDeckDraftActions,
 } from '@/features/decks'
 import { useSessionLaunch } from '@/features/drill'
-import { RootMap, type ItemLevels, type MindmapOwnerTools, type MindmapPractice } from '@/features/mindmap'
+import { RootChart, type ItemLevels, type MindmapOwnerTools, type MindmapPractice } from '@/features/mindmap'
 
 type DeckRootsPanelProps = {
   deckId: string
+  // The tree's name and growth stage, shown on the floating label beside the tree.
+  title: string
+  stageLabel?: string
   treeType: string
   tree: DeckTreeNode[]
   levels: ItemLevels
@@ -33,15 +36,21 @@ type DeckRootsPanelProps = {
   // practise). statements (item id → text): the owner's own texts or, for visitors, the shared tree's.
   practiceMode: MindmapPractice['mode'] | null
   statements?: Readonly<Record<string, string>>
-  surface: { width: number; height: number; baseX: number; baseY: number; content: ReactNode }
+  // The tree's drawing, standing free at the top of the chart, and where its trunk meets the ground
+  // (fractions of the drawing's box).
+  surface: { content: ReactNode; base?: { x: number; y: number } }
   emptyLabel: string
 }
 
-// Route-level composition: the mindmap canvas (mindmap feature) + owner tools (decks feature).
-// New statements come through the page's deck draft (optimistic), so the canvas keeps its camera and
-// re-lays out at once; renames, sub-branches and deletes still refresh page data in place.
+// Route-level composition: the "Tree & roots" chart (mindmap feature) + owner tools (decks feature).
+// The chart is a zoomable, pannable canvas: every root and sub-root is a compact card under the
+// tree, and a root's statements open in the chart's side drawer (never on the canvas). New statements
+// come through the page's deck draft (optimistic), so counts and badges update at once and the camera
+// stays where it is; renames, sub-branches and deletes still refresh page data in place.
 export function DeckRootsPanel({
   deckId,
+  title,
+  stageLabel,
   treeType,
   tree,
   levels,
@@ -114,10 +123,12 @@ export function DeckRootsPanel({
 
   return (
     <>
-      <RootMap
+      <RootChart
         nodes={tree}
         levels={levels}
         treeType={treeType}
+        title={title}
+        stageLabel={stageLabel}
         surface={surface}
         emptyLabel={emptyLabel}
         onManage={editor ? setManageId : undefined}

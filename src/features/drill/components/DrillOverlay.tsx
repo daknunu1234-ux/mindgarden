@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { formatPracticeDays, getTournamentBoards, rankBadge, type TournamentAnswer } from '@/features/tournament'
 import {
+  CoinBonusTag,
   GameButton,
   GameDialog,
   GameDialogContent,
@@ -16,6 +17,7 @@ import {
   KeyChip,
   ParticleBurst,
 } from '@/shared/components/game'
+import { speciesCoinMultiplier } from '@/shared/lib/treeSkins'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { cn } from '@/shared/utils/cn'
 import { useDrillSession, type DrillState } from '../hooks/useDrillSession'
@@ -140,7 +142,7 @@ function DrillOverlay({ session, isSignedIn }: DrillOverlayProps) {
               🌟 {stats.mastered} reached Mighty Root!
             </p>
           )}
-          {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} />}
+          {saving && stats.coinsEarned > 0 && <GoldReward coins={stats.coinsEarned} bonus={speciesCoinMultiplier(session.deck.treeType)} />}
           {isTournament && standing && <TournamentScore standing={standing} rank={rank} />}
           {!saving && (
             <p className="mt-4 text-center text-sm font-medium">
@@ -240,7 +242,7 @@ function TournamentScore({ standing, rank }: { standing: TournamentAnswer; rank:
 }
 
 // The round's gold, front and centre on the trophy panel: a bouncy coin plaque with a gold shower.
-function GoldReward({ coins }: { coins: number }) {
+function GoldReward({ coins, bonus = 1 }: { coins: number; bonus?: number }) {
   return (
     <div
       role="status"
@@ -253,6 +255,8 @@ function GoldReward({ coins }: { coins: number }) {
       <span className="font-game text-2xl leading-none font-extrabold text-[#5a2a02] [text-shadow:0_2px_0_rgba(255,255,255,0.6)]">
         +{coins} 🪙 Gold Earned!
       </span>
+      {/* A special tree paid these at ×1.5. */}
+      <CoinBonusTag multiplier={bonus} compact className="absolute -top-3 -right-3 text-xs" />
     </div>
   )
 }

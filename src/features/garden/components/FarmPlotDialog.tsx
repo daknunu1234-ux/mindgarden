@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Network } from 'lucide-react'
-import { GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
+import { CoinBonusTag, GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
 import { FRUIT_COINS } from '@/shared/lib/economy'
-import { getTreeSpecies } from '@/shared/lib/treeSkins'
+import { getTreeSpecies, speciesCoinMultiplier } from '@/shared/lib/treeSkins'
 import { isImmune } from '@/shared/lib/treeVitality'
 import { cn } from '@/shared/utils/cn'
 import { useTreeStage } from '../hooks/useTreeStage'
@@ -61,11 +61,18 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDeta
   const [review, setReview] = useState(false)
   const reviewing = review || allMastered
   const waterHref = `/deck/${plot.slug}/drill${reviewing ? '?review=1' : ''}`
+  // Special trees pay ×1.5 on top of the farm's buff.
+  const bonus = speciesCoinMultiplier(plot.treeType)
+  const payout = +((plot.buff ?? 1) * bonus).toFixed(2)
 
   return (
     <div className="space-y-4">
-      <p className="text-center font-game text-sm font-semibold text-amber-900/80">
-        {species.icon} {species.label} · {emoji} {name}
+      <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center font-game text-sm font-semibold text-amber-900/80">
+        <span>
+          {species.icon} {species.label} · {emoji} {name}
+        </span>
+        {/* A special tree (180 🪙 species) pays ×1.5 mastery coins. */}
+        <CoinBonusTag multiplier={bonus} />
       </p>
 
       <GameSlab className="flex items-center gap-4 p-3">
@@ -79,8 +86,12 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDeta
             {plot.itemCount} {plot.itemCount === 1 ? 'statement' : 'statements'}
             {plot.mightyRoots > 0 && ` · 🌟 ${plot.mightyRoots} Mighty ${plot.mightyRoots === 1 ? 'Root' : 'Roots'}`}
           </p>
-          {plot.isOwner && (plot.buff ?? 1) > 1 && (
-            <p className="font-semibold text-amber-800">🪙 ×{plot.buff} coins for statements mastered here</p>
+          {/* What a statement mastered here pays: the farm buff × the special tree's bonus. */}
+          {plot.isOwner && payout > 1 && (
+            <p className="font-semibold text-amber-800">
+              🪙 ×{payout} coins for statements mastered here
+              {bonus > 1 && (plot.buff ?? 1) > 1 && <span className="font-medium text-amber-800/75"> (farm ×{plot.buff} · ⭐ ×{bonus})</span>}
+            </p>
           )}
           {plot.needsWater === true && canWater && <p className="font-semibold text-sky-800">💧 Thirsty: practise today to water it.</p>}
           {plot.needsWater === false && <p className="font-semibold text-emerald-800">Watered today 🌿</p>}

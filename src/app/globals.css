@@ -693,3 +693,22 @@
 @media (prefers-reduced-motion: reduce) {
   .mg-sunlight, .mg-moonlight, .mg-night-veil, .mg-sun-pool, .mg-moon-pool, .mg-night-only, .mg-lagoon { transition: none; }
 }
+
+/* ── "Tree & roots" canvas (mindmap/RootChart) ────────────────────────────────
+   What the frame paints behind the chart: sky above the ground line, a strip of turf on it, soil below, in one
+   gradient whose stops sit on --mg-ground (the ground line's place on screen in px; the camera hook
+   updates it once per frame while the chart is dragged or zoomed). A flat gradient: no element moves for it. */
+.mg-chart-ground {
+  --mg-ground: 46%;
+  background: linear-gradient(
+    to bottom,
+    #d8f0fb 0,
+    #eef9ec calc(var(--mg-ground) - 2px),
+    #74bb47 calc(var(--mg-ground) - 2px),
+    #5a9a3a calc(var(--mg-ground) + 4px),
+    #b98d5f calc(var(--mg-ground) + 4px),
+    #d4b48a calc(var(--mg-ground) + 90px),
+    #ead9b9 calc(var(--mg-ground) + 320px),
+    #f1e4cc 100%
+  );
+}

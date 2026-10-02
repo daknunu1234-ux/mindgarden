@@ -48,7 +48,7 @@ export default function Loading() {
             <Bone className="size-8 rounded-full" />
             <Bone className="h-8 w-24 rounded-full" />
           </div>
-          <div className="mt-3 flex h-[72vh] max-h-[860px] min-h-[460px] flex-col items-center overflow-hidden rounded-[24px] border-[5px] border-amber-800/60 bg-gradient-to-b from-sky-100 via-emerald-50 to-[#f1e4cc] pt-10">
+          <div className="mt-3 flex h-[68vh] max-h-[760px] min-h-[420px] flex-col items-center overflow-hidden rounded-[24px] border-[5px] border-amber-800/60 bg-gradient-to-b from-sky-100 via-emerald-50 to-[#f1e4cc] pt-10">
             {/* The tree, the ground line and a few roots fanning out. */}
             <Bone className="size-32 rounded-full bg-emerald-800/10" />
             <div className="mt-3 h-1 w-full bg-lime-600/30" />

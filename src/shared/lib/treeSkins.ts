@@ -1,7 +1,7 @@
 // Tree species catalog (decks.tree_type): shared by the deck form and validation (decks), the
 // tree illustrations (garden) and the root network (mindmap), so every view uses the same wood.
 
-import { SEED_PRICE_COINS, SURREAL_SEED_PRICE_COINS } from './economy'
+import { SEED_PRICE_COINS, SPECIAL_COIN_MULTIPLIER, SURREAL_SEED_PRICE_COINS } from './economy'
 
 // Drawing: each species has its own silhouette (garden TreeStageSvg); colours below decide the look.
 export type TreeForm = 'oak' | 'pine' | 'birch' | 'cherry' | 'willow' | 'mystic' | 'palm' | 'citrus' | 'maple' | 'cactus' | 'crystal' | 'nebula' | 'chrono'
@@ -163,6 +163,14 @@ export const getTreeSkin = (treeType: string): TreeSkin => getTreeSpecies(treeTy
 
 // 🪙 for a seed of this species (retired and unknown ids price as the species they render as).
 export const seedPrice = (treeType: string | null | undefined): number => getTreeSpecies(treeType ?? 'oak').price
+
+// A special (premium) tree: one whose seed costs SURREAL_SEED_PRICE_COINS (180 🪙): Crystal Flora,
+// Cosmic Nebula, Chrono Willow. Retired and unknown ids count as the species they render as.
+export const isSpecialTree = (treeType: string | null | undefined): boolean => seedPrice(treeType) === SURREAL_SEED_PRICE_COINS
+
+// How many times the mastery coins a tree of this species pays: SPECIAL_COIN_MULTIPLIER (×1.5) for a
+// special tree, 1 for the rest. The database pays by the same rule (species_coin_multiplier()).
+export const speciesCoinMultiplier = (treeType: string | null | undefined): number => (isSpecialTree(treeType) ? SPECIAL_COIN_MULTIPLIER : 1)
 
 // 🪙 to change a planted tree from one species to another in the Tree Workshop: the price difference
 // when the new species costs more, nothing otherwise (no refund for going back to a cheaper one).

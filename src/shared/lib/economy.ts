@@ -9,6 +9,30 @@ export const SEED_PRICE_COINS = 100
 // costs what is in the catalogue (shared/lib/treeSkins.ts `price`, `seedPrice`); the database charges
 // the same through seed_price() (migration 20261006000000_species_seed_prices.sql; a test checks).
 export const SURREAL_SEED_PRICE_COINS = 180
+// A special tree (a species whose seed costs SURREAL_SEED_PRICE_COINS) pays this many times the
+// mastery coins of a standard tree, on every statement mastered on it. The database pays the same
+// through species_coin_multiplier() (migration 20261009000000_special_tree_coin_bonus.sql; a test
+// checks). Which species are special: shared/lib/treeSkins.ts `isSpecialTree`.
+export const SPECIAL_COIN_MULTIPLIER = 1.5
+// What mastering a statement pays before any multiplier.
+export const MASTERY_COIN = 1
+
+// The coins one mastered statement pays, as the database computes it (award_mastery_coin()):
+// 1 × the farm buff × the species bonus, plus the fraction carried from earlier payouts; whole coins
+// are paid and the rest is carried on (always under one coin). So ×1.5 pays 1, 2, 1, 2, …: exactly
+// one and a half coins a statement over time, never rounded away and never rounded up.
+export function masteryCoinPayout(farmBuff: number, speciesBonus: number, carry = 0): { coins: number; carry: number } {
+  const safe = (value: number, fallback: number) => (Number.isFinite(value) && value > 0 ? value : fallback)
+  const amount = MASTERY_COIN * safe(farmBuff, 1) * safe(speciesBonus, 1) + Math.min(Math.max(0, Number.isFinite(carry) ? carry : 0), 0.999)
+  const coins = Math.floor(amount + 1e-9)
+  return { coins, carry: Math.max(0, +(amount - coins).toFixed(3)) }
+}
+
+// How a coin bonus reads on a tag: "1.5x Coins".
+export const coinBonusLabel = (multiplier: number): string => `${+multiplier.toFixed(2)}x Coins`
+// The same bonus as a percentage: "+50%".
+export const coinBonusPercent = (multiplier: number): string => `+${Math.round((multiplier - 1) * 100)}%`
+
 // A tree you drilled yesterday bears fruit at your midnight: harvest it once that day for this much
 // (migration 20261003000000 harvest_tree_fruit() pays the same; a test checks).
 export const FRUIT_COINS = 2

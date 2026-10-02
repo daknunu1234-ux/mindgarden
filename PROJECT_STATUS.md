@@ -45,12 +45,32 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 | Plant a seed (new tree) | −100; −180 for a surreal species (Crystal Flora, Cosmic Nebula, Chrono Willow) | `plant_deck()` → `seed_price()` |
 | Clone a shared tree | −(the species' seed price + min(statements, 50)): 100–150, or 180–230 for a surreal tree | `clone_deck()` |
 | Change a planted tree to a pricier species (Tree Workshop) | −the price difference (standard → surreal: 80); cheaper or equal: free, no refund | trigger `decks_charge_species_upgrade` |
-| Statement mastered (first 5/5) | +1 × farm buff, fraction carried | `award_mastery_coin()` |
+| Statement mastered (first 5/5) | +1 × farm buff × 1.5 on a special tree (a 180 🪙 species), fraction carried | `award_mastery_coin()` → `species_coin_multiplier()` |
 | Shop item | −1 to −50 (catalogue below) | `purchase_and_place_item()` |
 | Chop a tree with a Woodshop | +min(floor(25% × statements), 50) | `uproot_deck()` |
 | Harvest a tree's fruit (practised yesterday) | +2 per tree per day | `harvest_tree_fruit()` |
 | Daily Rush (one run a day, one tree) | +1 per card answered in a row, at most 30 | `answer_daily_rush()` |
 | Streak milestone (first watering that day) | +7 at 7 days, +30 at 30, +N at every 100 (100, 200, …) | `award_streak_reward()` |
+
+### Special trees pay ×1.5 mastery coins
+
+- **Which trees**: the species whose seed costs 180 🪙 (Crystal Flora, Cosmic Nebula, Chrono Willow):
+  `shared/lib/treeSkins.ts` `isSpecialTree` (the rule is the price, not a list) and
+  `speciesCoinMultiplier`; `SPECIAL_COIN_MULTIPLIER` = 1.5 in `shared/lib/economy.ts`.
+- **What it multiplies**: the one mastery reward there is: the coin a statement pays the first time
+  it reaches 5/5. Standard trees pay ×1 as before.
+- **Exactly ×1.5, not rounded**: the payout is 1 × farm buff × 1.5 plus the carried fraction
+  (`users.coin_carry`), so a special tree pays 1, 2, 1, 2, … coins. Rounding each payout would pay 2
+  every time (×2). `masteryCoinPayout` mirrors the database rule; a test keeps them equal.
+- **Stacks with farm buffs**: a special tree beside a stream and inside a Farmer's House area pays
+  1.5 × 1.8 = ×2.7.
+- **Server-enforced** (migration 21): `species_coin_multiplier()` and a re-created
+  `award_mastery_coin()`. The species is read when the coin is paid, so a tree changed to a special
+  species (80 🪙 in the Workshop) pays ×1.5 from then on.
+- **Shown**: a violet "⭐ 1.5x Coins" tag (`shared/components/game` `CoinBonusTag`) on the special
+  seed cards (planting form, Shop seed gallery, Workshop picker), in the farm's tree popover (whose
+  payout line now reads farm buff × bonus), and "⭐ 1.5x" on the practice round's coin plaque.
+- Fruit, streak rewards, the Daily Rush and the Woodshop refund are not multiplied.
 
 ### Daily Rush ⚡ (`src/features/rush`)
 
@@ -209,6 +229,37 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
     it showed (`drill/__tests__/questionConsistency.test.ts`). Tournament N now counts every note.
 - **Visitors**: strict read-only. They read every root and statement of a shared tree, then clone it to
   practise (progress is not copied). The Mind Tournament is the only exception.
+
+## Tree & roots chart (deck page)
+
+The "Tree & roots" section of `/deck/[slug]` is the whole root hierarchy on a zoomable, pannable
+canvas (`mindmap` `RootChart`; layout `hooks/orgChartLayout.ts`, camera `hooks/chartCamera.ts` +
+`useChartCamera.ts`, tested). This supersedes the mindmap canvas described under "Knowledge Engine"
+and "Opening a tree": that canvas (`RootMap`) is still in the feature but no longer mounted.
+
+- **The tree stands free**: no box round it. The low-poly sprite stands on the ground line at the
+  top of the canvas, swaying about the foot of its trunk (the farm's idle motion), on a small soil
+  ring. Its name, stage and overall mastery float beside the trunk in one dark capsule.
+- **Roots from the trunk**: a tapering taproot drops from the foot of the trunk into the soil and
+  branches into curving tendrils that reach the top-level roots; each sub-root hangs under its
+  parent by a tendril of its own. Tendrils are tinted by the child's mastery (gold at 5/5), thin
+  with every tier and end on the top edge of their card.
+- **Sky and soil**: the frame paints sky above the ground line, a strip of turf on it and soil
+  below, in one gradient that follows the camera (`--mg-ground`, set by the camera hook).
+- **Hierarchy**: every tier of roots under the tree: top-level roots, their sub-roots, and so on.
+  Each root is centred over its own sub-roots; cards never overlap, whatever the tree's shape.
+- **No statements on the canvas**: a card shows the root's title, a progress ring, a status badge (No
+  statements / Seed / Growing / Thriving / Mighty Root), its own statement count and its sub-root
+  count. Clicking the card, or its "View" button, opens that root's statements in the side drawer.
+  Top-level roots also carry 💧 Drill / ⚔️ Compete; the owner's ✏️ / 🗑️ / ⚙️ tools appear on hover
+  (always on touch) on every card.
+- **Camera**: drag the background to pan in any direction; wheel or pinch to zoom at the cursor,
+  between 50% and 180%; a corner toolbar has zoom out, the zoom percentage, zoom in and fit to
+  screen. The chart is one element moved with `translate3d(...) scale(...)`, written once per
+  animation frame without re-rendering React. A press only becomes a drag after 6 px and the click
+  that ends a drag is swallowed, so cards and buttons still click. Fit to screen frames the whole
+  diorama, the crown included (the tree's drawing box is part of the chart's bounds).
+- **Frame**: 68vh tall (420–760 px); the deck page's skeleton and the lazy panel's placeholder match.
 
 ## 2.5D Farm Grid System
 
@@ -663,6 +714,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 18 | `20261006000000_species_seed_prices.sql` | `seed_price()` (180 for the three surreal ids, else 100); `plant_deck()` and `clone_deck()` charge by species; trigger `decks_charge_species_upgrade` charges the difference when a tree changes to a pricier species. Run **with** the deploy |
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
+| 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -675,6 +727,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
+| (pending) | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21 |
+| (pending) | feat(mindmap): "Tree & roots" as a zoomable, pannable hierarchy canvas: the tree, every tier of roots as compact cards, curving tendrils, statements in the side drawer only, a transform-based camera (50%–180%); the tree stands free (no box) with a floating label, and the roots sprout from its trunk through a taproot |
 | (pending) | feat(garden): Cosmic Nebula redrawn as a low-poly galaxy mushroom with faceted planets in orbit (0 / 1 / 2 / 4 / 6 by stage); tree sway and crown motion about a sixth stronger, wider orbits, brighter stem cracks |
 | (pending) | feat(garden): day / night lighting on the farm (local clock or a pinned light): sun and moon pools, night veil and vignette, tinted shadows, lamplight and glows; decided before the first paint (no flash of daylight at night); fresher low-contrast turf (`#82cb52` / `#74bb47`) |
 | (pending) | feat(garden): low-poly farm props (house, woodshop, rockery, fence, cow, pig, palms, flowers), faceted bubble icons, and borderless faceted streams, cliff and beach |
@@ -720,5 +774,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 79 files, 801 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 81 files, 839 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

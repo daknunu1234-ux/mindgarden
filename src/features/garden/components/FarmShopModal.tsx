@@ -1,9 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { GameButton, GameDialog, GameDialogContent, GameIcon, GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger, SeedPricePill } from '@/shared/components/game'
+import { GameButton, GameDialog, GameDialogContent, GameIcon, GameTabs, GameTabsContent, GameTabsList, GameTabsTrigger, CoinBonusTag, SeedPricePill } from '@/shared/components/game'
 import { seedPriceTag } from '@/shared/lib/economy'
-import { getTreeSizeTier, TREE_SPECIES } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, speciesCoinMultiplier, TREE_SPECIES } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
 import { FARM_CATALOG, SHOP_TABS, type CatalogItem, type ShopTab } from '../lib/farmCatalog'
@@ -180,7 +180,10 @@ export function SeedGallery({ coins }: { coins: number | null }) {
                 {species.icon} {species.label}
               </span>
               {/* Footer: pinned to the bottom of the packet, so tags line up across a row whatever the name's length. */}
-              <SeedPricePill price={species.price} coins={coins} className="mt-auto" />
+              <span className="mt-auto flex flex-wrap items-center justify-center gap-1">
+                <SeedPricePill price={species.price} coins={coins} />
+                <CoinBonusTag multiplier={speciesCoinMultiplier(species.id)} />
+              </span>
             </Link>
           </li>
         ))}

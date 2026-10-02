@@ -1,7 +1,7 @@
 'use client'
 
-import { SeedPricePill } from '@/shared/components/game'
-import { speciesUpgradeCost, TREE_SPECIES, type TreeTypeId } from '@/shared/lib/treeSkins'
+import { CoinBonusTag, SeedPricePill } from '@/shared/components/game'
+import { speciesCoinMultiplier, speciesUpgradeCost, TREE_SPECIES, type TreeTypeId } from '@/shared/lib/treeSkins'
 import { cn } from '@/shared/utils/cn'
 
 type TreeSpeciesPickerProps = {
@@ -102,7 +102,10 @@ function TreeSpeciesPicker({ value, onChange, disabled = false, legend = 'Tree',
                 {species.icon}
               </span>
               {species.label}
-              <SeedPricePill price={species.price} coins={coins} className="mt-auto" />
+              <span className="mt-auto flex flex-wrap items-center justify-center gap-1">
+                <SeedPricePill price={species.price} coins={coins} />
+                <CoinBonusTag multiplier={speciesCoinMultiplier(species.id)} />
+              </span>
               {picked && (
                 <span
                   aria-hidden
