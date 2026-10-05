@@ -160,25 +160,33 @@ export type Database = {
         Row: {
           id: string
           node_id: string
+          // Migration 20261010000000: NULL = a statement; else the statement it sits under (same root).
+          parent_item_id: string | null
           prompt: string
           correct_stmt: string
           trap_rules: Json
+          // Migration 20261010000000: order among the root's statements (epoch seconds by default).
+          sort_order: number
           created_at: string
         }
         Insert: {
           id?: string
           node_id: string
+          parent_item_id?: string | null
           prompt: string
           correct_stmt: string
           trap_rules?: Json
+          sort_order?: number
           created_at?: string
         }
         Update: {
           id?: string
           node_id?: string
+          parent_item_id?: string | null
           prompt?: string
           correct_stmt?: string
           trap_rules?: Json
+          sort_order?: number
           created_at?: string
         }
         Relationships: [
@@ -188,6 +196,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'mindmap_nodes'
             referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'knowledge_items_parent_item_fkey'
+            columns: ['parent_item_id', 'node_id']
+            isOneToOne: false
+            referencedRelation: 'knowledge_items'
+            referencedColumns: ['id', 'node_id']
           },
         ]
       }

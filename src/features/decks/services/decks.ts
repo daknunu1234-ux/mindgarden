@@ -6,6 +6,7 @@ import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { GetDeckBySlugInput } from '../dto/GetDeckBySlugDto'
 import type { GetDecksInput, GetNeighborGardenInput } from '../dto/GetDecksDto'
 import { buildDeckTree } from '../lib/deckTree'
+import { compareStatementRows, flattenStatements } from '../lib/statements'
 import type { Deck, DeckDetail } from '../types'
 
 export const toDeck = (row: Tables<'decks'>): Deck => ({
@@ -74,7 +75,7 @@ export async function findDeckBySlug(
   // never leave the server here.
   const { data: row, error } = await supabase
     .from('decks')
-    .select('*, mindmap_nodes(id, parent_id, title, sort_order, knowledge_items(id, prompt, created_at))')
+    .select('*, mindmap_nodes(id, parent_id, title, sort_order, knowledge_items(id, prompt, parent_item_id, sort_order, created_at))')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -91,9 +92,10 @@ export async function findDeckBySlug(
       parentId: n.parent_id,
       title: n.title,
       sortOrder: n.sort_order,
-      items: [...n.knowledge_items]
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map(({ id, prompt }) => ({ id, prompt })),
+      // Statement order, each statement followed by its sub-statements.
+      items: flattenStatements(
+        [...n.knowledge_items].sort(compareStatementRows).map(({ id, prompt, parent_item_id }) => ({ id, prompt, parentId: parent_item_id ?? null })),
+      ),
     })),
   )
 

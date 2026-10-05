@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TrapRules } from '@/shared/lib/trapEngine'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
+import { compareStatementRows, parentContext } from '../lib/statements'
 import { answersByNode, readAnswersForNodes } from './answers'
 
 // Server-only shapes: these carry correctStmt, so they must never reach the client.
@@ -29,9 +30,14 @@ export type DrillSourceItem = {
   siblingStatements: string[]
   // Breadcrumb: root titles from the top-level root down to this item's root, and their ids. The
   // question engine reads notes in context (a predicate-only note inherits its root as subject;
-  // recognition questions use other roots' notes as distractors).
+  // recognition questions use other roots' notes as distractors). A sub-statement under a short
+  // statement (decks/lib/statements parentContext) gets that statement as the last step, with the
+  // statement's id: "sản sinh ATP" under "Ty thể" is asked as "Ty thể sản sinh ATP".
   path: string[]
   ancestry: string[]
+  // The statement a sub-statement sits under (same root), null for a statement. Both levels are
+  // drilled alike: a sub-statement is one more item of its root.
+  parentItemId?: string | null
 }
 export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'> & {
   // Owner of the item's deck: grading refuses anyone else (read-only visitors).
@@ -55,7 +61,11 @@ export async function listDrillItems(
   // is_tournament_open.
   const deckQuery = supabase.from('decks').select('*')
   const nodesOf = (deckId: string) =>
-    supabase.from('mindmap_nodes').select('id, parent_id, title, knowledge_items(id, prompt, created_at)').eq('deck_id', deckId).order('sort_order')
+    supabase
+      .from('mindmap_nodes')
+      .select('id, parent_id, title, knowledge_items(id, prompt, parent_item_id, sort_order, created_at)')
+      .eq('deck_id', deckId)
+      .order('sort_order')
   // By id (grading, tournaments: every answer) the deck row and its roots load in parallel, one
   // round trip instead of two; by slug the deck's id is needed first.
   const [deckRes, earlyNodes] = await Promise.all([
@@ -86,28 +96,33 @@ export async function listDrillItems(
   const byItem = new Map(answers.data.map((a) => [a.itemId, a]))
   const lineage = nodeLineage(nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })))
 
-  // Siblings = every other statement in the node, exactly what findDrillItem uses for grading.
-  // The engine sorts them, so their order doesn't matter.
+  // Siblings = every other statement in the node (statements and sub-statements alike), exactly what
+  // findDrillItem uses for grading. The engine sorts them, so their order doesn't matter.
   const items: DrillSourceItem[] = nodes.flatMap((node) =>
-    [...node.knowledge_items]
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .flatMap((item) => {
-        const answer = byItem.get(item.id)
-        if (!answer) return []
-        return [
-          {
-            id: item.id,
-            nodeId: node.id,
-            nodeTitle: node.title,
-            prompt: item.prompt,
-            correctStmt: answer.correctStmt,
-            trapRules: answer.trapRules,
-            siblingStatements: (byNode.get(node.id) ?? []).filter((a) => a.itemId !== item.id).map((a) => a.correctStmt),
-            path: lineage.get(node.id)?.path ?? [node.title],
-            ancestry: lineage.get(node.id)?.ancestry ?? [node.id],
-          },
-        ]
-      }),
+    [...node.knowledge_items].sort(compareStatementRows).flatMap((item) => {
+      const answer = byItem.get(item.id)
+      if (!answer) return []
+      const parentItemId = item.parent_item_id ?? null
+      const nodePath = lineage.get(node.id)?.path ?? [node.title]
+      const nodeAncestry = lineage.get(node.id)?.ancestry ?? [node.id]
+      // Same root only (the composite foreign key guarantees it; a stray row just keeps its root's context).
+      const parent = parentItemId ? byItem.get(parentItemId) : undefined
+      const context = parent && parent.nodeId === node.id ? parentContext(parent.correctStmt) : null
+      return [
+        {
+          id: item.id,
+          nodeId: node.id,
+          nodeTitle: node.title,
+          prompt: item.prompt,
+          correctStmt: answer.correctStmt,
+          trapRules: answer.trapRules,
+          siblingStatements: (byNode.get(node.id) ?? []).filter((a) => a.itemId !== item.id).map((a) => a.correctStmt),
+          path: context ? [...nodePath, context] : nodePath,
+          ancestry: context && parentItemId ? [...nodeAncestry, parentItemId] : nodeAncestry,
+          parentItemId,
+        },
+      ]
+    }),
   )
 
   return ok({

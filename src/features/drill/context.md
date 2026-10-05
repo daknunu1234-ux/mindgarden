@@ -36,6 +36,7 @@ None. Reads items through `@/features/decks/server`.
 - Only the deck's owner practises it (the one exception: a Mind Tournament round, scored separately). Visitors get `FORBIDDEN_VISITOR_PRACTICE` ("You must clone this tree to your garden to practice it!"); the drill page shows it with decks' `CloneTreeButton`. A clone has no progress rows, so it practises from 0/5 (`__tests__/queue.test.ts`)
 - Questions have 2–4 choices (A–D) and every note gets one (zero drop, backend/ARCHITECTURE.md §7); only a lone note with no two distinct words or letters is skipped (`skippedCount`)
 - No hearts, lives or timers. Correct = gold, wrong = amber
+- Sub-statements (decks, migration `20261010000000`) are ordinary items of their root: whole-tree and root rounds (`?nodeId=`) ask both levels, grading rebuilds them from the same whole-deck context, and a sub-statement under a short statement shows it as the last breadcrumb step (`__tests__/subStatementDrill.test.ts`)
 
 ## Not built yet
 `getDrillQuestion` (superseded by `getDrillSession({ nodeId })`)

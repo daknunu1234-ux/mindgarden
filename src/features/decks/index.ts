@@ -9,6 +9,7 @@ export { deleteKnowledgeItem } from './actions/deleteKnowledgeItem'
 export { deleteRootBranch, type DeletedBranch } from './actions/deleteRootBranch'
 export { updateKnowledgeItem, type EditedStatement } from './actions/updateKnowledgeItem'
 export { deleteMindmapNode } from './actions/deleteMindmapNode'
+export { moveKnowledgeItem, type MovedStatementResult } from './actions/moveKnowledgeItem'
 export { getDeckBySlug } from './actions/getDeckBySlug'
 export { getDeckEditor } from './actions/getDeckEditor'
 export { getDeckReader } from './actions/getDeckReader'
@@ -30,12 +31,22 @@ export { DeckShareToggle } from './components/DeckShareToggle'
 export { DeckDangerZone, DeleteDeckDialog } from './components/DeleteDeckDialog'
 export { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './components/DeleteDialogs'
 export { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './components/EditDialogs'
+export { MoveStatementDialog, type StatementToMove } from './components/MoveStatementDialog'
 export { AddRootDialog, NodeManageDialog, type ManagedNode } from './components/NodeManageDialog'
 export { TournamentHostToggle } from './components/TournamentHostToggle'
 export { TreeSpeciesPicker } from './components/TreeSpeciesPicker'
 export { TreeVisitTracker } from './components/TreeVisitTracker'
 export { branchImpact, branchNodeIds, flatBranchImpact } from './lib/branch'
-export { cleanStatement, parseBulletedText, previewBulkStatements, type BulkPreviewItem } from './lib/bulkStatements'
+export {
+  cleanStatement,
+  parseBulletedText,
+  previewBulkStatements,
+  reviewBulkStatements,
+  type BulkEdits,
+  type BulkPreviewItem,
+  type BulkReviewItem,
+} from './lib/bulkStatements'
+export { flattenStatements, nestStatements, type StatementGroup } from './lib/statements'
 export { countsAsVisit } from './lib/visits'
 export { countDeckTree } from './lib/deckTree'
 export type {

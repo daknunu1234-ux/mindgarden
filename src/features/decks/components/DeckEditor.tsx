@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Plus, X } from 'lucide-react'
 import { GameSlab, HoverActionButton, HoverActions } from '@/shared/components/game'
 import { getTreeSpecies, speciesUpgradeCost, toTreeTypeId, type TreeTypeId } from '@/shared/lib/treeSkins'
@@ -8,6 +8,7 @@ import { useToast } from '@/shared/stores/ToastProvider'
 import { cn } from '@/shared/utils/cn'
 import { flatBranchImpact } from '../lib/branch'
 import {
+  editSaves,
   expandPath,
   hiddenCount,
   isWithin,
@@ -18,15 +19,20 @@ import {
   outlineParents,
   resolveOutlineSlot,
   rootSummaries,
+  slotAfterEdit,
   slotTarget,
   topRootOf,
+  type EditEnd,
   type OutlineKey,
   type OutlineNode,
   type OutlineSlot,
+  type StatementSlot,
 } from '../lib/outline'
+import { nestStatements } from '../lib/statements'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { useDeckDraftActions } from './DeckDraft'
 import { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './DeleteDialogs'
+import { MoveStatementDialog, type StatementToMove } from './MoveStatementDialog'
 import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData, EditorItem } from '../types'
 
@@ -43,8 +49,10 @@ type Editing = { kind: 'node' | 'item'; id: string } | null
 // then one slim settings bar (species, plus the page's share / tournament switches). A selector
 // switches between top-level roots; ＋ Add root is the last chip of that row and turns into the
 // new root's input. Everything is typed inline (no dialogs): hover a root for ＋📜 / ＋🌿, ✏️ or double-click to
-// edit, then Enter (next sibling), Tab (child), Shift+Tab (up a level), Esc (close). Every change goes
-// through the deck draft, so it shows at 0 ms and saves in the background. Only deletes confirm.
+// edit, then Enter (save + a new line right below), Shift+Enter (save, no new line), Tab (child: a
+// sub-statement under a statement), Shift+Tab (up a level), Esc or clicking away (an edit saves; a new
+// line closes). Hover a statement for ＋↳ (sub-statement) and 📂 (move to another root). Every change
+// goes through the deck draft, so it shows at 0 ms and saves in the background. Only deletes confirm.
 // Trap rules are never shown; statements get { negate: true } on the server.
 function DeckEditor({ editor, settings }: DeckEditorProps) {
   return (
@@ -105,13 +113,14 @@ function TreeSettingsBar({ treeType, children }: { treeType: string; children?: 
 }
 
 function RootsOutline({ editor }: { editor: DeckEditorData }) {
-  const { addNode, addStatement, renameNode, editStatement, isPending, resolveId } = useDeckDraftActions()
+  const { addNode, placeStatement, renameNode, editStatement, isPending, resolveId } = useDeckDraftActions()
   const { toast } = useToast()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [rawSlot, setSlot] = useState<OutlineSlot | null>(null)
   const [editing, setEditing] = useState<Editing>(null)
   const [bulkFor, setBulkFor] = useState<string | null>(null)
   const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
+  const [movingStatement, setMovingStatement] = useState<StatementToMove | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   // Collapsed roots / sub-roots: view state only (never saved, no server call). It lives here, above
   // the per-root outline, so switching root chips keeps every root's toggles.
@@ -173,10 +182,15 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
     }
   }
 
-  const saveStatement = (nodeId: string, text: string) =>
-    void addStatement(nodeId, text).then((res) => {
+  // A statement (or sub-statement) typed in a statement line: shown at once, its temp id returned so
+  // the next line can go right below it or under it.
+  const saveStatement = (slot: StatementSlot, text: string): string => {
+    const { id, done } = placeStatement(slot.nodeId, text, { parentId: slot.parentId, afterId: slot.afterId })
+    void done.then((res) => {
       if (!res.success) toast({ message: `Could not add “${text}”: ${res.message}.`, icon: '⚠️', tone: 'farewell' })
     })
+    return id
+  }
 
   // A fast-entry key on the inline input: save what was typed, then move the input on.
   const onSlotKey = (key: OutlineKey, text: string) => {
@@ -186,7 +200,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
     if (typed) {
       if (liveSlot.kind === 'root') created = addNode(null, typed)
       else if (liveSlot.kind === 'branch') created = addNode(liveSlot.parentId, typed)
-      else saveStatement(liveSlot.nodeId, typed)
+      else created = saveStatement(liveSlot, typed)
     }
     // A new top-level root that is being nested into becomes the one shown.
     if (liveSlot.kind === 'root' && created && key === 'tab') setSelectedId(created)
@@ -194,22 +208,27 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
     showSlot(next)
   }
 
-  // Inline edits: Enter / leaving the field saves, Esc cancels; Tab on a root saves and opens a
-  // statement input under it.
-  const onEditKey = (key: OutlineKey | 'escape' | 'blur', text: string) => {
+  // Inline edits save on every way out but ✕ (Enter, Shift+Enter, Tab, Shift+Tab, Esc, clicking
+  // away). Enter then opens a new line right below the edited statement, Tab a sub-statement under it
+  // (lib/outline slotAfterEdit); Tab on a root opens a statement line under it.
+  const onEditKey = (end: EditEnd, text: string) => {
     if (!editing) return
     const typed = text.trim()
-    if (key !== 'escape' && typed) {
+    const item = editing.kind === 'item' ? editor.nodes.flatMap((n) => n.items.map((i) => ({ ...i, nodeId: n.id }))).find((i) => i.id === editing.id) : undefined
+    if (editSaves(end) && typed) {
       if (editing.kind === 'node') {
         const title = editor.nodes.find((n) => n.id === editingId)?.title
         if (typed !== title) renameNode(editing.id, typed)
-      } else {
-        const current = editor.nodes.flatMap((n) => n.items).find((i) => i.id === editing.id)?.statement
-        if (typed !== current) editStatement(editing.id, typed)
+      } else if (item && typed !== item.statement) {
+        editStatement(editing.id, typed)
       }
     }
     setEditing(null)
-    if (key === 'tab' && editing.kind === 'node' && editingId) showSlot({ kind: 'statement', nodeId: editingId })
+    const next =
+      editing.kind === 'node'
+        ? editingId && slotAfterEdit({ kind: 'node', id: editingId }, end)
+        : item && slotAfterEdit({ kind: 'item', id: item.id, nodeId: item.nodeId, parentId: item.parentId }, end)
+    if (next) showSlot(next)
   }
 
   const branchProps: BranchProps = {
@@ -233,6 +252,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
     collapsed,
     onToggle: toggleCollapsed,
     onDeleteStatement: setDeletingStatement,
+    onMoveStatement: setMovingStatement,
     onDeleteRoot: setDeletingRootId,
   }
 
@@ -242,7 +262,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
         <h3 id="outline-heading" className="font-game text-base font-extrabold">
           🌱 Roots &amp; statements
         </h3>
-        <p className="hidden text-[11px] font-semibold text-amber-900/55 sm:block">▾ fold · ↵ next · Tab child · ⇧Tab up · Esc close · double-click to edit</p>
+        <p className="hidden text-[11px] font-semibold text-amber-900/55 sm:block">▾ fold · ↵ next line · ⇧↵ save · Tab nest · ⇧Tab up · Esc done · double-click to edit</p>
       </div>
 
       {/* Root selector: one chip per top-level root; a new root is typed in the last chip. */}
@@ -311,6 +331,7 @@ function RootsOutline({ editor }: { editor: DeckEditorData }) {
       </div>
 
       <DeleteStatementDialog deckId={editor.deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
+      <MoveStatementDialog nodes={editor.nodes} statement={movingStatement} onClose={() => setMovingStatement(null)} />
       <DeleteRootDialog deckId={editor.deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
     </section>
   )
@@ -326,9 +347,10 @@ type BranchProps = {
   onSlotKey: (key: OutlineKey, text: string) => void
   onCloseSlot: () => void
   onEdit: (kind: 'node' | 'item', id: string) => void
-  onEditKey: (key: OutlineKey | 'escape' | 'blur', text: string) => void
+  onEditKey: (end: EditEnd, text: string) => void
   onBulk: (nodeId: string) => void
   onDeleteStatement: (statement: StatementToDelete) => void
+  onMoveStatement: (statement: StatementToMove) => void
   onDeleteRoot: (id: string) => void
   // Collapsed roots / sub-roots (real ids) and the ▾ / ▸ toggle.
   collapsed: ReadonlySet<string>
@@ -350,8 +372,25 @@ const CHILD = cn(
 function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: OutlineNode; top?: boolean }) {
   const { slot, editingId, bulkFor, isPending, onOpen, onSlotKey, onCloseSlot, onEdit, onEditKey, onBulk, onDeleteRoot, collapsed, onToggle } = props
   const pending = isPending(node.id)
-  const statementSlot = slot?.kind === 'statement' && slot.nodeId === node.id
+  const stmtSlot = slot?.kind === 'statement' && slot.nodeId === node.id ? slot : null
+  const statementSlot = stmtSlot !== null
   const branchSlot = slot?.kind === 'branch' && slot.parentId === node.id
+  const groups = nestStatements(node.items)
+  // Where the statement line goes: right below a statement (and its sub-statements), among one
+  // statement's sub-statements, or at the end of the list.
+  const subParent = stmtSlot?.parentId && groups.some((g) => g.item.id === stmtSlot.parentId) ? stmtSlot.parentId : null
+  const topAfter = stmtSlot && !stmtSlot.parentId && stmtSlot.afterId && groups.some((g) => g.item.id === stmtSlot.afterId) ? stmtSlot.afterId : null
+  const slotAtEnd = statementSlot && !subParent && !topAfter
+  const statementInput = (sub: boolean) => (
+    <InlineInput
+      placeholder={sub ? 'New sub-statement…' : 'New statement…'}
+      label={sub ? 'New sub-statement' : `New statement under ${node.title}`}
+      maxLength={OUTLINE_LIMITS.statement}
+      icon={sub ? '↳' : undefined}
+      onKey={onSlotKey}
+      onClose={onCloseSlot}
+    />
+  )
   const canCollapse = node.items.length + node.children.length > 0
   const isCollapsed = canCollapse && collapsed.has(node.id)
   const hidden = isCollapsed ? hiddenCount(node) : null
@@ -382,6 +421,7 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
             icon={top ? '🌱' : '🌿'}
             onKey={onEditKey}
             onClose={(text) => onEditKey('escape', text)}
+            onCancel={(text) => onEditKey('cancel', text)}
             onBlurSave={(text) => onEditKey('blur', text)}
           />
         ) : (
@@ -432,22 +472,31 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
 
       {hasChildren && (
         <ul className="ml-2">
-          {node.items.map((item) => (
-            <li key={item.id} className={CHILD}>
-              <StatementRow item={item} editing={editingId === item.id} {...props} />
-            </li>
-          ))}
-          {statementSlot && (
-            <li className={CHILD}>
-              <InlineInput
-                placeholder="New statement…"
-                label={`New statement under ${node.title}`}
-                maxLength={OUTLINE_LIMITS.statement}
-                onKey={onSlotKey}
-                onClose={onCloseSlot}
-              />
-            </li>
-          )}
+          {groups.map(({ item, children }) => {
+            const subAfter = subParent === item.id && stmtSlot?.afterId && children.some((c) => c.id === stmtSlot.afterId) ? stmtSlot.afterId : null
+            return (
+              <Fragment key={item.id}>
+                <li className={CHILD}>
+                  <StatementRow item={item} nodeId={node.id} subCount={children.length} editing={editingId === item.id} {...props} />
+                  {(children.length > 0 || subParent === item.id) && (
+                    <ul className="ml-2">
+                      {children.map((child) => (
+                        <Fragment key={child.id}>
+                          <li className={CHILD}>
+                            <StatementRow item={child} nodeId={node.id} subCount={0} editing={editingId === child.id} {...props} />
+                          </li>
+                          {subAfter === child.id && <li className={CHILD}>{statementInput(true)}</li>}
+                        </Fragment>
+                      ))}
+                      {subParent === item.id && !subAfter && <li className={CHILD}>{statementInput(true)}</li>}
+                    </ul>
+                  )}
+                </li>
+                {topAfter === item.id && <li className={CHILD}>{statementInput(false)}</li>}
+              </Fragment>
+            )
+          })}
+          {slotAtEnd && <li className={CHILD}>{statementInput(Boolean(stmtSlot?.parentId))}</li>}
           {bulkFor === node.id && !pending && (
             <li className={CHILD}>
               <BulkStatementImporter
@@ -484,16 +533,31 @@ function OutlineBranch({ node, top = false, ...props }: BranchProps & { node: Ou
   )
 }
 
-function StatementRow({ item, editing, isPending, onEdit, onEditKey, onDeleteStatement }: BranchProps & { item: EditorItem; editing: boolean }) {
+// One statement or sub-statement (item.parentId set) of root `nodeId`; `subCount` = its sub-statements.
+function StatementRow({
+  item,
+  nodeId,
+  subCount,
+  editing,
+  isPending,
+  onEdit,
+  onEditKey,
+  onOpen,
+  onDeleteStatement,
+  onMoveStatement,
+}: BranchProps & { item: EditorItem; nodeId: string; subCount: number; editing: boolean }) {
   const pending = isPending(item.id)
+  const sub = item.parentId !== null
   if (editing) {
     return (
       <InlineInput
         initial={item.statement}
-        label="Edit statement"
+        label={sub ? 'Edit sub-statement' : 'Edit statement'}
         maxLength={OUTLINE_LIMITS.statement}
+        icon={sub ? '↳' : undefined}
         onKey={onEditKey}
         onClose={(text) => onEditKey('escape', text)}
+        onCancel={(text) => onEditKey('cancel', text)}
         onBlurSave={(text) => onEditKey('blur', text)}
       />
     )
@@ -526,9 +590,20 @@ function StatementRow({ item, editing, isPending, onEdit, onEditKey, onDeleteSta
       </span>
       {/* Still saving: no edit / delete until it has its server id. */}
       {!pending && (
-        <HoverActions label="Statement tools" className="shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
-          <HoverActionButton icon="✏️" label="Edit statement" tone="edit" onClick={() => onEdit('item', item.id)} />
-          <HoverActionButton icon="🗑️" label="Delete statement" tone="delete" onClick={() => onDeleteStatement({ id: item.id, text: item.statement })} />
+        <HoverActions label={sub ? 'Sub-statement tools' : 'Statement tools'} className="shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
+          {!sub && <HoverActionButton icon="＋↳" label="Add a sub-statement under this statement" onClick={() => onOpen({ kind: 'statement', nodeId, parentId: item.id })} />}
+          <HoverActionButton icon="✏️" label={sub ? 'Edit sub-statement' : 'Edit statement'} tone="edit" onClick={() => onEdit('item', item.id)} />
+          <HoverActionButton
+            icon="📂"
+            label={sub ? 'Move sub-statement to another root' : 'Move statement to another root'}
+            onClick={() => onMoveStatement({ id: item.id, text: item.statement, nodeId, isSubStatement: sub, subStatements: subCount })}
+          />
+          <HoverActionButton
+            icon="🗑️"
+            label={sub ? 'Delete sub-statement' : 'Delete statement'}
+            tone="delete"
+            onClick={() => onDeleteStatement({ id: item.id, text: item.statement, subStatements: subCount })}
+          />
         </HoverActions>
       )}
     </div>
@@ -540,17 +615,19 @@ type InlineInputProps = {
   placeholder?: string
   label: string
   maxLength: number
-  // Roots and sub-roots only (🌱 / 🌿); statement fields start with the text.
+  // Roots and sub-roots (🌱 / 🌿) and sub-statements (↳); statement fields start with the text.
   icon?: string
   onKey: (key: OutlineKey, text: string) => void
-  // Esc or ✕ (with the text as it stands).
+  // Esc (with the text as it stands): an edit saves it, a new-item input closes. Also ✕ unless onCancel is set.
   onClose: (text: string) => void
+  // ✕ on an edit: discard the change.
+  onCancel?: (text: string) => void
   // Edits save when the field loses focus; new-item inputs keep their text instead.
   onBlurSave?: (text: string) => void
 }
 
 // The one inline field for adding and editing: compact, focused on arrival, IME-safe keys.
-function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey, onClose, onBlurSave }: InlineInputProps) {
+function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey, onClose, onCancel, onBlurSave }: InlineInputProps) {
   const [value, setValue] = useState(initial)
   const ref = useRef<HTMLInputElement>(null)
   // A key or ✕ already finished this edit: the blur that follows must not save it again.
@@ -588,7 +665,7 @@ function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey,
         maxLength={maxLength}
         placeholder={placeholder}
         aria-label={label}
-        aria-keyshortcuts="Enter Tab Shift+Tab Escape"
+        aria-keyshortcuts="Enter Shift+Enter Tab Shift+Tab Escape"
         enterKeyHint="next"
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
@@ -605,10 +682,11 @@ function InlineInput({ initial = '', placeholder, label, maxLength, icon, onKey,
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           finished.current = true
-          onClose(value)
+          const close = onCancel ?? onClose
+          close(value)
         }}
-        aria-label="Close"
-        title="Close (Esc)"
+        aria-label={onCancel ? 'Discard changes' : 'Close'}
+        title={onCancel ? 'Discard changes' : 'Close (Esc)'}
         className="flex size-5 shrink-0 items-center justify-center rounded text-emerald-900/60 hover:bg-emerald-200 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
       >
         <X className="size-3" strokeWidth={3} />

@@ -108,7 +108,7 @@ function fakeSupabase(viewer: string | null, { rootDeck = DECK, existing = [] as
   vi.mocked(createClient).mockResolvedValue(client as never)
   vi.mocked(readAnswersForNodes).mockResolvedValue({
     success: true,
-    data: existing.map((correctStmt, i) => ({ itemId: `old-${i}`, nodeId: ROOT, correctStmt, trapRules: { negate: true } })),
+    data: existing.map((correctStmt, i) => ({ itemId: `old-${i}`, nodeId: ROOT, parentItemId: null, correctStmt, trapRules: { negate: true } })),
   })
   return { inserts }
 }

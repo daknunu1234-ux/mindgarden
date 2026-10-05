@@ -25,7 +25,8 @@ export type VisitedTree = {
 }
 
 // Items expose only the prompt: correct_stmt stays on the server so answers remain hidden.
-export type DeckTreeItem = { id: string; prompt: string }
+// parentId: the statement a sub-statement sits under (same root), null for a statement.
+export type DeckTreeItem = { id: string; prompt: string; parentId?: string | null }
 
 export type DeckTreeNode = {
   id: string
@@ -42,6 +43,7 @@ export type DeckDetail = {
 }
 
 // Owner-only editor data (getDeckEditor). Includes true statements, so never for other players.
-export type EditorItem = { id: string; statement: string; drillable: boolean }
+// Items are in display order (each statement followed by its sub-statements); parentId as above.
+export type EditorItem = { id: string; statement: string; drillable: boolean; parentId: string | null }
 export type EditorNode = { id: string; title: string; depth: number; items: EditorItem[] }
 export type DeckEditor = { deckId: string; treeType: string; nodes: EditorNode[] }

@@ -108,7 +108,8 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root (the UI now uses `deleteRootBranch`) | Required |
 | Decks | `deleteRootBranch` | Action/POST | Owner deletes a root with its sub-roots, statements and their progress | Required |
 | Decks | `updateKnowledgeItem` | Action/POST | Owner edits a statement's text | Required |
-| Decks | `deleteKnowledgeItem` | Action/POST | Owner deletes a statement and its progress | Required |
+| Decks | `deleteKnowledgeItem` | Action/POST | Owner deletes a statement, its sub-statements and their progress | Required |
+| Decks | `moveKnowledgeItem` | Action/POST | Owner moves a statement (with its sub-statements) to another root or sub-root of the tree | Required |
 | Decks | `setTournamentOpen` | Action/POST | Owner opens or closes the tree's Mind Tournament (public trees only) | Required (owner) |
 | Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
 | Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
@@ -286,12 +287,21 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `createKnowledgeItem` (decks)
 ```typescript
-// Input (CreateKnowledgeItemDto): { nodeId: string; statement: string /* 1–500 chars, plain text, no \commands like \frac */ }
-// Server sets: correct_stmt = statement, prompt = the root's title, trap_rules = { negate: true }
+// Input (CreateKnowledgeItemDto): {
+//   nodeId: string; statement: string /* 1–500 chars, plain text, no \commands like \frac */
+//   parentItemId?: string | null  /* a sub-statement of this statement: same root, and a statement itself (one level) */
+//   afterItemId?: string | null   /* right below this row, same level (the Tree Workshop's Enter key); else last */
+// }
+// Server sets: correct_stmt = statement, prompt = the root's title, trap_rules = { negate: true },
+//   parent_item_id, and with afterItemId sort_order = the midpoint between that row and the next one at its level
+//   (an anchor in another root or level is ignored: the row appends)
 // data: { id: string; drillable: boolean /* the question engine can ask it even alone in its deck: true unless it has no two distinct words or letters */ }
-// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND
+// Errors: VALIDATION_FAILED (also: parent is a sub-statement), AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND,
+//         ITEM_NOT_FOUND (parent not in this root)
 ```
 - Authors never see or send trap rules. Zero drop: every note gets a question (cloze, recall, true/false, recognition, or "spot your exact note"; backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable
+- **Sub-statements** (migration `20261010000000`): drilled like any statement of their root (whole-tree and root rounds, tournaments, mastery coins). A sub-statement under a short statement (≤ 80 characters) takes it as context: breadcrumb `[Sinh học › Bào quan › Ty thể]`, and "sản sinh ATP" is asked as "Ty thể sản sinh ATP"
+- The Tree Workshop sends it through the deck draft (`placeStatement`), so a row typed below another or under a statement that is still saving waits for that row's real id
 
 ### `createKnowledgeItems` (decks)
 ```typescript
@@ -300,7 +310,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // data: { created: { id: string; statement: string; drillable: boolean }[]; skipped: number /* already in the root */ }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), NODE_NOT_FOUND (root not in this deck), INTERNAL_ERROR
 ```
-- "📋 Bulk Add via Notes / Bullets" (`BulkStatementImporter`, in the Tree Workshop list and the root's ✏️ manage dialog): the client splits the paste with `lib/bulkStatements.ts` `parseBulletedText` (one statement per line; strips `- * +`, `• ‣ ⁃ – —`, `1.` `1)` `[1]` `(1)`; drops empty and < 5-character lines; de-duplicates) and shows a live preview, flagging lines that are too long, LaTeX, or already in the root
+- "📋 Bulk Add via Notes / Bullets" (`BulkStatementImporter`, in the Tree Workshop list and the root's ✏️ manage dialog): the client splits the paste with `lib/bulkStatements.ts` `parseBulletedText` (one statement per line; strips `- * +`, `• ‣ ⁃ – —`, `1.` `1)` `[1]` `(1)`; drops empty and < 5-character lines; de-duplicates) and shows a live preview, flagging lines that are too long, LaTeX, or already in the root. Before importing, each parsed line can be fixed in place (✏️ or double-click; Enter / leaving the field keeps it, Esc reverts) or discarded (🗑️, with "Restore N discarded"); `reviewBulkStatements` lays these edits over the parse and checks edited lines again (too short, too long, LaTeX, already in the root, duplicate of another line). Only what the preview shows as importable is sent
 - One `INSERT` for all new rows, same defaults as `createKnowledgeItem` (`prompt` = root title, `trap_rules = { negate: true }`); statements already in the root are skipped, not duplicated. `drillable` counts the root's existing and newly imported statements as siblings
 - No `revalidatePath` and no `router.refresh()`: the deck page's draft (`useDeckDraft`) shows the statements the moment they're imported (pending until this answers, then with their real ids and drillable flags), and rolls back if it fails. `createKnowledgeItem` and `updateDeck` (species) are used the same way
 
@@ -465,13 +475,20 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //   text cleaned like a bulk import (NFC, single spaces, trimmed), then 5–500 chars of plain text; updates
 //   knowledge_items.correct_stmt (RETURNING id only), keeps trap_rules and players' progress, no revalidatePath
 // deleteMindmapNode({ nodeId })                    → { id }   only when the root has no statements and no sub-roots
-// deleteKnowledgeItem({ deckId, itemId })          → { id }   everyone's user_progress + deck_tournament_item_progress on it cascade away
+// deleteKnowledgeItem({ deckId, itemId })          → { id }   its sub-statements and everyone's user_progress +
+//   deck_tournament_item_progress on them cascade away
+// moveKnowledgeItem({ deckId, itemId, toNodeId })   → { id, nodeId, subStatements }
+//   one UPDATE sets node_id, parent_item_id = null, prompt = the target's title and sort_order = last there;
+//   its sub-statements follow through the composite FK's ON UPDATE CASCADE (their prompt is updated too).
+//   A sub-statement moved anywhere (its own root included) becomes a statement. Already a statement of the
+//   target: no-op. Progress and paid coins are kept. NODE_NOT_FOUND = target not in this deck
 // deleteRootBranch({ deckId, rootId })             → { rootId, deletedStatements, deletedSubRoots }
 //   one DELETE of the root row; the database cascades sub-roots (parent FK), their knowledge_items, and
 //   every user_progress / deck_tournament_item_progress row on those items
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (root not in this deck),
 //         ITEM_NOT_FOUND (statement not in this deck), NODE_NOT_EMPTY (deleteMindmapNode only), INTERNAL_ERROR
 ```
+- `moveKnowledgeItem` doesn't revalidate: 📂 Move (Tree Workshop rows and the root drawer's statements) opens `MoveStatementDialog`, a list of every root and sub-root; picking one moves the statement and its sub-statements at once (deck draft `moveItem`), rolled back with a toast if this fails
 - `deleteKnowledgeItem` no longer revalidates: the deck page removes the statement at once (deck draft `removeItem`) and puts it back with a toast if this fails; its confirmation closes immediately
 - `updateKnowledgeItem` doesn't revalidate either: the Tree Workshop edits a statement in place through the deck draft (`editStatement`), showing the text at once and taking the server's cleaned text and drillable flag when it answers (a refusal restores the old text with a toast); `EditStatementDialog` still calls `router.refresh()` itself
 - Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The other deletes revalidate `/deck/<slug>`

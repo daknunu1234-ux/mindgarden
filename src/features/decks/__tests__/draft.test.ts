@@ -36,7 +36,7 @@ const editor: DeckEditor = {
   deckId: 'deck',
   treeType: 'oak',
   nodes: [
-    { id: 'r1', title: 'Tế bào', depth: 0, items: [{ id: 'i1', statement: 'Tế bào là đơn vị sống.', drillable: true }] },
+    { id: 'r1', title: 'Tế bào', depth: 0, items: [{ id: 'i1', statement: 'Tế bào là đơn vị sống.', drillable: true, parentId: null }] },
     { id: 'r2', title: 'Ty thể', depth: 1, items: [] },
   ],
 }
@@ -53,8 +53,8 @@ describe('applyDeckOps', () => {
   it('adds pending statements to the mindmap tree and the editor list (a nested root too), with the root title as prompt', () => {
     const ops: DeckOp[] = [{ key: 'b', kind: 'addItems', nodeId: 'r2', items: [{ tempId: `${PENDING_ITEM_PREFIX}b`, statement: 'Ty thể sản sinh ATP.' }] }]
     const view = applyDeckOps(detail, editor, ops)
-    expect(view.detail.tree[0].children[0].items).toEqual([{ id: `${PENDING_ITEM_PREFIX}b`, prompt: 'Ty thể' }])
-    expect(view.editor?.nodes[1].items).toEqual([{ id: `${PENDING_ITEM_PREFIX}b`, statement: 'Ty thể sản sinh ATP.', drillable: false }])
+    expect(view.detail.tree[0].children[0].items).toEqual([{ id: `${PENDING_ITEM_PREFIX}b`, prompt: 'Ty thể', parentId: null }])
+    expect(view.editor?.nodes[1].items).toEqual([{ id: `${PENDING_ITEM_PREFIX}b`, statement: 'Ty thể sản sinh ATP.', drillable: false, parentId: null }])
     expect(view.pendingIds.has(`${PENDING_ITEM_PREFIX}b`)).toBe(true)
     // Counts (and so the size tier and the Statements stat) follow at once.
     expect(countDeckTree(view.detail.tree).itemCount).toBe(2)
@@ -217,9 +217,9 @@ describe('rebasing onto fresh server data', () => {
 describe('editing a statement in place', () => {
   it('shows the new text at once, then the server’s cleaned text and drillable flag; a refusal restores it', () => {
     const ops: DeckOp[] = [{ key: 'e', kind: 'editItem', itemId: 'i1', statement: 'Tế bào là đơn vị  cơ bản.' }]
-    expect(applyDeckOps(detail, editor, ops).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị  cơ bản.', drillable: true })
+    expect(applyDeckOps(detail, editor, ops).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị  cơ bản.', drillable: true, parentId: null })
     const saved = confirmEdit(ops, 'e', { statement: 'Tế bào là đơn vị cơ bản.', drillable: false })
-    expect(applyDeckOps(detail, editor, saved).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị cơ bản.', drillable: false })
+    expect(applyDeckOps(detail, editor, saved).editor?.nodes[0].items[0]).toEqual({ id: 'i1', statement: 'Tế bào là đơn vị cơ bản.', drillable: false, parentId: null })
     expect(rebaseOps(saved)).toEqual([])
     expect(applyDeckOps(detail, editor, dropOp(ops, 'e')).editor?.nodes[0].items).toEqual(editor.nodes[0].items)
   })

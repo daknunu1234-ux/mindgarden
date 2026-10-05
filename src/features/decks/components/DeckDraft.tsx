@@ -8,6 +8,7 @@ import { createKnowledgeItem } from '../actions/createKnowledgeItem'
 import { createKnowledgeItems, type BulkImportResult } from '../actions/createKnowledgeItems'
 import { createMindmapNode } from '../actions/createMindmapNode'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
+import { moveKnowledgeItem } from '../actions/moveKnowledgeItem'
 import { updateDeck } from '../actions/updateDeck'
 import { updateKnowledgeItem } from '../actions/updateKnowledgeItem'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
@@ -17,6 +18,7 @@ import {
   confirmItems,
   confirmNode,
   dropOp,
+  isPendingItemId,
   isPendingNodeId,
   PENDING_ITEM_PREFIX,
   PENDING_NODE_PREFIX,
@@ -28,6 +30,9 @@ import {
 import type { DeckDetail, DeckEditor } from '../types'
 
 type AddResult = { success: true; drillable: boolean } | { success: false; message: string }
+// parentId: a sub-statement of that statement. afterId: right below that row (same level), else last.
+// Either may be a statement still saving (its temporary id).
+export type StatementPlace = { parentId?: string | null; afterId?: string | null }
 type BulkResult = { success: true; data: BulkImportResult } | { success: false; message: string }
 
 export type DeckDraftActions = {
@@ -36,7 +41,13 @@ export type DeckDraftActions = {
   changeSpecies: (treeType: string) => void
   // Show the statement at once; resolves with the server's verdict (drillable, or why it failed).
   // nodeId may be a root that is still saving: the statement waits for its real id.
-  addStatement: (nodeId: string, statement: string) => Promise<AddResult>
+  addStatement: (nodeId: string, statement: string, place?: StatementPlace) => Promise<AddResult>
+  // Same, but also returns the new row's temporary id at once, so the next row can be typed below
+  // it or under it (a sub-statement) before the server answers.
+  placeStatement: (nodeId: string, statement: string, place?: StatementPlace) => { id: string; done: Promise<AddResult> }
+  // Move a statement (with its sub-statements) to the end of another root at once;
+  // moveKnowledgeItem in the background, put back with a toast on error.
+  moveStatement: (statement: { id: string; text: string }, toNodeId: string) => void
   // Show every statement at once; resolves with what the server created and skipped.
   addStatements: (deckId: string, nodeId: string, statements: string[]) => Promise<BulkResult>
   // Remove the statement at once; deleteKnowledgeItem in the background, put back with a toast on error.
@@ -117,6 +128,35 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
       isPendingNodeId(id) ? (nodeIds.current.get(id) ?? Promise.resolve(null)) : Promise.resolve(id)
     const nextOpKey = () => `d${nextKey.current++}`
 
+    // One statement (or sub-statement) placed in the outline at once; the server call waits its turn,
+    // so a parent or anchor typed just before it has its real id by then.
+    const placeStatement: DeckDraftActions['placeStatement'] = (rawNodeId, statement, place = {}) => {
+      const nodeId = resolve(rawNodeId)
+      const parentId = place.parentId ? resolve(place.parentId) : null
+      const afterId = place.afterId ? resolve(place.afterId) : null
+      const key = nextOpKey()
+      const tempId = `${PENDING_ITEM_PREFIX}${key}`
+      edit((l) => [...l, { key, kind: 'addItems', nodeId, items: [{ tempId, statement }], parentId, afterId }])
+      const done = serial(async () => {
+        const node = await realNodeId(nodeId)
+        if (!node) return 'Its root was not saved'
+        const parent = parentId ? resolve(parentId) : null
+        if (parent && isPendingItemId(parent)) return 'The statement it sits under was not saved'
+        // An anchor that never saved: the row just goes last.
+        const after = afterId ? resolve(afterId) : null
+        return createKnowledgeItem({ nodeId: node, statement, parentItemId: parent, afterItemId: after && !isPendingItemId(after) ? after : null })
+      }).then((res): AddResult => {
+        if (typeof res === 'string' || !res.success) {
+          edit((l) => dropOp(l, key))
+          return { success: false, message: typeof res === 'string' ? res : res.error.message }
+        }
+        savedIds.current.set(tempId, res.data.id)
+        edit((l) => confirmItems(l, key, [{ id: res.data.id, statement: statement.trim(), drillable: res.data.drillable }]))
+        return { success: true, drillable: res.data.drillable }
+      })
+      return { id: tempId, done }
+    }
+
     return {
       changeSpecies: (treeType) => {
         if (treeType === current.current.treeType) return
@@ -132,21 +172,20 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
           failed(`Could not change the species to ${getTreeSpecies(treeType).label}: ${res.error.message}`)
         })
       },
-      addStatement: async (rawNodeId, statement) => {
-        const nodeId = resolve(rawNodeId)
+      addStatement: (nodeId, statement, place) => placeStatement(nodeId, statement, place).done,
+      placeStatement,
+      moveStatement: ({ id, text }, rawToNodeId) => {
+        const toNodeId = resolve(rawToNodeId)
         const key = nextOpKey()
-        const tempId = `${PENDING_ITEM_PREFIX}${key}`
-        edit((l) => [...l, { key, kind: 'addItems', nodeId, items: [{ tempId, statement }] }])
-        const res = await serial(async () => {
-          const node = await realNodeId(nodeId)
-          return node ? createKnowledgeItem({ nodeId: node, statement }) : null
-        })
-        if (!res || !res.success) {
+        edit((l) => [...l, { key, kind: 'moveItem', itemId: id, toNodeId }])
+        void serial(async () => {
+          const node = await realNodeId(toNodeId)
+          return node ? moveKnowledgeItem({ deckId: detail.deck.id, itemId: id, toNodeId: node }) : null
+        }).then((res) => {
+          if (res?.success) return edit((l) => settleOp(l, key))
           edit((l) => dropOp(l, key))
-          return { success: false, message: res ? res.error.message : 'Its root was not saved' }
-        }
-        edit((l) => confirmItems(l, key, [{ id: res.data.id, statement: statement.trim(), drillable: res.data.drillable }]))
-        return { success: true, drillable: res.data.drillable }
+          toast({ message: `Could not move “${text}”: ${res ? res.error.message : 'its new root was not saved'}. It's back where it was.`, icon: '⚠️', tone: 'farewell' })
+        })
       },
       addStatements: async (deckId, rawNodeId, statements) => {
         const nodeId = resolve(rawNodeId)

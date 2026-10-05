@@ -16,7 +16,8 @@ import { TrapRulesDto } from '../dto/TrapRulesDto'
 // Without SUPABASE_SERVICE_ROLE_KEY it falls back to the user's client, which works only
 // until the migration is applied (then Postgres answers 42501 and we log how to fix it).
 
-export type Answer = { itemId: string; nodeId: string; correctStmt: string; trapRules: TrapRules }
+// parentItemId: the statement a sub-statement sits under (migration 20261010000000), else null.
+export type Answer = { itemId: string; nodeId: string; parentItemId: string | null; correctStmt: string; trapRules: TrapRules }
 
 const ID_CHUNK = 100
 const PERMISSION_DENIED = '42501'
@@ -44,7 +45,8 @@ function answersClient(userClient: SupabaseClient<Database>): SupabaseClient<Dat
   return userClient
 }
 
-// Answers of every item in the given (already authorized) nodes, oldest first.
+// Answers of every item in the given (already authorized) nodes, in statement order (sort_order,
+// then oldest first).
 export async function readAnswersForNodes(
   userClient: SupabaseClient<Database>,
   nodeIds: readonly string[],
@@ -56,8 +58,9 @@ export async function readAnswersForNodes(
   for (let i = 0; i < nodeIds.length; i += ID_CHUNK) {
     const { data, error } = await client
       .from('knowledge_items')
-      .select('id, node_id, correct_stmt, trap_rules')
+      .select('id, node_id, parent_item_id, correct_stmt, trap_rules')
       .in('node_id', nodeIds.slice(i, i + ID_CHUNK))
+      .order('sort_order')
       .order('created_at')
       .order('id')
 
@@ -73,6 +76,7 @@ export async function readAnswersForNodes(
       answers.push({
         itemId: row.id,
         nodeId: row.node_id,
+        parentItemId: row.parent_item_id ?? null,
         correctStmt: row.correct_stmt,
         trapRules: parseTrapRules(row.trap_rules, row.id),
       })

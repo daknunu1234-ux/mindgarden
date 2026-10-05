@@ -45,6 +45,58 @@ export type BulkPreviewItem = {
   problem: 'too-long' | 'latex' | 'exists' | null
 }
 
+// The owner's changes in the preview before importing, keyed by the parsed line they change (lines
+// are unique after de-duplication): the new text, or null = discarded (🗑️).
+export type BulkEdits = Readonly<Record<string, string | null>>
+
+export type BulkReviewItem = {
+  // The parsed line (stable while the pasted notes change around it): the row's key and the edit's key.
+  key: string
+  // The text that will be imported: the edit when there is one, cleaned like the server cleans it.
+  statement: string
+  edited: boolean
+  // Why it won't be imported, or null when it will. 'too-short' and 'duplicate' come from edits
+  // (parsing already drops short and repeated lines).
+  problem: 'too-short' | 'too-long' | 'latex' | 'exists' | 'duplicate' | null
+}
+
+// The preview with the owner's edits laid over it: discarded lines are left out (and counted),
+// edited ones show their new text and are checked again. Only rows without a problem are imported.
+export function reviewBulkStatements(
+  rawText: string,
+  existing: readonly string[] = [],
+  edits: BulkEdits = {},
+): { items: BulkReviewItem[]; discarded: number } {
+  const already = new Set(existing.map(cleanStatement))
+  const seen = new Set<string>()
+  const items: BulkReviewItem[] = []
+  let discarded = 0
+  for (const key of parseBulletedText(rawText)) {
+    const edit = Object.prototype.hasOwnProperty.call(edits, key) ? edits[key] : undefined
+    if (edit === null) {
+      discarded++
+      continue
+    }
+    const statement = edit === undefined ? key : cleanStatement(edit)
+    const length = [...statement].length
+    const problem =
+      length < MIN_BULK_STATEMENT_LENGTH
+        ? 'too-short'
+        : length > MAX_STATEMENT_LENGTH
+          ? 'too-long'
+          : LATEX_COMMAND.test(statement)
+            ? 'latex'
+            : already.has(statement)
+              ? 'exists'
+              : seen.has(statement)
+                ? 'duplicate'
+                : null
+    if (problem === null) seen.add(statement)
+    items.push({ key, statement, edited: edit !== undefined && statement !== key, problem })
+  }
+  return { items, discarded }
+}
+
 // The live preview: every parsed statement, flagged when it would be refused (over 500 characters,
 // LaTeX) or is already in this root. Only the unflagged ones are imported.
 export function previewBulkStatements(rawText: string, existing: readonly string[] = []): BulkPreviewItem[] {

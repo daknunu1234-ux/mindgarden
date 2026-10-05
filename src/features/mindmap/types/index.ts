@@ -3,7 +3,8 @@ export type RootNodeView = {
   id: string
   title: string
   // prompt is optional so plain { id } items still fit; decks' DeckTreeNode items carry it.
-  items: { id: string; prompt?: string }[]
+  // parentId: a sub-statement's statement (same root), shown nested under it in the drawer.
+  items: { id: string; prompt?: string; parentId?: string | null }[]
   children: RootNodeView[]
 }
 
@@ -21,7 +22,9 @@ export type MindmapPractice = {
 // itself. Absent for everyone else, so visitors and contestants never see the tools.
 export type MindmapOwnerTools = {
   onEditStatement: (statement: { id: string; text: string }) => void
-  onDeleteStatement: (statement: { id: string; text: string }) => void
+  onDeleteStatement: (statement: { id: string; text: string; subStatements?: number }) => void
+  // 📂 Move to another root (the page opens decks' MoveStatementDialog). Optional: canvases without it hide the tool.
+  onMoveStatement?: (statement: { id: string; text: string; nodeId: string; isSubStatement: boolean; subStatements: number }) => void
   onEditRoot: (root: { id: string; title: string }) => void
   onDeleteRoot: (rootId: string) => void
 }

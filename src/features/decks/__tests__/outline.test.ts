@@ -15,7 +15,7 @@ import {
 } from '../lib/outline'
 import type { EditorNode } from '../types'
 
-const item = (id: string) => ({ id, statement: `${id} là đúng.`, drillable: true })
+const item = (id: string) => ({ id, statement: `${id} là đúng.`, drillable: true, parentId: null })
 // cell (i1, i2) ─┬─ nucleus (i3) ── dna
 //                └─ membrane
 // energy (i4)
@@ -65,11 +65,12 @@ describe('root selector and parents', () => {
 })
 
 describe('outlineKey', () => {
-  it('maps Enter, Tab and Shift+Tab and ignores other keys', () => {
+  it('maps Enter, Shift+Enter, Tab and Shift+Tab and ignores other keys', () => {
     expect(outlineKey({ key: 'Enter', shiftKey: false })).toBe('enter')
+    expect(outlineKey({ key: 'Enter', shiftKey: true })).toBe('shift-enter')
     expect(outlineKey({ key: 'Tab', shiftKey: false })).toBe('tab')
     expect(outlineKey({ key: 'Tab', shiftKey: true })).toBe('shift-tab')
-    expect(outlineKey({ key: 'Enter', shiftKey: true })).toBeNull()
+    expect(outlineKey({ key: 'Enter', shiftKey: true, isComposing: true })).toBeNull()
     expect(outlineKey({ key: 'x', shiftKey: false })).toBeNull()
   })
 

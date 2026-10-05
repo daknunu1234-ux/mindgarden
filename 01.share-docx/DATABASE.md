@@ -93,10 +93,15 @@
 |--------|------|-------------|-------------|
 | id | UUID | PK, DEFAULT gen_random_uuid() | |
 | node_id | UUID | FK → mindmap_nodes, NOT NULL, ON DELETE CASCADE | |
+| parent_item_id | UUID | NULLABLE; FK `(parent_item_id, node_id)` → `knowledge_items (id, node_id)` ON UPDATE CASCADE ON DELETE CASCADE; CHECK `<> id` | Migration `20261010000000`. NULL = a statement; else the statement this **sub-statement** sits under, always in the same root. One level only (trigger `knowledge_items_one_level`, `SUB_STATEMENT_TOO_DEEP`). Moving a statement (UPDATE `node_id`) carries its sub-statements; deleting it deletes them |
 | prompt | TEXT | NOT NULL, non-empty | Question shown to the player |
 | correct_stmt | TEXT | NOT NULL, non-empty, no LaTeX commands | The TRUE statement (plain text) |
 | trap_rules | JSONB | NOT NULL, DEFAULT '{}', must be object | Rules for generating FALSE variants |
+| sort_order | DOUBLE PRECISION | NOT NULL, DEFAULT epoch seconds of `clock_timestamp()` | Migration `20261010000000`. Order among a root's statements and among one statement's sub-statements: new rows append; a row typed right below another gets the midpoint with the next one; a moved statement goes last. Backfilled from `created_at` |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(id, node_id)* | — | UNIQUE `knowledge_items_id_node_key` | Target of the sub-statement FK |
+
+**Sub-statements in practice**: a sub-statement is one more knowledge item of its root. Drill rounds (whole tree or one root branch), Mind Tournaments, mastery and coins treat both levels alike; nothing in the progress, coin or tournament functions changed. In questions, a sub-statement under a short statement (≤ 80 characters, `decks/lib/statements.ts` `parentContext`) takes it as its last breadcrumb step and subject.
 
 Example `trap_rules`:
 ```json
@@ -232,7 +237,7 @@ Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 pe
 | Planting a tree costs its species' seed price: 100 🪙, or 180 🪙 for a surreal species | `public.seed_price(tree_type)` (migration `20261006000000`): 180 for `crystal_flora`, `cosmic_nebula`, `chrono_willow`, else 100. `public.plant_deck(title, slug, description, is_public, tree_type)`, `SECURITY DEFINER`, owner = `auth.uid()`, charges with `UPDATE users SET coins = coins - v_price WHERE id = auth.uid() AND coins >= v_price` (a flat 100 before that migration), then inserts the deck, all in one transaction. Short purse → `INSUFFICIENT_COINS` and nothing is inserted. A duplicate slug (23505) undoes the charge |
 | The fee can't be skipped | `INSERT` on `decks` is revoked from `anon` / `authenticated`: `plant_deck` and `clone_deck` are the only ways to create a deck. Owners still update and delete their decks |
 | Changing a planted tree to a pricier species costs the difference | Trigger `decks_charge_species_upgrade` (`BEFORE UPDATE OF tree_type`, function `charge_species_upgrade()`, `SECURITY DEFINER`, migration `20261006000000`): when `seed_price(new) > seed_price(old)` and the change comes from a player (`auth.uid()` set), it charges the owner the difference (`coins >= diff`, else `INSUFFICIENT_COINS` and the UPDATE fails). Cheaper or equal species: free, no refund. Without it the owner's own UPDATE on `decks` would be a free way round the 180 🪙 price |
-| Cloning a shared tree costs its species' seed price + min(statements, 50) 🪙 (100–150; surreal 180–230) | `public.clone_deck(source_deck_id, slug)`, `SECURITY DEFINER`, cloner = `auth.uid()` (migration `20260928000700`, re-created by `20261006000000`). Only another gardener's **public** tree (`DECK_NOT_FOUND` otherwise, `CANNOT_CLONE_OWN_DECK` for your own). Fee = `seed_price(tree_type) + least(item count, 50)` (it was `least(100 + item count, 150)`, the same for standard trees), charged like `plant_deck` (`coins >= fee`, else `INSUFFICIENT_COINS`). In the same transaction it inserts a **private** deck owned by the cloner (same title, description, species), copies every `mindmap_nodes` row parents-first (same hierarchy and `sort_order`) and every `knowledge_items` row with its `prompt`, `correct_stmt` and `trap_rules`. `user_progress` is **never** copied: the clone starts at 0/5 with every mastery coin still to earn. A duplicate slug (23505) rolls everything back |
+| Cloning a shared tree costs its species' seed price + min(statements, 50) 🪙 (100–150; surreal 180–230) | `public.clone_deck(source_deck_id, slug)`, `SECURITY DEFINER`, cloner = `auth.uid()` (migration `20260928000700`, re-created by `20261006000000`). Only another gardener's **public** tree (`DECK_NOT_FOUND` otherwise, `CANNOT_CLONE_OWN_DECK` for your own). Fee = `seed_price(tree_type) + least(item count, 50)` (it was `least(100 + item count, 150)`, the same for standard trees), charged like `plant_deck` (`coins >= fee`, else `INSUFFICIENT_COINS`). In the same transaction it inserts a **private** deck owned by the cloner (same title, description, species), copies every `mindmap_nodes` row parents-first (same hierarchy and `sort_order`) and every `knowledge_items` row with its `prompt`, `correct_stmt` and `trap_rules` (since migration `20261010000000` also its `sort_order`, and `parent_item_id` remapped to the copied statement, statements first). `user_progress` is **never** copied: the clone starts at 0/5 with every mastery coin still to earn. A duplicate slug (23505) rolls everything back |
 | Balances never go negative | `coins >= fee` in each charge, plus the `coins >= 0` CHECK |
 | No free coins in production | `public.dev_grant_coins(user, 1–100)` (Coin Shop "Simulate Top-up (Dev Mode)") is EXECUTE-able by `service_role` only, and the server action refuses it when `NODE_ENV = production`. Real payments (webhooks) replace it later |
 
@@ -355,6 +360,7 @@ roles
 | decks → mindmap_nodes | 1:N | CASCADE |
 | mindmap_nodes → mindmap_nodes | 1:N | Self-ref, same-deck only, subtree cascades |
 | mindmap_nodes → knowledge_items | 1:N | CASCADE |
+| knowledge_items → knowledge_items | 1:N | Sub-statements, same root only, one level; UPDATE (move) and DELETE cascade |
 | **users ↔ knowledge_items** | N:M via `user_progress` | ⚠️ Decoupled progress: same public deck, separate progress per player |
 | users ↔ decks (visits) | N:M via `tree_visits` | Visited Gardens; both sides CASCADE |
 | users ↔ decks (tournament) | N:M via `deck_tournament_participants` | One run per contestant per tree; item levels in `deck_tournament_item_progress`; all CASCADE |
@@ -384,6 +390,7 @@ CREATE INDEX idx_mindmap_nodes_parent_id ON public.mindmap_nodes(parent_id);
 
 -- Knowledge & Trap Engine
 CREATE INDEX idx_knowledge_items_node_id ON public.knowledge_items(node_id);
+CREATE INDEX idx_knowledge_items_parent_item_id ON public.knowledge_items(parent_item_id);  -- migration 22
 
 -- Visited Gardens (the PK (user_id, deck_id) covers per-player lookups)
 CREATE INDEX idx_tree_visits_user_visited_at ON public.tree_visits(user_id, visited_at DESC);
@@ -477,8 +484,8 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 
 | Role | SELECT | INSERT / UPDATE |
 |------|--------|-----------------|
-| anon | `id`, `node_id`, `prompt`, `created_at` | ✗ |
-| authenticated | `id`, `node_id`, `prompt`, `created_at` | `node_id`, `prompt`, `correct_stmt`, `trap_rules` (RLS: deck owner) |
+| anon | `id`, `node_id`, `prompt`, `created_at`, `parent_item_id`, `sort_order` | ✗ |
+| authenticated | `id`, `node_id`, `prompt`, `created_at`, `parent_item_id`, `sort_order` | `node_id`, `prompt`, `correct_stmt`, `trap_rules`, `parent_item_id`, `sort_order` (RLS: deck owner) |
 | service_role | all | all |
 
 - **Why the service role**: anything a Server Action can do with the player's JWT, the player can do from the browser too. Answers are read only with a key the browser never has
@@ -510,6 +517,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger) and `sort_order` (backfilled from `created_at`); their column grants; `clone_deck()` re-created to copy the hierarchy and order |
   | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180 🪙, else 1; service role) and `award_mastery_coin()` re-created to pay 1 × farm multiplier × species multiplier, fraction still carried in `users.coin_carry` |
   | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs` (RLS: read own; server writes only), `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one run a day, database-timed answers, coins = streak paid atomically) |
   | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at`: written on every answer, read by nothing. Destructive and optional |
@@ -528,6 +536,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 22** runs any time after file 18, **before or with** the deploy of the sub-statement code: it only adds columns (older code keeps working), while the new code orders statements by `sort_order` and fails to load them without it. It re-creates `clone_deck()`: never re-run file 18 after it (cloned trees would lose their sub-statements' nesting)
 - **File 21** runs any time after file 18 (it uses `seed_price()`), with or after the deploy. Until it runs, the app shows "⭐ 1.5x Coins" on special trees but the database still pays ×1; nothing else is affected. It re-creates `award_mastery_coin()`: never re-run file 12 after it without re-running this one (file 12 would restore the farm-only payout)
 - **File 20** can run any time after file 18 (it does not need file 19), before or with the deploy. Until it runs, the ⚡ button shows as ready but starting a run answers "Could not start the Daily Rush" (the log names the migration); nothing else is affected
 - **File 19** runs only **after** the code that stopped writing those columns is deployed: older code sends `mistake_count` with every answer, so answers would fail to save against the dropped column. It is optional (the unused columns are harmless) and irreversible (the values are lost). Never re-run file 4 after it: its column grant names `mistake_count`

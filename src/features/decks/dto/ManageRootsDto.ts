@@ -19,6 +19,14 @@ export const UpdateKnowledgeItemDto = z.object({
   text: StatementTextDto,
 })
 
+// Move a statement (with its sub-statements) to another root or sub-root of the same tree. A
+// sub-statement moved anywhere, its own root included, becomes a statement there.
+export const MoveKnowledgeItemDto = z.object({
+  deckId: z.uuid('Invalid tree'),
+  itemId: z.uuid('Invalid statement'),
+  toNodeId: z.uuid('Invalid root'),
+})
+
 // A whole root branch: the root, its sub-roots and every statement in them (and their progress).
 export const DeleteRootBranchDto = z.object({ deckId: z.uuid('Invalid tree'), rootId: z.uuid('Invalid root') })
 
@@ -27,3 +35,4 @@ export type DeleteMindmapNodeInput = z.infer<typeof DeleteMindmapNodeDto>
 export type DeleteKnowledgeItemInput = z.infer<typeof DeleteKnowledgeItemDto>
 export type UpdateKnowledgeItemInput = z.infer<typeof UpdateKnowledgeItemDto>
 export type DeleteRootBranchInput = z.infer<typeof DeleteRootBranchDto>
+export type MoveKnowledgeItemInput = z.infer<typeof MoveKnowledgeItemDto>

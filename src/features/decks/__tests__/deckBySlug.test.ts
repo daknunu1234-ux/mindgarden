@@ -49,7 +49,7 @@ describe('findDeckBySlug', () => {
     const res = await findDeckBySlug(client as never, { slug: 'sinh-hoc' })
     expect(tables).toEqual(['decks'])
     expect(selects[0]).toContain('mindmap_nodes(')
-    expect(selects[0]).toContain('knowledge_items(id, prompt, created_at)')
+    expect(selects[0]).toContain('knowledge_items(id, prompt, parent_item_id, sort_order, created_at)')
     // Answers never come back from this query.
     expect(selects[0]).not.toMatch(/correct_stmt|trap_rules/)
     expect(res.success && res.data.deck).toMatchObject({ id: 'deck-1', title: 'Sinh học', userId: 'me' })

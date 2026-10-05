@@ -142,20 +142,30 @@ function InspectorBody({
           <p className="text-sm text-amber-900/60">No statements on this root yet.</p>
         ) : (
           <ul className="space-y-2.5">
-            {node.items.map((item, i) => {
+            {nestedItems(node.items).map(({ item, sub, subCount }, i) => {
               const lvl = toMasteryLevel(Math.round(levels[item.id] ?? 0))
+              const label = statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)
               return (
                 <li
                   key={item.id}
                   className={cn(
                     'group rounded-2xl border-2 px-3 py-2.5',
+                    // Sub-statements sit indented under their statement, joined by a rail.
+                    sub && 'relative ml-6 before:absolute before:top-1/2 before:-left-4 before:w-3 before:border-t-2 before:border-amber-800/25',
                     isMastered(lvl)
                       ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_3px_0_#ca8a04,0_0_14px_rgba(234,179,8,0.35)]'
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
                   )}
                 >
                   <div className="flex items-start gap-2">
-                    <p className="min-w-0 flex-1 text-sm font-semibold text-stone-800">{statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)}</p>
+                    <p className="min-w-0 flex-1 text-sm font-semibold text-stone-800">
+                      {sub && (
+                        <span aria-label="Sub-statement" className="mr-1 text-amber-800/60">
+                          ↳
+                        </span>
+                      )}
+                      {label}
+                    </p>
                     {ownerTools && (
                       <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
                         <HoverActionButton
@@ -164,11 +174,20 @@ function InspectorBody({
                           tone="edit"
                           onClick={() => ownerTools.onEditStatement({ id: item.id, text: statements?.[item.id] ?? '' })}
                         />
+                        {ownerTools.onMoveStatement && (
+                          <HoverActionButton
+                            icon="📂"
+                            label={`Move statement ${i + 1} to another root`}
+                            onClick={() =>
+                              ownerTools.onMoveStatement?.({ id: item.id, text: label, nodeId: node.id, isSubStatement: sub, subStatements: subCount })
+                            }
+                          />
+                        )}
                         <HoverActionButton
                           icon="🗑️"
                           label={`Delete statement ${i + 1}`}
                           tone="delete"
-                          onClick={() => ownerTools.onDeleteStatement({ id: item.id, text: statementLabel(statements?.[item.id], item.prompt, node.title, i + 1) })}
+                          onClick={() => ownerTools.onDeleteStatement({ id: item.id, text: label, subStatements: subCount })}
                         />
                       </HoverActions>
                     )}
@@ -229,6 +248,21 @@ function InspectorBody({
       )}
     </>
   )
+}
+
+// The root's items in drawer order: each statement followed by its sub-statements (a sub-statement
+// whose statement isn't in the list stays where it is, as a statement).
+function nestedItems(items: RootNodeView['items']): { item: RootNodeView['items'][number]; sub: boolean; subCount: number }[] {
+  const byId = new Map(items.map((i) => [i.id, i]))
+  // One level: nested only under a row that is itself shown as a statement.
+  const hasParent = (i: RootNodeView['items'][number]) => Boolean(i.parentId && i.parentId !== i.id && byId.has(i.parentId))
+  const isSub = (i: RootNodeView['items'][number]) => hasParent(i) && !hasParent(byId.get(i.parentId!)!)
+  return items
+    .filter((i) => !isSub(i))
+    .flatMap((top) => {
+      const children = items.filter((c) => isSub(c) && c.parentId === top.id)
+      return [{ item: top, sub: false, subCount: children.length }, ...children.map((c) => ({ item: c, sub: true, subCount: 0 }))]
+    })
 }
 
 export { NodeInspector }

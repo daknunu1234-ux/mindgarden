@@ -17,11 +17,13 @@ import type {
   DeleteKnowledgeItemInput,
   DeleteMindmapNodeInput,
   DeleteRootBranchInput,
+  MoveKnowledgeItemInput,
   UpdateKnowledgeItemInput,
   UpdateMindmapNodeInput,
 } from '../dto/ManageRootsDto'
 import { branchNodeIds } from '../lib/branch'
 import { DEFAULT_TRAP_RULES, isDrillable } from '../lib/drillable'
+import { appendSortOrder, flattenStatements, insertSortOrder } from '../lib/statements'
 import { answersByNode, readAnswersForNodes } from './answers'
 import { toDeck } from './decks'
 import type { Deck, DeckEditor, EditorNode } from '../types'
@@ -183,10 +185,46 @@ export async function insertMindmapNode(
   return ok(data)
 }
 
+type ItemRow = { id: string; node_id: string; parent_item_id: string | null; sort_order: number }
+
+// One statement's place (no text: correct_stmt is read only in answers.ts). Null when missing or
+// not readable (RLS).
+async function findItem(supabase: Client, itemId: string): Promise<ActionResult<ItemRow | null>> {
+  const { data, error } = await supabase.from('knowledge_items').select('id, node_id, parent_item_id, sort_order').eq('id', itemId).maybeSingle()
+  if (error) {
+    console.error('[decks] findItem failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not load the statement')
+  }
+  return ok(data)
+}
+
+// The largest sort_order among a root's statements (parentItemId null) or one statement's
+// sub-statements; with `after`, the smallest one above it instead (the row that follows it).
+async function neighbourOrder(
+  supabase: Client,
+  nodeId: string,
+  parentItemId: string | null,
+  after?: number,
+): Promise<ActionResult<number | null>> {
+  let q = supabase.from('knowledge_items').select('sort_order').eq('node_id', nodeId)
+  q = parentItemId ? q.eq('parent_item_id', parentItemId) : q.is('parent_item_id', null)
+  if (after !== undefined) q = q.gt('sort_order', after)
+  const { data, error } = await q.order('sort_order', { ascending: after !== undefined }).limit(1).maybeSingle()
+  if (error) {
+    console.error('[decks] neighbourOrder failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not place the statement')
+  }
+  return ok(data?.sort_order ?? null)
+}
+
+const nowSeconds = () => Date.now() / 1000
+
+// Adds one statement, or a sub-statement under `parentItemId` (a statement of the same root: one
+// level deep). With `afterItemId` it goes right below that row (same level), else last.
 export async function insertKnowledgeItem(
   supabase: Client,
   userId: string,
-  { nodeId, statement }: CreateKnowledgeItemInput,
+  { nodeId, statement, parentItemId = null, afterItemId = null }: CreateKnowledgeItemInput,
 ): Promise<ActionResult<{ id: string; drillable: boolean }>> {
   const { data: node, error: nodeError } = await supabase
     .from('mindmap_nodes')
@@ -203,24 +241,104 @@ export async function insertKnowledgeItem(
   const owner = await checkDeckOwner(supabase, node.deck_id, userId)
   if (!owner.success) return owner
 
+  if (parentItemId) {
+    const parent = await findItem(supabase, parentItemId)
+    if (!parent.success) return parent
+    if (!parent.data || parent.data.node_id !== nodeId) return fail('ITEM_NOT_FOUND', 'The statement to nest under is not in this root')
+    if (parent.data.parent_item_id) return fail('VALIDATION_FAILED', 'A sub-statement cannot have sub-statements of its own')
+  }
+
+  // Right below the anchor: the midpoint between it and the next row at its level. An anchor that
+  // moved or went away just appends (the column default).
+  let sortOrder: number | undefined
+  if (afterItemId) {
+    const anchor = await findItem(supabase, afterItemId)
+    if (!anchor.success) return anchor
+    if (anchor.data && anchor.data.node_id === nodeId && anchor.data.parent_item_id === parentItemId) {
+      const next = await neighbourOrder(supabase, nodeId, parentItemId, anchor.data.sort_order)
+      if (!next.success) return next
+      sortOrder = insertSortOrder(anchor.data.sort_order, next.data, nowSeconds())
+    }
+  }
+
   const { data, error } = await supabase
     .from('knowledge_items')
     .insert({
       node_id: nodeId,
+      parent_item_id: parentItemId,
       // prompt is required by the schema; the node title is the question's topic.
       prompt: node.title,
       correct_stmt: statement,
       trap_rules: DEFAULT_TRAP_RULES,
+      ...(sortOrder !== undefined && { sort_order: sortOrder }),
     })
     // RETURNING only id: writing correct_stmt is allowed, reading it back is not.
     .select('id')
     .single()
 
   if (error) {
+    if (error.message?.includes('SUB_STATEMENT_TOO_DEEP')) return fail('VALIDATION_FAILED', 'A sub-statement cannot have sub-statements of its own')
+    // Composite FK (parent_item_id, node_id): the parent left this root in between.
+    if (error.code === FK_VIOLATION) return fail('ITEM_NOT_FOUND', 'The statement to nest under is not in this root')
     console.error('[decks] insertKnowledgeItem failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not add the statement')
   }
   return ok({ id: data.id, drillable: isDrillable(statement) })
+}
+
+export type MovedStatement = { id: string; nodeId: string; subStatements: number; slug: string }
+
+// Moves a statement (and, through the composite foreign key's ON UPDATE CASCADE, its
+// sub-statements) to another root or sub-root of the same tree, appended last there. A
+// sub-statement becomes a statement in the target (moving it to its own root just un-nests it).
+// The prompt follows the new root's title, as for a statement typed there. Progress is kept.
+// Owner only; both the statement and the target must be in `deckId`.
+export async function moveKnowledgeItem(
+  supabase: Client,
+  userId: string,
+  { deckId, itemId, toNodeId }: MoveKnowledgeItemInput,
+): Promise<ActionResult<MovedStatement>> {
+  const item = await findItem(supabase, itemId)
+  if (!item.success) return item
+  if (!item.data) return fail('ITEM_NOT_FOUND', 'Statement not found')
+
+  const [from, to] = await Promise.all([findNodeDeck(supabase, item.data.node_id), findNodeDeck(supabase, toNodeId)])
+  if (!from.success) return from
+  if (from.data.deckId !== deckId) return fail('ITEM_NOT_FOUND', 'Statement not found in this tree')
+  if (!to.success) return to
+  if (to.data.deckId !== deckId) return fail('NODE_NOT_FOUND', 'That root is not in this tree')
+  const owner = await checkDeckOwner(supabase, deckId, userId)
+  if (!owner.success) return owner
+
+  // Already a statement of that root: nothing to do.
+  if (item.data.node_id === toNodeId && item.data.parent_item_id === null) {
+    return ok({ id: itemId, nodeId: toNodeId, subStatements: 0, slug: owner.data.slug })
+  }
+
+  const last = await neighbourOrder(supabase, toNodeId, null)
+  if (!last.success) return last
+
+  // One UPDATE moves the row; the database moves its sub-statements with it. RETURNING id: 0 rows = RLS refused.
+  const { data, error } = await supabase
+    .from('knowledge_items')
+    .update({ node_id: toNodeId, parent_item_id: null, prompt: to.data.title, sort_order: appendSortOrder(last.data, nowSeconds()) })
+    .eq('id', itemId)
+    .select('id')
+  if (error) {
+    console.error('[decks] moveKnowledgeItem failed', error.code, error.message)
+    return fail('INTERNAL_ERROR', 'Could not move the statement')
+  }
+  if (!data || data.length === 0) return fail('AUTH_FORBIDDEN', 'Only the owner can move statements')
+
+  // The sub-statements came along (same node_id now); their prompt follows the new root too.
+  const { data: children, error: childError } = await supabase
+    .from('knowledge_items')
+    .update({ prompt: to.data.title })
+    .eq('parent_item_id', itemId)
+    .select('id')
+  if (childError) console.error('[decks] moveKnowledgeItem prompt update failed', childError.code, childError.message)
+
+  return ok({ id: itemId, nodeId: toNodeId, subStatements: children?.length ?? 0, slug: owner.data.slug })
 }
 
 export type BulkInsertResult = {
@@ -336,12 +454,16 @@ async function flattenDeckStatements(supabase: Client, deckId: string, treeType:
         id: n.id,
         title: n.title,
         depth,
-        items: (byNode.get(n.id) ?? []).map((item) => ({
-          id: item.itemId,
-          statement: item.correctStmt,
-          // The question engine asks every note it can; ✅/💧 matches what players get.
-          drillable: isDrillable(item.correctStmt),
-        })),
+        // Each statement followed by its sub-statements.
+        items: flattenStatements(
+          (byNode.get(n.id) ?? []).map((item) => ({
+            id: item.itemId,
+            statement: item.correctStmt,
+            // The question engine asks every note it can; ✅/💧 matches what players get.
+            drillable: isDrillable(item.correctStmt),
+            parentId: item.parentItemId,
+          })),
+        ),
       })
       visit(n.id, depth + 1)
     }

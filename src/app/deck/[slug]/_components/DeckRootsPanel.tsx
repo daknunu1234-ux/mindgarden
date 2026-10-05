@@ -8,6 +8,7 @@ import {
   DeleteStatementDialog,
   EditRootDialog,
   EditStatementDialog,
+  MoveStatementDialog,
   NodeManageDialog,
   type DeckEditorData,
   type DeckTreeNode,
@@ -16,6 +17,7 @@ import {
   type RootToEdit,
   type StatementToDelete,
   type StatementToEdit,
+  type StatementToMove,
   useDeckDraftActions,
 } from '@/features/decks'
 import { useSessionLaunch } from '@/features/drill'
@@ -66,6 +68,7 @@ export function DeckRootsPanel({
   // the drawer or the manage dialog closes by itself after the refresh (its id no longer resolves).
   const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
   const [editingStatement, setEditingStatement] = useState<StatementToEdit | null>(null)
+  const [movingStatement, setMovingStatement] = useState<StatementToMove | null>(null)
   const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
@@ -108,6 +111,7 @@ export function DeckRootsPanel({
         ? {
             onEditStatement: (s: StatementToEdit) => !isPending(s.id) && setEditingStatement(s),
             onDeleteStatement: (s: StatementToDelete) => !isPending(s.id) && setDeletingStatement(s),
+            onMoveStatement: (s: StatementToMove) => !isPending(s.id) && setMovingStatement(s),
             onEditRoot: setEditingRoot,
             onDeleteRoot: setDeletingRootId,
           }
@@ -144,6 +148,7 @@ export function DeckRootsPanel({
           <EditStatementDialog deckId={deckId} statement={editingStatement} onClose={() => setEditingStatement(null)} />
           <EditRootDialog root={editingRoot} onClose={() => setEditingRoot(null)} />
           <DeleteStatementDialog deckId={deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
+          <MoveStatementDialog nodes={editor.nodes} statement={movingStatement} onClose={() => setMovingStatement(null)} />
           <DeleteRootDialog deckId={deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
         </>
       )}

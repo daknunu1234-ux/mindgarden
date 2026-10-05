@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-02.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-05.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -148,6 +148,35 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   and picture from Google. A new farm starts empty, so nothing else is created.
 
 ## Knowledge Engine
+
+### Sub-statements, Notion-like editing, moving statements, bulk preview edits
+
+This supersedes the keyboard and bulk-import wording further down where they differ.
+
+- **Sub-statements** (migration 22): a statement can carry sub-statements, one level deep, in the
+  same root (`knowledge_items.parent_item_id`; a composite foreign key to `(id, node_id)` keeps them
+  in their statement's root, ON UPDATE / DELETE CASCADE; a trigger refuses a third level). The
+  Workshop nests them under their statement (↳), the root drawer too. Deleting a statement deletes
+  its sub-statements (the confirmation says how many).
+- **Practice**: both levels are drilled alike (whole tree, one root branch, tournaments, mastery and
+  coins). A sub-statement under a short statement (≤ 80 characters) takes it as context: breadcrumb
+  `[Sinh học › Bào quan › Ty thể]`, "sản sinh ATP" asked as "Ty thể sản sinh ATP".
+- **Statement order** (`knowledge_items.sort_order`, migration 22): new rows append; a row typed
+  right below another is saved there (midpoint with the next one), so the order survives a reload.
+- **Notion-like keys** in the Workshop outline: editing a statement, **Enter** saves and opens a
+  blank line directly below it (focused); **Shift+Enter**, **Esc** or clicking away save without a
+  new line; ✕ discards. **Tab** opens a sub-statement under it, **Shift+Tab** leaves a sub-statement
+  level. On a new line: Enter = next line below, Shift+Enter = save and close, Tab = sub-statement
+  under the line just typed (an empty line: a sub-root, as before). Esc on a new line still closes
+  without saving.
+- **Move Statement** (📂 on Workshop rows and drawer statements): a compact dialog lists every root
+  and sub-root; picking one moves the statement with its sub-statements at once (optimistic), saved
+  by `moveKnowledgeItem` (one UPDATE; the database moves the sub-statements). A sub-statement moved
+  anywhere becomes a statement. Progress and paid coins are kept.
+- **Bulk preview**: each parsed line can be edited in place (✏️ or double-click) or discarded (🗑️,
+  "Restore N discarded") before importing; edited lines are checked again.
+- Statements are plain text only, so "editing a parsed statement" edits its text; there is no
+  separate title or prompt to edit (the prompt is always the root's title).
 
 - **Authoring**: statements are plain text only (no LaTeX / OCR), cleaned (NFC, single spaces) and
   bounded to 5–500 characters. Roots nest into branches.
@@ -715,6 +744,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger), `sort_order` (backfilled from `created_at`), their column grants; `clone_deck()` copies both. Run **before or with** the deploy; never re-run 18 after it |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
 falls back to a plain delete with no refund. The Supabase CLI project (`supabase/config.toml`) is not set up
@@ -727,7 +757,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21 |
+| (pending) | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
+| `5f85bcd` | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21. The same commit also carries the "Tree & roots" hierarchy canvas row below |
 | (pending) | feat(mindmap): "Tree & roots" as a zoomable, pannable hierarchy canvas: the tree, every tier of roots as compact cards, curving tendrils, statements in the side drawer only, a transform-based camera (50%–180%); the tree stands free (no box) with a floating label, and the roots sprout from its trunk through a taproot |
 | (pending) | feat(garden): Cosmic Nebula redrawn as a low-poly galaxy mushroom with faceted planets in orbit (0 / 1 / 2 / 4 / 6 by stage); tree sway and crown motion about a sixth stronger, wider orbits, brighter stem cracks |
 | (pending) | feat(garden): day / night lighting on the farm (local clock or a pinned light): sun and moon pools, night veil and vignette, tinted shadows, lamplight and glows; decided before the first paint (no flash of daylight at night); fresher low-contrast turf (`#82cb52` / `#74bb47`) |
@@ -774,5 +805,5 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 81 files, 839 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 83 files, 885 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).

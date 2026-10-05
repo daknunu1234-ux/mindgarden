@@ -11,7 +11,8 @@ import { useDeckDraftActions } from './DeckDraft'
 // a toast). A root branch waits for the server, then refreshes the page data in place: the mindmap
 // re-lays out, a drawer showing a deleted root closes by itself, and the launch counts follow.
 
-export type StatementToDelete = { id: string; text: string }
+// subStatements: how many sub-statements go with it (the database cascades them).
+export type StatementToDelete = { id: string; text: string; subStatements?: number }
 export type RootToDelete = { id: string; title: string; statements: number; subRoots: number }
 
 type ConfirmProps = {
@@ -100,8 +101,8 @@ type DeleteStatementDialogProps = {
   onClose: (deleted: boolean) => void
 }
 
-// "Delete Statement": one statement and everyone's progress on it. Confirming closes at once: the
-// statement leaves the list, the mindmap and the counts immediately (deck draft).
+// "Delete Statement": one statement, its sub-statements and everyone's progress on them. Confirming
+// closes at once: they leave the list, the mindmap and the counts immediately (deck draft).
 function DeleteStatementDialog({ statement, onClose }: DeleteStatementDialogProps) {
   const { removeStatement } = useDeckDraftActions()
   return (
@@ -116,7 +117,13 @@ function DeleteStatementDialog({ statement, onClose }: DeleteStatementDialogProp
       }}
       onClose={onClose}
     >
-      <p>Are you sure you want to delete this statement? This cannot be undone.</p>
+      <p>
+        Are you sure you want to delete this statement
+        {statement?.subStatements
+          ? ` and its ${statement.subStatements} ${statement.subStatements === 1 ? 'sub-statement' : 'sub-statements'}`
+          : ''}
+        ? This cannot be undone.
+      </p>
       {statement && <p className="rounded-xl bg-white/70 px-2.5 py-1.5 font-medium whitespace-pre-wrap text-stone-800">“{statement.text}”</p>}
     </ConfirmDelete>
   )

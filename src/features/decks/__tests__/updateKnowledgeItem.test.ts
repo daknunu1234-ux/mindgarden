@@ -53,8 +53,8 @@ function fakeSupabase(viewer: string | null, { itemDeck = DECK } = {}) {
   vi.mocked(readAnswersForNodes).mockResolvedValue({
     success: true,
     data: [
-      { itemId: ITEM, nodeId: ROOT, correctStmt: item.correct_stmt, trapRules: { negate: true } },
-      { itemId: 'sibling', nodeId: ROOT, correctStmt: 'Ribosome tổng hợp protein.', trapRules: { negate: true } },
+      { itemId: ITEM, nodeId: ROOT, parentItemId: null, correctStmt: item.correct_stmt, trapRules: { negate: true } },
+      { itemId: 'sibling', nodeId: ROOT, parentItemId: null, correctStmt: 'Ribosome tổng hợp protein.', trapRules: { negate: true } },
     ],
   })
   return { item, updates }
