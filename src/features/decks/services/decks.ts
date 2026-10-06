@@ -5,8 +5,7 @@ import type { Database, Tables } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { GetDeckBySlugInput } from '../dto/GetDeckBySlugDto'
 import type { GetDecksInput, GetNeighborGardenInput } from '../dto/GetDecksDto'
-import { buildDeckTree } from '../lib/deckTree'
-import { compareStatementRows, flattenStatements } from '../lib/statements'
+import { outlineRows, toDeckTree } from '../lib/contentTree'
 import type { Deck, DeckDetail } from '../types'
 
 export const toDeck = (row: Tables<'decks'>): Deck => ({
@@ -70,12 +69,11 @@ export async function findDeckBySlug(
   supabase: SupabaseClient<Database>,
   { slug }: GetDeckBySlugInput,
 ): Promise<ActionResult<DeckDetail>> {
-  // One round trip: the deck (by its unique slug index) with its roots and their statements embedded
-  // (RLS applies to each embedded table as usual). Only id + prompt: correct_stmt and trap_rules
-  // never leave the server here.
+  // One round trip: the deck (by its unique slug index) with its whole outline embedded (RLS applies
+  // to content_nodes as usual). trap_rules never leave the server here.
   const { data: row, error } = await supabase
     .from('decks')
-    .select('*, mindmap_nodes(id, parent_id, title, sort_order, knowledge_items(id, prompt, parent_item_id, sort_order, created_at))')
+    .select('*, content_nodes(id, parent_id, node_type, content, sort_order, created_at)')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -84,19 +82,13 @@ export async function findDeckBySlug(
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
   if (!row) return fail('DECK_NOT_FOUND', 'Deck not found')
-  const { mindmap_nodes: nodes, ...deck } = row
+  const { content_nodes: nodes, ...deck } = row
 
-  const tree = buildDeckTree(
-    nodes.map((n) => ({
-      id: n.id,
-      parentId: n.parent_id,
-      title: n.title,
-      sortOrder: n.sort_order,
-      // Statement order, each statement followed by its sub-statements.
-      items: flattenStatements(
-        [...n.knowledge_items].sort(compareStatementRows).map(({ id, prompt, parent_item_id }) => ({ id, prompt, parentId: parent_item_id ?? null })),
-      ),
-    })),
+  // The roots, nested by their nearest root above, each with its statements in outline order.
+  const tree = toDeckTree(
+    outlineRows(
+      nodes.map((n) => ({ id: n.id, parentId: n.parent_id, type: n.node_type, content: n.content, sortOrder: n.sort_order, createdAt: n.created_at })),
+    ),
   )
 
   return ok({ deck: toDeck(deck), tree })

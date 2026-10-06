@@ -4,7 +4,9 @@ export type RootNodeView = {
   title: string
   // prompt is optional so plain { id } items still fit; decks' DeckTreeNode items carry it.
   // parentId: a sub-statement's statement (same root), shown nested under it in the drawer.
-  items: { id: string; prompt?: string; parentId?: string | null }[]
+  // parentId / depth: the statement an item sits under and how many statements are above it before
+  // its root (0 = right under the root); items come in outline order.
+  items: { id: string; prompt?: string; parentId?: string | null; depth?: number }[]
   children: RootNodeView[]
 }
 
@@ -25,6 +27,9 @@ export type MindmapOwnerTools = {
   onDeleteStatement: (statement: { id: string; text: string; subStatements?: number }) => void
   // 📂 Move to another root (the page opens decks' MoveStatementDialog). Optional: canvases without it hide the tool.
   onMoveStatement?: (statement: { id: string; text: string; nodeId: string; isSubStatement: boolean; subStatements: number }) => void
+  // ⇄ root ↔ statement in place (drawer statements, sub-root cards and the drawer header; never a
+  // top-level root). The page toggles the node's type. Optional: without it the tool is hidden.
+  onToggleType?: (node: { id: string }) => void
   onEditRoot: (root: { id: string; title: string }) => void
   onDeleteRoot: (rootId: string) => void
 }

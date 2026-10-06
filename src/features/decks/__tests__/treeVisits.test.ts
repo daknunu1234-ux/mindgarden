@@ -83,15 +83,13 @@ function fakeSupabase(viewer: string | null, { visits = [] as VisitRow[], rpcErr
         }
         return q
       }
-      if (table === 'mindmap_nodes') {
+      if (table === 'content_nodes') {
         const q = {
           select: () => q,
+          eq: () => q,
           in: (_col: string, ids: string[]) => {
-            const data = ids.map((id) => ({
-              id: `node-${id}`,
-              deck_id: id,
-              knowledge_items: Array.from({ length: itemsPerDeck[id] ?? 0 }, (_, i) => ({ id: `${id}-item-${i}` })),
-            }))
+            // Statements only (the service filters node_type = 'statement').
+            const data = ids.flatMap((id) => Array.from({ length: itemsPerDeck[id] ?? 0 }, (_, i) => ({ id: `${id}-item-${i}`, deck_id: id, parent_id: `node-${id}` })))
             return Promise.resolve({ data, error: null })
           },
         }

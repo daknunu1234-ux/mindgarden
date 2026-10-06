@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { DeleteMindmapNodeDto } from '../dto/ManageRootsDto'
-import { removeMindmapNode } from '../services/authoring'
+import { removeMindmapNode } from '../services/content'
 
 // Auth: Required (deck owner). Delete an empty root; NODE_NOT_EMPTY while it has statements or sub-roots.
 export async function deleteMindmapNode(input: unknown): Promise<ActionResult<{ id: string }>> {

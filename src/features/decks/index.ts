@@ -29,7 +29,7 @@ export { DeckDraftProvider, useDeckDraft, useDeckDraftActions, type DeckDraftAct
 export { isPendingItemId } from './lib/draft'
 export { DeckShareToggle } from './components/DeckShareToggle'
 export { DeckDangerZone, DeleteDeckDialog } from './components/DeleteDeckDialog'
-export { DeleteRootDialog, DeleteStatementDialog, type RootToDelete, type StatementToDelete } from './components/DeleteDialogs'
+export { DeleteNodeDialog, DeleteRootDialog, DeleteStatementDialog, type NodeToDelete, type RootToDelete, type StatementToDelete } from './components/DeleteDialogs'
 export { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './components/EditDialogs'
 export { MoveStatementDialog, type StatementToMove } from './components/MoveStatementDialog'
 export { AddRootDialog, NodeManageDialog, type ManagedNode } from './components/NodeManageDialog'
@@ -46,10 +46,12 @@ export {
   type BulkPreviewItem,
   type BulkReviewItem,
 } from './lib/bulkStatements'
-export { flattenStatements, nestStatements, type StatementGroup } from './lib/statements'
+export { createContentNode, indentContentNode, toggleNodeType } from './actions/contentNodes'
+export { branchCounts, indentRow, outlineRows, toDeckTree, toEditorNodes, toggleRow, type ContentSlot, type StoredNode } from './lib/contentTree'
 export { countsAsVisit } from './lib/visits'
 export { countDeckTree } from './lib/deckTree'
 export type {
+  ContentRow,
   Deck,
   DeckDetail,
   DeckEditor as DeckEditorData,
@@ -57,5 +59,6 @@ export type {
   DeckTreeNode,
   EditorItem,
   EditorNode,
+  NodeType,
   VisitedTree,
 } from './types'

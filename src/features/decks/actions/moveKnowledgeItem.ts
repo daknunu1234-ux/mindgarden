@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { MoveKnowledgeItemDto } from '../dto/ManageRootsDto'
-import { moveKnowledgeItem as moveItem } from '../services/authoring'
+import { moveKnowledgeItem as moveItem } from '../services/content'
 
 export type MovedStatementResult = { id: string; nodeId: string; subStatements: number }
 

@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { UpdateKnowledgeItemDto } from '../dto/ManageRootsDto'
-import { editKnowledgeItem } from '../services/authoring'
+import { editKnowledgeItem } from '../services/content'
 
 export type EditedStatement = { id: string; statement: string; drillable: boolean }
 

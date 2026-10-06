@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { CreateMindmapNodeDto } from '../dto/CreateMindmapNodeDto'
-import { insertMindmapNode } from '../services/authoring'
+import { insertMindmapNode } from '../services/content'
 
 // Auth: Required (deck owner). Adds a root at the top level or under parentId.
 export async function createMindmapNode(input: unknown): Promise<ActionResult<{ id: string; title: string }>> {

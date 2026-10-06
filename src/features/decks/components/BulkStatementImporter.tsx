@@ -126,6 +126,14 @@ function BulkStatementImporter({ deckId, rootId, rootTitle, existing, className,
             id={textareaId}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            // Ctrl+Enter (⌘+Enter) imports, as the Workshop's cheat sheet says.
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.nativeEvent.isComposing) return
+              e.preventDefault()
+              e.stopPropagation()
+              importAll()
+            }}
+            aria-keyshortcuts="Control+Enter"
             placeholder={PLACEHOLDER}
             rows={7}
             autoFocus

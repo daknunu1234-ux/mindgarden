@@ -24,9 +24,19 @@ export type VisitedTree = {
   visitedAt: string
 }
 
-// Items expose only the prompt: correct_stmt stays on the server so answers remain hidden.
-// parentId: the statement a sub-statement sits under (same root), null for a statement.
-export type DeckTreeItem = { id: string; prompt: string; parentId?: string | null }
+// A tree's outline lives in one table, public.content_nodes (migration 20261013000000): every row is
+// a root or a statement, under any other node (a top-level node is always a root).
+export type NodeType = 'root' | 'statement'
+
+// One node of the outline, in outline order (a node, then its branch), with its depth (0 = a
+// top-level root). `content` = a root's title or a statement's text.
+export type ContentRow = { id: string; parentId: string | null; type: NodeType; content: string; depth: number }
+
+// The mindmap's view: roots nested by their nearest root above; each root's items = the statements
+// whose nearest root it is, in outline order. prompt = that root's title. parentId: the statement an
+// item sits under (null when it sits right under its root); depth: how many statements are above it
+// before its root (0 = right under the root).
+export type DeckTreeItem = { id: string; prompt: string; parentId?: string | null; depth?: number }
 
 export type DeckTreeNode = {
   id: string
@@ -42,8 +52,9 @@ export type DeckDetail = {
   tree: DeckTreeNode[]
 }
 
-// Owner-only editor data (getDeckEditor). Includes true statements, so never for other players.
-// Items are in display order (each statement followed by its sub-statements); parentId as above.
-export type EditorItem = { id: string; statement: string; drillable: boolean; parentId: string | null }
+// Editor / reader data (getDeckEditor for the owner, getDeckReader for a shared tree). `rows` = the
+// whole outline (the Workshop edits it); `nodes` = the same as roots (depth = how many roots are
+// above) with their statements (items, as in DeckTreeItem), for the lists and dialogs.
+export type EditorItem = { id: string; statement: string; drillable: boolean; parentId: string | null; depth?: number }
 export type EditorNode = { id: string; title: string; depth: number; items: EditorItem[] }
-export type DeckEditor = { deckId: string; treeType: string; nodes: EditorNode[] }
+export type DeckEditor = { deckId: string; treeType: string; nodes: EditorNode[]; rows: ContentRow[] }

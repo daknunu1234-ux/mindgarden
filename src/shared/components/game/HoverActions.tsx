@@ -40,6 +40,8 @@ type HoverActionButtonProps = {
   tone?: 'edit' | 'delete' | 'neutral'
   // Visible text next to the icon (e.g. "Edit"); icon-only when omitted.
   text?: string
+  // Shown but not usable (the label says why).
+  disabled?: boolean
 }
 
 const TONES = {
@@ -48,10 +50,11 @@ const TONES = {
   neutral: 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 focus-visible:ring-amber-300',
 } as const
 
-function HoverActionButton({ icon, label, onClick, tone = 'neutral', text }: HoverActionButtonProps) {
+function HoverActionButton({ icon, label, onClick, tone = 'neutral', text, disabled = false }: HoverActionButtonProps) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={(e) => {
         // Cards and pills underneath have their own click / drag handling.
         e.stopPropagation()
@@ -62,6 +65,7 @@ function HoverActionButton({ icon, label, onClick, tone = 'neutral', text }: Hov
       className={cn(
         'flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border px-1.5 text-xs font-semibold focus-visible:ring-4 focus-visible:outline-none',
         TONES[tone],
+        disabled && 'cursor-not-allowed opacity-40',
       )}
     >
       <span aria-hidden>{icon}</span>

@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { UpdateMindmapNodeDto } from '../dto/ManageRootsDto'
-import { renameMindmapNode } from '../services/authoring'
+import { renameMindmapNode } from '../services/content'
 
 // Auth: Required (deck owner). Rename a root.
 export async function updateMindmapNode(input: unknown): Promise<ActionResult<{ id: string; title: string }>> {

@@ -12,5 +12,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/__tests__/**/*.test.ts'],
+    // Some files are CPU-heavy (65 sprite renders, whole-deck grading, the PGlite database tests
+    // that run every migration): with all workers busy, a test can pass 5 s without being stuck.
+    testTimeout: 20_000,
   },
 })

@@ -11,6 +11,8 @@ import { MasteryRing } from './MasteryRing'
 
 type NodeInspectorProps = {
   node: RootNodeView | null
+  // A top-level root (never converts to a statement).
+  topLevel?: boolean
   levels: ItemLevels
   onOpenChange: (open: boolean) => void
   // Walk into a sub-branch from the drawer.
@@ -26,7 +28,7 @@ type NodeInspectorProps = {
 
 // Side drawer for one root: its statements (the text when the page passes it), mastery, sub-branches
 // and the Drill Root / Compete Root shortcut. Opening/closing it never touches the canvas camera.
-function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, ownerTools, practice = null, statements }: NodeInspectorProps) {
+function NodeInspector({ node, topLevel = false, levels, onOpenChange, onInspect, onManage, ownerTools, practice = null, statements }: NodeInspectorProps) {
   return (
     <Sheet open={node !== null} onOpenChange={onOpenChange}>
       <SheetContent
@@ -36,6 +38,7 @@ function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, ownerT
         {node && (
           <InspectorBody
             node={node}
+            topLevel={topLevel}
             levels={levels}
             onInspect={onInspect}
             onManage={onManage}
@@ -51,6 +54,7 @@ function NodeInspector({ node, levels, onOpenChange, onInspect, onManage, ownerT
 
 function InspectorBody({
   node,
+  topLevel = false,
   levels,
   onInspect,
   onManage,
@@ -126,6 +130,11 @@ function InspectorBody({
               <GameButton tone="cream" onClick={() => ownerTools.onEditRoot({ id: node.id, title: node.title })}>
                 ✏️ Edit
               </GameButton>
+              {ownerTools.onToggleType && !topLevel && (
+                <GameButton tone="cream" title="Make this root a statement, where it stands (Alt in the Workshop)" onClick={() => ownerTools.onToggleType?.({ id: node.id })}>
+                  ⇄ Make it a Statement
+                </GameButton>
+              )}
               <GameButton tone="danger" onClick={() => ownerTools.onDeleteRoot(node.id)}>
                 🗑️ Delete Root
               </GameButton>
@@ -142,16 +151,17 @@ function InspectorBody({
           <p className="text-sm text-amber-900/60">No statements on this root yet.</p>
         ) : (
           <ul className="space-y-2.5">
-            {nestedItems(node.items).map(({ item, sub, subCount }, i) => {
+            {nestedItems(node.items).map(({ item, sub, depth, subCount }, i) => {
               const lvl = toMasteryLevel(Math.round(levels[item.id] ?? 0))
               const label = statementLabel(statements?.[item.id], item.prompt, node.title, i + 1)
               return (
                 <li
                   key={item.id}
+                  style={sub ? { marginLeft: depth * 24 } : undefined}
                   className={cn(
                     'group rounded-2xl border-2 px-3 py-2.5',
                     // Sub-statements sit indented under their statement, joined by a rail.
-                    sub && 'relative ml-6 before:absolute before:top-1/2 before:-left-4 before:w-3 before:border-t-2 before:border-amber-800/25',
+                    sub && 'relative before:absolute before:top-1/2 before:-left-4 before:w-3 before:border-t-2 before:border-amber-800/25',
                     isMastered(lvl)
                       ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_3px_0_#ca8a04,0_0_14px_rgba(234,179,8,0.35)]'
                       : 'border-amber-900/15 bg-white/90 shadow-[0_3px_0_rgba(120,53,15,0.18)]',
@@ -181,6 +191,13 @@ function InspectorBody({
                             onClick={() =>
                               ownerTools.onMoveStatement?.({ id: item.id, text: label, nodeId: node.id, isSubStatement: sub, subStatements: subCount })
                             }
+                          />
+                        )}
+                        {ownerTools.onToggleType && (
+                          <HoverActionButton
+                            icon="⇄"
+                            label={`Make statement ${i + 1} a root, where it stands`}
+                            onClick={() => ownerTools.onToggleType?.({ id: item.id })}
                           />
                         )}
                         <HoverActionButton
@@ -252,17 +269,16 @@ function InspectorBody({
 
 // The root's items in drawer order: each statement followed by its sub-statements (a sub-statement
 // whose statement isn't in the list stays where it is, as a statement).
-function nestedItems(items: RootNodeView['items']): { item: RootNodeView['items'][number]; sub: boolean; subCount: number }[] {
-  const byId = new Map(items.map((i) => [i.id, i]))
-  // One level: nested only under a row that is itself shown as a statement.
-  const hasParent = (i: RootNodeView['items'][number]) => Boolean(i.parentId && i.parentId !== i.id && byId.has(i.parentId))
-  const isSub = (i: RootNodeView['items'][number]) => hasParent(i) && !hasParent(byId.get(i.parentId!)!)
-  return items
-    .filter((i) => !isSub(i))
-    .flatMap((top) => {
-      const children = items.filter((c) => isSub(c) && c.parentId === top.id)
-      return [{ item: top, sub: false, subCount: children.length }, ...children.map((c) => ({ item: c, sub: true, subCount: 0 }))]
-    })
+// Items come in outline order with their depth under the root (statements can nest at any depth):
+// each keeps its place, indented by its depth; subCount = the statements nested under it.
+function nestedItems(items: RootNodeView['items']): { item: RootNodeView['items'][number]; sub: boolean; depth: number; subCount: number }[] {
+  const depthOf = (i: RootNodeView['items'][number]) => i.depth ?? (i.parentId ? 1 : 0)
+  return items.map((item, k) => {
+    const depth = depthOf(item)
+    let end = k + 1
+    while (end < items.length && depthOf(items[end]) > depth) end++
+    return { item, sub: depth > 0, depth, subCount: end - k - 1 }
+  })
 }
 
 export { NodeInspector }

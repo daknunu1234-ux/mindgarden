@@ -4,7 +4,7 @@ import { createClient } from '@/shared/lib/supabase/server'
 import { getRequestUser } from '@/shared/lib/supabase/requestUser'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { GetDeckEditorDto } from '../dto/GetDeckEditorDto'
-import { loadDeckReader } from '../services/authoring'
+import { loadDeckReader } from '../services/content'
 import type { DeckEditor } from '../types'
 
 // Auth: Optional. Read-only roots + true statements of a PUBLIC tree (or your own), for visitors

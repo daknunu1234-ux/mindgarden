@@ -73,7 +73,7 @@ export function DeckRootsPanel({
   const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
   // Statements still saving (deck draft) have no server id yet: their edit / delete wait for it.
-  const { isPending } = useDeckDraftActions()
+  const { isPending, toggleType } = useDeckDraftActions()
   const practice: MindmapPractice | null = useMemo(
     () => (practiceMode && launch ? { mode: practiceMode, onPractice: (request) => launch.open(request) } : null),
     [practiceMode, launch],
@@ -112,11 +112,13 @@ export function DeckRootsPanel({
             onEditStatement: (s: StatementToEdit) => !isPending(s.id) && setEditingStatement(s),
             onDeleteStatement: (s: StatementToDelete) => !isPending(s.id) && setDeletingStatement(s),
             onMoveStatement: (s: StatementToMove) => !isPending(s.id) && setMovingStatement(s),
+            // ⇄ root ↔ statement in place (a top-level root stays a root: the drawer and cards hide it there).
+            onToggleType: (n: { id: string }) => !isPending(n.id) && toggleType(n.id),
             onEditRoot: setEditingRoot,
             onDeleteRoot: setDeletingRootId,
           }
         : undefined,
-    [editor, isPending],
+    [editor, isPending, toggleType],
   )
   const rootToDelete: RootToDelete | null = useMemo(() => {
     if (!deletingRootId) return null

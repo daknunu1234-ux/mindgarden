@@ -59,7 +59,7 @@ src/
 │   └── stores/                 # React Context providers (frontend)
 └── features/
     ├── auth/                   # roles, users: profile, session UI
-    ├── decks/                  # decks, mindmap_nodes, knowledge_items
+    ├── decks/                  # decks, content_nodes (roots + statements), tree_visits
     ├── progress/               # user_progress, streak
     ├── drill/                  # drill orchestration + drill UI (owns no tables)
     ├── garden/                 # UI only: tree surface
@@ -96,7 +96,7 @@ features/[feature]/
 | Feature | Owns tables | Actions | May import |
 |---------|-------------|---------|------------|
 | `auth` | `roles`, `users` (except streak columns) | none (OAuth via `/auth/callback`) | `shared` |
-| `decks` | `decks`, `mindmap_nodes`, `knowledge_items` | `getDecks` (own trees only), `getDeckBySlug`, `getDeckReader`, `createDeck`, `cloneDeck`, editing actions (full list: API_SPEC.md §6) | `shared` |
+| `decks` | `decks`, `content_nodes` (roots + statements), `tree_visits` | `getDecks` (own trees only), `getDeckBySlug`, `getDeckReader`, `createDeck`, `cloneDeck`, editing actions (full list: API_SPEC.md §6) | `shared` |
 | `progress` | `user_progress`, `practice_days`, `deck_practice_days`, `tree_harvests`, `streak_rewards`, `users.coins` (mastery payouts, streak rewards, fruit, dev top-ups) | `submitDrillResult` (owner only), `getProgressByDecks`, `getFarmHud`, `getGardenStats`, `simulateCoinTopUp` | `shared`, `decks/server` |
 | `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `tournament` | `deck_tournament_participants`, `deck_tournament_item_progress` | `submitTournamentAnswer` (service role writes via `record_tournament_answer`), `getTournamentBoards` | `shared`, `decks/server` |

@@ -24,7 +24,7 @@
 
 - **Concept**: a growth-based ecosystem. Each deck is one scene split at the "ground line":
   - **Surface**: SVG tree growing through 5 stages from the deck's `masteryPercent`, drawn per species (`shared/lib/treeSkins.ts`)
-  - **Subsurface**: the mindmap (`mindmap_nodes`) drawn as interactive SVG root paths
+  - **Subsurface**: the mindmap (the `root` nodes of `content_nodes`) drawn as interactive SVG root paths
 - **Layout**: vertical cascade on mobile (tree above, roots below); split screen from `lg:` up
 
 ```

@@ -275,6 +275,9 @@ function RootChart({ nodes, levels, treeType, title, stageLabel, surface, emptyL
                   {(ownerTools || onManage) && (
                     <HoverActions placement="corner" label={`Tools for root ${node.title}`}>
                       {ownerTools && <HoverActionButton icon="✏️" label={`Edit root ${node.title}`} tone="edit" onClick={() => ownerTools.onEditRoot({ id: node.id, title: node.title })} />}
+                      {ownerTools?.onToggleType && !top && (
+                        <HoverActionButton icon="⇄" label={`Make ${node.title} a statement, where it stands`} onClick={() => ownerTools.onToggleType?.({ id: node.id })} />
+                      )}
                       {ownerTools && <HoverActionButton icon="🗑️" label={`Delete root ${node.title}`} tone="delete" onClick={() => ownerTools.onDeleteRoot(node.id)} />}
                       {onManage && <HoverActionButton icon="⚙️" label={`Manage ${node.title}: add statements and sub-branches`} onClick={() => onManage(node.id)} />}
                     </HoverActions>
@@ -288,6 +291,7 @@ function RootChart({ nodes, levels, treeType, title, stageLabel, surface, emptyL
 
       <NodeInspector
         node={inspected}
+        topLevel={inspected !== null && nodes.some((n) => n.id === inspected.id)}
         levels={levels}
         onOpenChange={(open) => !open && setInspectedId(null)}
         onInspect={inspect}

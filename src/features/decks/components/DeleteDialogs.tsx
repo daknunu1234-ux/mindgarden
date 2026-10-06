@@ -129,6 +129,37 @@ function DeleteStatementDialog({ statement, onClose }: DeleteStatementDialogProp
   )
 }
 
+// A node of the outline (a root or a statement) with what its branch holds.
+export type NodeToDelete = { id: string; text: string; type: 'root' | 'statement'; statements: number; roots: number }
+
+// "Delete": any node of the Tree Workshop's outline, with its whole branch and everyone's progress on
+// the statements in it. Goes at once (the deck draft removes it everywhere, the server catches up).
+function DeleteNodeDialog({ node, onClose }: { node: NodeToDelete | null; onClose: (deleted: boolean) => void }) {
+  const { removeNode } = useDeckDraftActions()
+  const parts = node
+    ? [node.statements > 0 && `${node.statements} ${node.statements === 1 ? 'statement' : 'statements'}`, node.roots > 0 && `${node.roots} ${node.roots === 1 ? 'sub-root' : 'sub-roots'}`].filter(Boolean)
+    : []
+  return (
+    <ConfirmDelete
+      open={node !== null}
+      title={node?.type === 'root' ? 'Delete Root' : 'Delete Statement'}
+      confirmLabel="Delete"
+      instant
+      onConfirm={async () => {
+        if (node) removeNode({ id: node.id, text: node.text })
+        return { success: true }
+      }}
+      onClose={onClose}
+    >
+      <p>
+        Delete this {node?.type === 'root' ? 'root' : 'statement'}
+        {parts.length > 0 ? ` and the ${parts.join(' and ')} under it` : ''}? Everyone&apos;s progress on them goes too. This cannot be undone.
+      </p>
+      {node && <p className="rounded-xl bg-white/70 px-2.5 py-1.5 font-medium whitespace-pre-wrap text-stone-800">“{node.text}”</p>}
+    </ConfirmDelete>
+  )
+}
+
 type DeleteRootDialogProps = {
   deckId: string
   root: RootToDelete | null
@@ -157,4 +188,4 @@ function DeleteRootDialog({ deckId, root, onClose }: DeleteRootDialogProps) {
   )
 }
 
-export { DeleteRootDialog, DeleteStatementDialog }
+export { DeleteNodeDialog, DeleteRootDialog, DeleteStatementDialog }

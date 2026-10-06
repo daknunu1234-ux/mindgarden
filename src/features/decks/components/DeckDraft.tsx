@@ -4,9 +4,8 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import { useCoins } from '@/shared/stores/CoinsProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
 import { getTreeSpecies } from '@/shared/lib/treeSkins'
-import { createKnowledgeItem } from '../actions/createKnowledgeItem'
+import { createContentNode, indentContentNode, toggleNodeType } from '../actions/contentNodes'
 import { createKnowledgeItems, type BulkImportResult } from '../actions/createKnowledgeItems'
-import { createMindmapNode } from '../actions/createMindmapNode'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { moveKnowledgeItem } from '../actions/moveKnowledgeItem'
 import { updateDeck } from '../actions/updateDeck'
@@ -14,78 +13,73 @@ import { updateKnowledgeItem } from '../actions/updateKnowledgeItem'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import {
   applyDeckOps,
-  confirmEdit,
-  confirmItems,
-  confirmNode,
+  confirmAdd,
+  confirmMany,
   dropOp,
   isPendingItemId,
-  isPendingNodeId,
   PENDING_ITEM_PREFIX,
-  PENDING_NODE_PREFIX,
   rebaseOps,
   settleOp,
   type DeckDraftView,
   type DeckOp,
 } from '../lib/draft'
-import type { DeckDetail, DeckEditor } from '../types'
+import type { DeckDetail, DeckEditor, NodeType } from '../types'
 
 type AddResult = { success: true; drillable: boolean } | { success: false; message: string }
-// parentId: a sub-statement of that statement. afterId: right below that row (same level), else last.
-// Either may be a statement still saving (its temporary id).
-export type StatementPlace = { parentId?: string | null; afterId?: string | null }
 type BulkResult = { success: true; data: BulkImportResult } | { success: false; message: string }
+// A new statement's place: under statement `parentId` (else right under the root), right after
+// sibling `afterId` (else last). Either may be a node still saving (its temporary id).
+export type StatementPlace = { parentId?: string | null; afterId?: string | null }
+export type NewNode = { parentId: string | null; afterId?: string | null; type: NodeType; content: string }
 
 export type DeckDraftActions = {
   // Show the new species at once; updateDeck in the background, rolled back with a toast on error
   // (a pricier species charges the difference: a short purse is such an error).
   changeSpecies: (treeType: string) => void
-  // Show the statement at once; resolves with the server's verdict (drillable, or why it failed).
-  // nodeId may be a root that is still saving: the statement waits for its real id.
+  // One new root or statement, shown at once; returns its temporary id (so the next line can go
+  // right below it or under it) and the server's verdict. Its parent may be a node still saving.
+  addNode: (node: NewNode) => { id: string; done: Promise<AddResult> }
+  // A statement under root `nodeId` (or statement place.parentId): addNode for the dialogs.
   addStatement: (nodeId: string, statement: string, place?: StatementPlace) => Promise<AddResult>
-  // Same, but also returns the new row's temporary id at once, so the next row can be typed below
-  // it or under it (a sub-statement) before the server answers.
-  placeStatement: (nodeId: string, statement: string, place?: StatementPlace) => { id: string; done: Promise<AddResult> }
-  // Move a statement (with its sub-statements) to the end of another root at once;
-  // moveKnowledgeItem in the background, put back with a toast on error.
-  moveStatement: (statement: { id: string; text: string }, toNodeId: string) => void
-  // Show every statement at once; resolves with what the server created and skipped.
+  // Statements appended under one node at once (the bulk importer); resolves with what the server
+  // created and skipped.
   addStatements: (deckId: string, nodeId: string, statements: string[]) => Promise<BulkResult>
-  // Remove the statement at once; deleteKnowledgeItem in the background, put back with a toast on error.
-  removeStatement: (statement: { id: string; text: string }) => void
-  // Show a new root (parentId null) or sub-root at once and return its temporary id, so statements and
-  // sub-roots can be typed under it straight away; createMindmapNode in the background, rolled back
-  // with a toast on error (with anything typed under it).
-  addNode: (parentId: string | null, title: string) => string
-  // Show a statement's new text at once; updateKnowledgeItem in the background (it brings back the
-  // cleaned text and the drillable flag), rolled back with a toast on error.
-  editStatement: (itemId: string, text: string) => void
-  // Rename a root at once; updateMindmapNode in the background, rolled back with a toast on error.
-  renameNode: (nodeId: string, title: string) => void
-  // A statement or root still waiting for its server id (no edit / delete / drill until it has one).
+  // A node's text (a root's title or a statement), at once; saved in the background.
+  editNode: (id: string, content: string) => void
+  // A node and its whole branch, at once; put back with a toast on error.
+  removeNode: (node: { id: string; text: string }) => void
+  // A node and its branch under another root (last), at once.
+  moveNode: (node: { id: string; text: string }, toParentId: string) => void
+  // Tab ('in') / Shift+Tab ('out') in place: the outline order never changes, only levels do.
+  indentNode: (id: string, dir: 'in' | 'out') => void
+  // Alt: root ↔ statement in place.
+  toggleType: (id: string) => void
+  // A node still waiting for its server id (no edit / delete / drill until it has one).
   isPending: (id: string) => boolean
-  // A root typed on this visit: its real id once saved (any other id as is). Temp ids stop resolving
-  // on the page the moment the save confirms, so anything holding one (an open inline input, a selected root) maps it here.
+  // A node typed on this visit: its real id once saved (any other id as is).
   resolveId: (id: string) => string
+  // Names the older parts of the page still use.
+  removeStatement: (node: { id: string; text: string }) => void
+  moveStatement: (node: { id: string; text: string }, toParentId: string) => void
 }
 
 const DeckDraftContext = createContext<DeckDraftActions | null>(null)
 
 export const DeckDraftProvider = DeckDraftContext.Provider
 
-// The Tree Workshop (species, its outline editor, bulk import) and the mindmap's Manage dialog call
-// these. They live on the deck page (DeckScene provides them).
+// The Tree Workshop, the bulk importer, the mindmap's dialogs and drawer call these. They live on the
+// deck page (DeckScene provides them).
 export function useDeckDraftActions(): DeckDraftActions {
   const actions = useContext(DeckDraftContext)
   if (!actions) throw new Error('useDeckDraftActions: render inside <DeckDraftProvider> (the deck page provides it)')
   return actions
 }
 
-// Owner edits on the deck page, optimistic (lib/draft.ts): a species change, new roots and statements,
-// an edited statement, a renamed root or a deleted statement show at 0 ms across the whole page (tree sprite, species
-// ribbon, counts, size tier, mindmap, Workshop list) and sync in the background, with no page
-// refresh; a refusal rolls back with a toast. Writes go to the server one at a time, in the order
-// they were made, so siblings keep their order and a statement typed under a root that is still
-// saving is sent once that root has its real id.
+// Owner edits on the deck page, optimistic (lib/draft.ts over the outline rows): every change shows
+// at 0 ms across the whole page (tree sprite, species ribbon, counts, size tier, mindmap, Workshop)
+// and syncs in the background with no page refresh; a refusal rolls back with a toast. Writes go to
+// the server one at a time, in the order they were made, so a node typed under (or below) one that
+// is still saving is sent once that one has its real id.
 export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { view: DeckDraftView; actions: DeckDraftActions } {
   const { toast } = useToast()
   const { setCoins } = useCoins()
@@ -95,12 +89,10 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
   const view = useMemo(() => applyDeckOps(detail, editor, list), [detail, editor, list])
   const base = useRef(detail)
   const nextKey = useRef(0)
-  // Temp root id → its real id once saved (null if refused).
-  const nodeIds = useRef(new Map<string, Promise<string | null>>())
-  // Temp root id → real id, once saved.
+  // Temp id → real id, once saved.
   const savedIds = useRef(new Map<string, string>())
   const queue = useRef<Promise<unknown>>(Promise.resolve())
-  // The latest view for the (stable) actions: the species change and pending checks need it.
+  // The latest view for the (stable) actions: the species change, node lookups and pending checks.
   const current = useRef(view)
   useLayoutEffect(() => {
     current.current = view
@@ -121,40 +113,64 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
       queue.current = run.catch(() => undefined)
       return run
     }
-    // A temp root id that has been saved → its real id (so ops never point at a temp id that is gone).
+    // A temp id that has been saved → its real id (so writes never send an id that is gone).
     const resolve = (id: string): string => savedIds.current.get(id) ?? id
-    // A saved root's id as is; a pending root's real id once the server has it (null: it was refused).
-    const realNodeId = (id: string): Promise<string | null> =>
-      isPendingNodeId(id) ? (nodeIds.current.get(id) ?? Promise.resolve(null)) : Promise.resolve(id)
+    // By a write's turn, every node typed before it has its real id; one still temp was refused.
+    const real = (id: string | null | undefined): string | null | undefined => (id ? resolve(id) : id)
     const nextOpKey = () => `d${nextKey.current++}`
+    const deckId = detail.deck.id
+    const rowOf = (id: string) => current.current.editor?.rows.find((r) => r.id === resolve(id))
 
-    // One statement (or sub-statement) placed in the outline at once; the server call waits its turn,
-    // so a parent or anchor typed just before it has its real id by then.
-    const placeStatement: DeckDraftActions['placeStatement'] = (rawNodeId, statement, place = {}) => {
-      const nodeId = resolve(rawNodeId)
-      const parentId = place.parentId ? resolve(place.parentId) : null
-      const afterId = place.afterId ? resolve(place.afterId) : null
+    // A plain change with nothing to learn from the server's answer: shown at once, settled or rolled back.
+    const change = (make: (key: string) => DeckOp, send: () => Promise<{ success: boolean; error?: { message: string } } | null>, what: string) => {
+      const key = nextOpKey()
+      edit((l) => [...l, make(key)])
+      void serial(send).then((res) => {
+        if (res?.success) return edit((l) => settleOp(l, key))
+        edit((l) => dropOp(l, key))
+        failed(`Could not ${what}: ${res?.error?.message ?? 'it was not saved'}`)
+      })
+    }
+
+    const addNode: DeckDraftActions['addNode'] = ({ parentId: rawParent, afterId: rawAfter = null, type, content }) => {
+      const parentId = rawParent === null ? null : resolve(rawParent)
+      const afterId = rawAfter ? resolve(rawAfter) : null
       const key = nextOpKey()
       const tempId = `${PENDING_ITEM_PREFIX}${key}`
-      edit((l) => [...l, { key, kind: 'addItems', nodeId, items: [{ tempId, statement }], parentId, afterId }])
+      const clean = content.trim()
+      edit((l) => [...l, { key, kind: 'add', tempId, parentId, afterId, type, content: clean }])
       const done = serial(async () => {
-        const node = await realNodeId(nodeId)
-        if (!node) return 'Its root was not saved'
-        const parent = parentId ? resolve(parentId) : null
-        if (parent && isPendingItemId(parent)) return 'The statement it sits under was not saved'
-        // An anchor that never saved: the row just goes last.
-        const after = afterId ? resolve(afterId) : null
-        return createKnowledgeItem({ nodeId: node, statement, parentItemId: parent, afterItemId: after && !isPendingItemId(after) ? after : null })
+        const parent = real(parentId) ?? null
+        if (parent && isPendingItemId(parent)) return 'Its parent was not saved'
+        const after = real(afterId)
+        return createContentNode({ deckId, parentId: parent, type, content: clean, afterId: after && !isPendingItemId(after) ? after : null })
       }).then((res): AddResult => {
         if (typeof res === 'string' || !res.success) {
           edit((l) => dropOp(l, key))
           return { success: false, message: typeof res === 'string' ? res : res.error.message }
         }
         savedIds.current.set(tempId, res.data.id)
-        edit((l) => confirmItems(l, key, [{ id: res.data.id, statement: statement.trim(), drillable: res.data.drillable }]))
+        edit((l) => confirmAdd(l, key, res.data.id))
         return { success: true, drillable: res.data.drillable }
       })
       return { id: tempId, done }
+    }
+
+    const removeNode: DeckDraftActions['removeNode'] = ({ id, text }) => {
+      const key = nextOpKey()
+      const target = resolve(id)
+      edit((l) => [...l, { key, kind: 'remove', id: target }])
+      void serial(() => deleteKnowledgeItem({ deckId, itemId: resolve(target) })).then((res) => {
+        if (res.success) return edit((l) => settleOp(l, key))
+        edit((l) => dropOp(l, key))
+        toast({ message: `Could not delete “${text}”: ${res.error.message}. It's back in the list.`, icon: '⚠️', tone: 'farewell' })
+      })
+    }
+
+    const moveNode: DeckDraftActions['moveNode'] = ({ id, text }, rawTo) => {
+      const target = resolve(id)
+      const to = resolve(rawTo)
+      change((key) => ({ key, kind: 'move', id: target, toParentId: to }), () => moveKnowledgeItem({ deckId, itemId: resolve(target), toNodeId: resolve(to) }), `move “${text}”`)
     }
 
     return {
@@ -162,7 +178,7 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
         if (treeType === current.current.treeType) return
         const key = nextOpKey()
         edit((l) => [...l, { key, kind: 'species', treeType }])
-        void updateDeck({ deckId: detail.deck.id, treeType }).then((res) => {
+        void updateDeck({ deckId, treeType }).then((res) => {
           if (res.success) {
             // A pricier species was paid for: show the new purse in the header at once.
             if (res.data.remainingCoins !== null) setCoins(res.data.remainingCoins)
@@ -172,95 +188,56 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
           failed(`Could not change the species to ${getTreeSpecies(treeType).label}: ${res.error.message}`)
         })
       },
-      addStatement: (nodeId, statement, place) => placeStatement(nodeId, statement, place).done,
-      placeStatement,
-      moveStatement: ({ id, text }, rawToNodeId) => {
-        const toNodeId = resolve(rawToNodeId)
+      addNode,
+      addStatement: (nodeId, statement, place = {}) =>
+        addNode({ parentId: place.parentId ?? nodeId, afterId: place.afterId ?? null, type: 'statement', content: statement }).done,
+      addStatements: async (_deckId, rawNodeId, statements) => {
+        const parentId = resolve(rawNodeId)
         const key = nextOpKey()
-        edit((l) => [...l, { key, kind: 'moveItem', itemId: id, toNodeId }])
-        void serial(async () => {
-          const node = await realNodeId(toNodeId)
-          return node ? moveKnowledgeItem({ deckId: detail.deck.id, itemId: id, toNodeId: node }) : null
-        }).then((res) => {
-          if (res?.success) return edit((l) => settleOp(l, key))
-          edit((l) => dropOp(l, key))
-          toast({ message: `Could not move “${text}”: ${res ? res.error.message : 'its new root was not saved'}. It's back where it was.`, icon: '⚠️', tone: 'farewell' })
-        })
-      },
-      addStatements: async (deckId, rawNodeId, statements) => {
-        const nodeId = resolve(rawNodeId)
-        const key = nextOpKey()
-        edit((l) => [...l, { key, kind: 'addItems', nodeId, items: statements.map((statement, i) => ({ tempId: `${PENDING_ITEM_PREFIX}${key}-${i}`, statement })) }])
+        edit((l) => [...l, { key, kind: 'addMany', parentId, items: statements.map((content, i) => ({ tempId: `${PENDING_ITEM_PREFIX}${key}-${i}`, content })) }])
         const res = await serial(async () => {
-          const node = await realNodeId(nodeId)
-          return node ? createKnowledgeItems({ deckId, rootId: node, statements }) : null
+          const parent = resolve(parentId)
+          return isPendingItemId(parent) ? null : createKnowledgeItems({ deckId, rootId: parent, statements })
         })
         if (!res || !res.success) {
           edit((l) => dropOp(l, key))
           return { success: false, message: res ? res.error.message : 'Its root was not saved' }
         }
-        edit((l) => confirmItems(l, key, res.data.created))
+        edit((l) => confirmMany(l, key, res.data.created))
         return { success: true, data: res.data }
       },
-      removeStatement: ({ id, text }) => {
-        const key = nextOpKey()
-        edit((l) => [...l, { key, kind: 'removeItem', itemId: id }])
-        void deleteKnowledgeItem({ deckId: detail.deck.id, itemId: id }).then((res) => {
-          if (res.success) return edit((l) => settleOp(l, key))
-          edit((l) => dropOp(l, key))
-          toast({ message: `Could not delete “${text}”: ${res.error.message}. It's back in the list.`, icon: '⚠️', tone: 'farewell' })
-        })
+      editNode: (rawId, content) => {
+        const id = resolve(rawId)
+        const clean = content.trim()
+        const isRoot = rowOf(id)?.type === 'root'
+        change(
+          (key) => ({ key, kind: 'edit', id, content: clean }),
+          () => {
+            const target = resolve(id)
+            if (isPendingItemId(target)) return Promise.resolve(null)
+            return isRoot ? updateMindmapNode({ nodeId: target, title: clean }) : updateKnowledgeItem({ deckId, itemId: target, text: clean })
+          },
+          `save “${clean}”`,
+        )
       },
-      addNode: (rawParentId, title) => {
-        const parentId = rawParentId === null ? null : resolve(rawParentId)
-        const key = nextOpKey()
-        const tempId = `${PENDING_NODE_PREFIX}${key}`
-        const clean = title.trim()
-        edit((l) => [...l, { key, kind: 'addNode', tempId, parentId, title: clean }])
-        const saved = serial(async () => {
-          const parent = parentId === null ? null : await realNodeId(parentId)
-          if (parentId !== null && !parent) return { ok: false as const, message: 'Its parent root was not saved' }
-          const res = await createMindmapNode({ deckId: detail.deck.id, title: clean, parentId: parent })
-          return res.success ? { ok: true as const, id: res.data.id } : { ok: false as const, message: res.error.message }
-        }).then((res) => {
-          if (res.ok) {
-            savedIds.current.set(tempId, res.id)
-            edit((l) => confirmNode(l, key, res.id))
-            return res.id
-          }
-          edit((l) => dropOp(l, key))
-          failed(`Could not add the root “${clean}”: ${res.message}`)
-          return null
-        })
-        nodeIds.current.set(tempId, saved)
-        return tempId
+      removeNode,
+      moveNode,
+      indentNode: (rawId, dir) => {
+        const id = resolve(rawId)
+        change((key) => ({ key, kind: 'indent', id, dir }), () => indentContentNode({ deckId, nodeId: resolve(id), direction: dir }), 'move it')
       },
-      renameNode: (rawNodeId, title) => {
-        const nodeId = resolve(rawNodeId)
-        const clean = title.trim()
-        const key = nextOpKey()
-        edit((l) => [...l, { key, kind: 'renameNode', nodeId, title: clean }])
-        void serial(async () => {
-          const node = await realNodeId(nodeId)
-          return node ? updateMindmapNode({ nodeId: node, title: clean }) : null
-        }).then((res) => {
-          if (res?.success) return edit((l) => settleOp(l, key))
-          edit((l) => dropOp(l, key))
-          if (res) failed(`Could not rename the root to “${clean}”: ${res.error.message}`)
-        })
-      },
-      editStatement: (itemId, text) => {
-        const clean = text.trim()
-        const key = nextOpKey()
-        edit((l) => [...l, { key, kind: 'editItem', itemId, statement: clean }])
-        void serial(() => updateKnowledgeItem({ deckId: detail.deck.id, itemId, text: clean })).then((res) => {
-          if (res.success) return edit((l) => confirmEdit(l, key, { statement: res.data.statement, drillable: res.data.drillable }))
-          edit((l) => dropOp(l, key))
-          failed(`Could not save “${clean}”: ${res.error.message}`)
-        })
+      toggleType: (rawId) => {
+        const id = resolve(rawId)
+        const row = rowOf(id)
+        const becomes = row?.type === 'root' ? 'statement' : 'root'
+        // A statement the engine can't ask shows 💧 in the outline; nothing else to warn about.
+        change((key) => ({ key, kind: 'toggle', id }), () => toggleNodeType({ deckId, nodeId: resolve(id) }), `turn it into a ${becomes}`)
+        if (row) toast({ message: becomes === 'root' ? 'Converted to Root' : 'Converted to Statement', icon: becomes === 'root' ? '🌿' : '📜' })
       },
       isPending: (id) => current.current.pendingIds.has(resolve(id)),
       resolveId: resolve,
+      removeStatement: removeNode,
+      moveStatement: moveNode,
     }
   }, [detail.deck.id, edit, toast, setCoins])
 

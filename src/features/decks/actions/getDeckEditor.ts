@@ -4,7 +4,7 @@ import { createClient } from '@/shared/lib/supabase/server'
 import { getRequestUser } from '@/shared/lib/supabase/requestUser'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { GetDeckEditorDto } from '../dto/GetDeckEditorDto'
-import { loadDeckEditor } from '../services/authoring'
+import { loadDeckEditor } from '../services/content'
 import type { DeckEditor } from '../types'
 
 // Auth: Required (deck owner). Roots with their true statements for the editor.

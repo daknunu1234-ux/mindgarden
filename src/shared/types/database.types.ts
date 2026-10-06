@@ -117,92 +117,56 @@ export type Database = {
           },
         ]
       }
-      mindmap_nodes: {
+      // Migration 20261013000000: one tree's outline, roots and statements in one hierarchy (replaces
+      // mindmap_nodes + knowledge_items, kept as legacy_* until 20261013000100 drops them).
+      content_nodes: {
         Row: {
           id: string
           deck_id: string
+          // NULL = a top-level root (a top-level node is always a root).
           parent_id: string | null
-          title: string
+          // A root's title or a statement's text.
+          content: string
+          node_type: 'root' | 'statement'
+          // Statements' trap rules: service role only (decks/services/answers.ts).
+          trap_rules: Json
           sort_order: number
+          created_at: string
         }
         Insert: {
           id?: string
           deck_id: string
           parent_id?: string | null
-          title: string
+          content: string
+          node_type?: 'root' | 'statement'
+          trap_rules?: Json
           sort_order?: number
+          created_at?: string
         }
         Update: {
           id?: string
           deck_id?: string
           parent_id?: string | null
-          title?: string
+          content?: string
+          node_type?: 'root' | 'statement'
+          trap_rules?: Json
           sort_order?: number
+          created_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: 'mindmap_nodes_deck_id_fkey'
+            foreignKeyName: 'content_nodes_deck_id_fkey'
             columns: ['deck_id']
             isOneToOne: false
             referencedRelation: 'decks'
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'mindmap_nodes_parent_id_deck_id_fkey'
+            foreignKeyName: 'content_nodes_parent_fkey'
             columns: ['parent_id', 'deck_id']
             isOneToOne: false
-            referencedRelation: 'mindmap_nodes'
+            referencedRelation: 'content_nodes'
             referencedColumns: ['id', 'deck_id']
-          },
-        ]
-      }
-      knowledge_items: {
-        Row: {
-          id: string
-          node_id: string
-          // Migration 20261010000000: NULL = a statement; else the statement it sits under (same root).
-          parent_item_id: string | null
-          prompt: string
-          correct_stmt: string
-          trap_rules: Json
-          // Migration 20261010000000: order among the root's statements (epoch seconds by default).
-          sort_order: number
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          node_id: string
-          parent_item_id?: string | null
-          prompt: string
-          correct_stmt: string
-          trap_rules?: Json
-          sort_order?: number
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          node_id?: string
-          parent_item_id?: string | null
-          prompt?: string
-          correct_stmt?: string
-          trap_rules?: Json
-          sort_order?: number
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'knowledge_items_node_id_fkey'
-            columns: ['node_id']
-            isOneToOne: false
-            referencedRelation: 'mindmap_nodes'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'knowledge_items_parent_item_fkey'
-            columns: ['parent_item_id', 'node_id']
-            isOneToOne: false
-            referencedRelation: 'knowledge_items'
-            referencedColumns: ['id', 'node_id']
           },
         ]
       }
@@ -490,10 +454,10 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'deck_tournament_item_progress_knowledge_item_id_fkey'
+            foreignKeyName: 'deck_tournament_item_progress_content_node_fkey'
             columns: ['knowledge_item_id']
             isOneToOne: false
-            referencedRelation: 'knowledge_items'
+            referencedRelation: 'content_nodes'
             referencedColumns: ['id']
           },
         ]
@@ -615,10 +579,10 @@ export type Database = {
             referencedColumns: ['id']
           },
           {
-            foreignKeyName: 'user_progress_knowledge_item_id_fkey'
+            foreignKeyName: 'user_progress_content_node_fkey'
             columns: ['knowledge_item_id']
             isOneToOne: false
-            referencedRelation: 'knowledge_items'
+            referencedRelation: 'content_nodes'
             referencedColumns: ['id']
           },
         ]
@@ -742,6 +706,11 @@ export type Database = {
       uproot_deck: {
         Args: { p_deck_id: string }
         Returns: { deck_id: string; refund: number; total_coins: number }[]
+      }
+      // Migration 20261013000000 (owner = auth.uid()): Tab ('in') / Shift+Tab ('out') in place.
+      indent_content_node: {
+        Args: { p_node_id: string; p_direction: 'in' | 'out' }
+        Returns: { node_id: string; parent_id: string | null; moved_children: number }[]
       }
       // Service role only: test top-ups (Coin Shop dev mode).
       dev_grant_coins: {

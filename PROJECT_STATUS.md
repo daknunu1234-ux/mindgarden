@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-05.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-06.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -12,9 +12,9 @@ Detailed rules live elsewhere: agent rules and definition of done in `01.share-d
 
 ## Overview
 
-Gamified micro-learning. A **Deck** is a living **Tree** on the player's farm, its mindmap nodes are
-underground **Roots**, and its knowledge items are plain-text **Statements** drilled against generated
-trap choices. Mastery goes 0 → 5 per player per statement.
+Gamified micro-learning. A **Deck** is a living **Tree** on the player's farm. Its content is one
+hierarchy of **content nodes** (`content_nodes`): `root` nodes are the underground **Roots**, `statement`
+nodes are plain-text **Statements** drilled against generated trap choices. Mastery goes 0 → 5 per player per statement.
 
 Stack: Next.js 16.3.6 App Router (React 19.2, TypeScript strict), Tailwind v4 + shadcn/ui, Supabase
 (PostgreSQL + Auth + RLS + `SECURITY DEFINER` RPCs), Zod, Vitest.
@@ -149,34 +149,46 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 
 ## Knowledge Engine
 
-### Sub-statements, Notion-like editing, moving statements, bulk preview edits
+### Unified content nodes (supersedes the Workshop wording further down where they differ)
 
-This supersedes the keyboard and bulk-import wording further down where they differ.
-
-- **Sub-statements** (migration 22): a statement can carry sub-statements, one level deep, in the
-  same root (`knowledge_items.parent_item_id`; a composite foreign key to `(id, node_id)` keeps them
-  in their statement's root, ON UPDATE / DELETE CASCADE; a trigger refuses a third level). The
-  Workshop nests them under their statement (↳), the root drawer too. Deleting a statement deletes
-  its sub-statements (the confirmation says how many).
-- **Practice**: both levels are drilled alike (whole tree, one root branch, tournaments, mastery and
-  coins). A sub-statement under a short statement (≤ 80 characters) takes it as context: breadcrumb
-  `[Sinh học › Bào quan › Ty thể]`, "sản sinh ATP" asked as "Ty thể sản sinh ATP".
-- **Statement order** (`knowledge_items.sort_order`, migration 22): new rows append; a row typed
-  right below another is saved there (midpoint with the next one), so the order survives a reload.
-- **Notion-like keys** in the Workshop outline: editing a statement, **Enter** saves and opens a
-  blank line directly below it (focused); **Shift+Enter**, **Esc** or clicking away save without a
-  new line; ✕ discards. **Tab** opens a sub-statement under it, **Shift+Tab** leaves a sub-statement
-  level. On a new line: Enter = next line below, Shift+Enter = save and close, Tab = sub-statement
-  under the line just typed (an empty line: a sub-root, as before). Esc on a new line still closes
-  without saving.
-- **Move Statement** (📂 on Workshop rows and drawer statements): a compact dialog lists every root
-  and sub-root; picking one moves the statement with its sub-statements at once (optimistic), saved
-  by `moveKnowledgeItem` (one UPDATE; the database moves the sub-statements). A sub-statement moved
-  anywhere becomes a statement. Progress and paid coins are kept.
+- **One table** (migration 23, `20261013000000_content_nodes.sql`): `content_nodes` = `id, deck_id,
+  parent_id, content, node_type ('root' | 'statement', default 'statement'), sort_order` (+ `trap_rules`,
+  `created_at`). It replaces `mindmap_nodes` + `knowledge_items`: every row is copied with its id, the
+  outline keeps its order (each root's statements, then its sub-roots), progress (`user_progress`,
+  tournament progress) now points at `content_nodes(id)`, and the old tables are renamed `legacy_*`
+  (migration 24 drops them, optional). Any node can sit under any node; a top-level node is a root, and
+  no node goes under its own branch (a trigger refuses both).
+- **Practice is "every statement node"**: a drill reads the tree's `content_nodes` (one table, no join)
+  and asks each `statement`, at any depth. Its root context is its nearest root (branch rounds, sibling
+  swaps, breadcrumb); a statement under a short statement takes it as context ("Ty thể" › "sản sinh ATP"
+  is asked as "Ty thể sản sinh ATP"). Trap rules are still read with the service role only.
+- **One outline, one set of rules** (`decks/lib/contentTree.ts`, pure): the page and the database follow
+  the same rules, so an edit shows at once (deck draft) and the server ends exactly there.
+  - **Enter** saves and opens a sibling of the **same type at the same level** right below (the only key
+    that creates a row). **Shift+Enter**, **Esc** or clicking away save; ✕ discards.
+  - **Tab**: the row's parent becomes the row above it at its level (it goes last there). **Shift+Tab**:
+    its parent becomes its parent's parent, right below the old parent; the siblings that were below it
+    become its children. Nothing is created, deleted or moved up or down; only levels change, with the
+    whole branch. `indent_content_node()` does it in the database from just the node and the direction,
+    tested row by row against the page's prediction on PGlite.
+  - **Alt** (a clean tap) or **Alt+Enter** flips `node_type` root ↔ statement in place: one UPDATE, no
+    delete or re-insert, children and position kept (a top-level root stays a root). Also ⇄ on Workshop
+    rows, canvas cards and the root drawer. Progress on a statement is kept while it is a root.
+  - **Ctrl+Enter** / **⌘+Enter** opens the bulk importer under the row.
+- **Shortcut panel**: a compact "⌨️ Shortcuts" card on the right of the Workshop outline from lg
+  (1024 px) up: a `w-44` column, sticky down a long tree, one key badge + a 1–2 word label per row
+  (Enter New item · Tab Indent · ⇧Tab Outdent · Alt Root ↔ Stmt · Ctrl+↵ Bulk add · Esc Done; full
+  descriptions and Alt+Enter / ⌘+Enter on hover). One click on × minimizes it to a small
+  "⌨️ Shortcuts" badge; below lg it sits under the outline as that badge. Remembered per browser.
+- **📂 Move** (Workshop rows and drawer statements): a node moves with its branch under another root,
+  last (optimistic; one UPDATE of `parent_id`). Progress and paid coins are kept.
 - **Bulk preview**: each parsed line can be edited in place (✏️ or double-click) or discarded (🗑️,
   "Restore N discarded") before importing; edited lines are checked again.
-- Statements are plain text only, so "editing a parsed statement" edits its text; there is no
-  separate title or prompt to edit (the prompt is always the root's title).
+- **Statements are readable by anyone who can read the tree** (`content` has a column grant; before,
+  `correct_stmt` was service-role only). Owners and visitors of public trees already saw them; only the
+  owner is graded, so this earns a visitor nothing. `trap_rules` stay service-role only.
+- The earlier drafts (⬆️🌿 / ⬇️📜 conversions, one level of sub-statements, separate Tab rules for
+  statements and roots, migrations "23 / 24" convert / indent) never shipped and are folded into this.
 
 - **Authoring**: statements are plain text only (no LaTeX / OCR), cleaned (NFC, single spaces) and
   bounded to 5–500 characters. Roots nest into branches.
@@ -744,6 +756,8 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 24 | `20261013000100_drop_legacy_trees.sql` | Drops `legacy_mindmap_nodes` / `legacy_knowledge_items`. Destructive, optional; only once 23 works |
+| 23 | `20261013000000_content_nodes.sql` | `content_nodes` (roots + statements, ids kept) replaces `mindmap_nodes` + `knowledge_items` (renamed `legacy_*`); shape trigger, RLS, column grants; progress FKs repointed; coin / uproot / clone / tournament functions re-created on it; `indent_content_node()`. Run **with** the deploy, after 22; not re-runnable; never re-run 12, 18, 21 or 22 after it |
 | 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger), `sort_order` (backfilled from `created_at`), their column grants; `clone_deck()` copies both. Run **before or with** the deploy; never re-run 18 after it |
 
 Migration 12 must be applied with the farm deploy: without it the farm shows no placed trees and chopping
@@ -757,7 +771,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
+| (pending) | feat(decks): unified `content_nodes` (roots + statements in one hierarchy, `node_type`), practice = every statement node, Enter / Tab / Shift+Tab / Alt in place on one outline (`lib/contentTree.ts` + `indent_content_node()`), compact "⌨️ Shortcuts" panel; tree connector lines (│ through-lines, ├ / └ elbows, stems) in the Workshop outline; migrations 23–24 |
+| `15ab043` | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
 | `5f85bcd` | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21. The same commit also carries the "Tree & roots" hierarchy canvas row below |
 | (pending) | feat(mindmap): "Tree & roots" as a zoomable, pannable hierarchy canvas: the tree, every tier of roots as compact cards, curving tendrils, statements in the side drawer only, a transform-based camera (50%–180%); the tree stands free (no box) with a floating label, and the roots sprout from its trunk through a taproot |
 | (pending) | feat(garden): Cosmic Nebula redrawn as a low-poly galaxy mushroom with faceted planets in orbit (0 / 1 / 2 / 4 / 6 by stage); tree sway and crown motion about a sixth stronger, wider orbits, brighter stem cracks |
@@ -805,5 +820,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 83 files, 885 tests passing. `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
-- Every migration parses with PostgreSQL's own parser (SQL and PL/pgSQL bodies).
+- `npm test`: 89 files, 895 tests passing (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
+  in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
+  does not exercise RLS or column grants.

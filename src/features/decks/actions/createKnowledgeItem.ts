@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, type ActionResult } from '@/shared/types/result'
 import { CreateKnowledgeItemDto } from '../dto/CreateKnowledgeItemDto'
-import { insertKnowledgeItem } from '../services/authoring'
+import { insertKnowledgeItem } from '../services/content'
 
 // Auth: Required (deck owner). The author writes only the true statement; trap_rules
 // defaults to { negate: true } and the prompt to the root's title.

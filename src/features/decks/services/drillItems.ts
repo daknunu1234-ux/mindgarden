@@ -4,10 +4,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TrapRules } from '@/shared/lib/trapEngine'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
-import { compareStatementRows, parentContext } from '../lib/statements'
-import { answersByNode, readAnswersForNodes } from './answers'
+import { outlineRows } from '../lib/contentTree'
+import { parentContext } from '../lib/statements'
+import { readTrapRules } from './answers'
+import type { NodeType } from '../types'
 
-// Server-only shapes: these carry correctStmt, so they must never reach the client.
+// Server-only shapes: these carry trap rules, so they must never reach the client.
 // ownerId: only the owner may practise a deck (visitors are read-only; see drill/services/drillSession).
 // isPublic + isTournamentOpen: the one exception, Mind Tournament rounds (shared/lib/visitor tournamentAccess).
 export type DrillDeck = {
@@ -21,22 +23,23 @@ export type DrillDeck = {
 }
 export type DrillSourceItem = {
   id: string
+  // The statement's nearest root above (its "node" for branch rounds and sibling lookups).
   nodeId: string
   nodeTitle: string
   prompt: string
   correctStmt: string
   trapRules: TrapRules
-  // True statements of the other items in the same node, for sibling concept swaps.
+  // Text of the other statements with the same nearest root, for sibling concept swaps.
   siblingStatements: string[]
-  // Breadcrumb: root titles from the top-level root down to this item's root, and their ids. The
+  // Breadcrumb: the titles of the roots above the statement, top-level first, and their ids. The
   // question engine reads notes in context (a predicate-only note inherits its root as subject;
-  // recognition questions use other roots' notes as distractors). A sub-statement under a short
-  // statement (decks/lib/statements parentContext) gets that statement as the last step, with the
-  // statement's id: "sản sinh ATP" under "Ty thể" is asked as "Ty thể sản sinh ATP".
+  // recognition questions use other roots' notes as distractors). A statement right under a short
+  // statement (decks/lib/statements parentContext) gets that statement as the last step, with its
+  // id: "sản sinh ATP" under "Ty thể" is asked as "Ty thể sản sinh ATP".
   path: string[]
   ancestry: string[]
-  // The statement a sub-statement sits under (same root), null for a statement. Both levels are
-  // drilled alike: a sub-statement is one more item of its root.
+  // The statement it sits under, null when it sits right under a root. Every statement is drilled
+  // alike, at any depth.
   parentItemId?: string | null
 }
 export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'trapRules' | 'siblingStatements'> & {
@@ -49,10 +52,13 @@ export type DrillGradingItem = Pick<DrillSourceItem, 'id' | 'correctStmt' | 'tra
   deckItems: DrillSourceItem[]
 }
 export type DeckRef = { deckId: string } | { slug: string }
+// A root, with its nearest root above (null for a top-level root): the tree branch rounds walk.
 export type DrillNode = { id: string; parentId: string | null; title: string }
 
-// Every knowledge item in a deck, with its node title, for building a drill session.
-// The user client (RLS) decides what is visible; answers.ts then reads the statements.
+type NodeRow = { id: string; parent_id: string | null; node_type: NodeType; content: string; sort_order: number; created_at: string }
+
+// Practice is "every content node of type statement" of a tree (or under a root): one table, no
+// join. The user client (RLS) decides what is visible; answers.ts then reads the trap rules.
 export async function listDrillItems(
   supabase: SupabaseClient<Database>,
   ref: DeckRef,
@@ -60,70 +66,75 @@ export async function listDrillItems(
   // '*' (decks holds nothing secret) so this still works before migration 20260928000900 adds
   // is_tournament_open.
   const deckQuery = supabase.from('decks').select('*')
-  const nodesOf = (deckId: string) =>
-    supabase
-      .from('mindmap_nodes')
-      .select('id, parent_id, title, knowledge_items(id, prompt, parent_item_id, sort_order, created_at)')
-      .eq('deck_id', deckId)
-      .order('sort_order')
-  // By id (grading, tournaments: every answer) the deck row and its roots load in parallel, one
+  const nodesOf = (deckId: string) => supabase.from('content_nodes').select('id, parent_id, node_type, content, sort_order, created_at').eq('deck_id', deckId)
+  // By id (grading, tournaments: every answer) the deck row and its outline load in parallel, one
   // round trip instead of two; by slug the deck's id is needed first.
   const [deckRes, earlyNodes] = await Promise.all([
     ('deckId' in ref ? deckQuery.eq('id', ref.deckId) : deckQuery.eq('slug', ref.slug)).maybeSingle(),
     'deckId' in ref ? nodesOf(ref.deckId) : null,
   ])
   const { data: deck, error: deckError } = deckRes
-
   if (deckError) {
     console.error('[decks] listDrillItems: deck query failed', deckError)
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
   if (!deck) return fail('DECK_NOT_FOUND', 'Deck not found')
 
-  const { data: nodes, error: nodesError } = earlyNodes ?? (await nodesOf(deck.id))
-
+  const { data, error: nodesError } = earlyNodes ?? (await nodesOf(deck.id))
   if (nodesError) {
     console.error('[decks] listDrillItems: nodes query failed', nodesError)
     return fail('INTERNAL_ERROR', 'Could not load deck')
   }
-
-  const answers = await readAnswersForNodes(
+  const rows = outlineRows(
+    (data as NodeRow[]).map((n) => ({ id: n.id, parentId: n.parent_id, type: n.node_type, content: n.content, sortOrder: n.sort_order, createdAt: n.created_at })),
+  )
+  const statements = rows.filter((r) => r.type === 'statement')
+  const rules = await readTrapRules(
     supabase,
-    nodes.map((n) => n.id),
+    statements.map((s) => s.id),
   )
-  if (!answers.success) return answers
-  const byNode = answersByNode(answers.data)
-  const byItem = new Map(answers.data.map((a) => [a.itemId, a]))
-  const lineage = nodeLineage(nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })))
+  if (!rules.success) return rules
 
-  // Siblings = every other statement in the node (statements and sub-statements alike), exactly what
-  // findDrillItem uses for grading. The engine sorts them, so their order doesn't matter.
-  const items: DrillSourceItem[] = nodes.flatMap((node) =>
-    [...node.knowledge_items].sort(compareStatementRows).flatMap((item) => {
-      const answer = byItem.get(item.id)
-      if (!answer) return []
-      const parentItemId = item.parent_item_id ?? null
-      const nodePath = lineage.get(node.id)?.path ?? [node.title]
-      const nodeAncestry = lineage.get(node.id)?.ancestry ?? [node.id]
-      // Same root only (the composite foreign key guarantees it; a stray row just keeps its root's context).
-      const parent = parentItemId ? byItem.get(parentItemId) : undefined
-      const context = parent && parent.nodeId === node.id ? parentContext(parent.correctStmt) : null
-      return [
-        {
-          id: item.id,
-          nodeId: node.id,
-          nodeTitle: node.title,
-          prompt: item.prompt,
-          correctStmt: answer.correctStmt,
-          trapRules: answer.trapRules,
-          siblingStatements: (byNode.get(node.id) ?? []).filter((a) => a.itemId !== item.id).map((a) => a.correctStmt),
-          path: context ? [...nodePath, context] : nodePath,
-          ancestry: context && parentItemId ? [...nodeAncestry, parentItemId] : nodeAncestry,
-          parentItemId,
-        },
-      ]
-    }),
-  )
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  // The roots above a node, top-level first.
+  const rootChain = (id: string) => {
+    const chain: { id: string; title: string }[] = []
+    const seen = new Set<string>()
+    for (let at = byId.get(id)?.parentId ? byId.get(byId.get(id)!.parentId!) : undefined; at && !seen.has(at.id); at = at.parentId ? byId.get(at.parentId) : undefined) {
+      seen.add(at.id)
+      if (at.type === 'root') chain.unshift({ id: at.id, title: at.content })
+    }
+    return chain
+  }
+  const nodes: DrillNode[] = rows
+    .filter((r) => r.type === 'root')
+    .map((r) => ({ id: r.id, parentId: rootChain(r.id).at(-1)?.id ?? null, title: r.content }))
+
+  const chains = new Map(statements.map((s) => [s.id, rootChain(s.id)]))
+  const items: DrillSourceItem[] = statements.flatMap((s) => {
+    const chain = chains.get(s.id)!
+    const root = chain.at(-1)
+    if (!root) return []
+    const parent = s.parentId ? byId.get(s.parentId) : undefined
+    const parentItemId = parent?.type === 'statement' ? parent.id : null
+    const context = parent?.type === 'statement' ? parentContext(parent.content) : null
+    const path = chain.map((c) => c.title)
+    const ancestry = chain.map((c) => c.id)
+    return [
+      {
+        id: s.id,
+        nodeId: root.id,
+        nodeTitle: root.title,
+        prompt: root.title,
+        correctStmt: s.content,
+        trapRules: rules.data.get(s.id) ?? {},
+        siblingStatements: statements.filter((o) => o.id !== s.id && chains.get(o.id)!.at(-1)?.id === root.id).map((o) => o.content),
+        path: context ? [...path, context] : path,
+        ancestry: context && parentItemId ? [...ancestry, parentItemId] : ancestry,
+        parentItemId,
+      },
+    ]
+  })
 
   return ok({
     deck: {
@@ -135,7 +146,7 @@ export async function listDrillItems(
       isPublic: deck.is_public,
       isTournamentOpen: deck.is_tournament_open ?? false,
     },
-    nodes: nodes.map((n) => ({ id: n.id, parentId: n.parent_id, title: n.title })),
+    nodes,
     items,
   })
 }
@@ -157,27 +168,18 @@ export function nodeLineage(nodes: readonly DrillNode[]): Map<string, { path: st
   return out
 }
 
-// One item with its answer, for server-side grading, plus the whole deck as listDrillItems loads it:
-// the question engine must see the same context the session saw, or the correct tag would differ.
-// The user client (RLS) proves the item is readable before any answer is read.
-export async function findDrillItem(
-  supabase: SupabaseClient<Database>,
-  itemId: string,
-): Promise<ActionResult<DrillGradingItem>> {
-  const { data, error } = await supabase
-    .from('knowledge_items')
-    .select('id, node_id, mindmap_nodes(deck_id)')
-    .eq('id', itemId)
-    .maybeSingle()
-
+// One statement with its trap rules, for server-side grading, plus the whole deck as listDrillItems
+// loads it: the question engine must see the same context the session saw, or the correct tag would
+// differ. The user client (RLS) proves the node is readable first.
+export async function findDrillItem(supabase: SupabaseClient<Database>, itemId: string): Promise<ActionResult<DrillGradingItem>> {
+  const { data, error } = await supabase.from('content_nodes').select('id, deck_id, node_type').eq('id', itemId).maybeSingle()
   if (error) {
     console.error('[decks] findDrillItem failed', error)
     return fail('INTERNAL_ERROR', 'Could not load item')
   }
-  const deckId = (data?.mindmap_nodes as { deck_id: string } | null)?.deck_id
-  if (!data || !deckId) return fail('ITEM_NOT_FOUND', 'Item not found')
+  if (!data || data.node_type !== 'statement') return fail('ITEM_NOT_FOUND', 'Item not found')
 
-  const deck = await listDrillItems(supabase, { deckId })
+  const deck = await listDrillItems(supabase, { deckId: data.deck_id })
   if (!deck.success) return deck.error.code === 'DECK_NOT_FOUND' ? fail('ITEM_NOT_FOUND', 'Item not found') : deck
   const own = deck.data.items.find((i) => i.id === data.id)
   if (!own) return fail('ITEM_NOT_FOUND', 'Item not found')

@@ -7,17 +7,15 @@ import type { Database, Json } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { TrapRulesDto } from '../dto/TrapRulesDto'
 
-// The ONLY place that reads knowledge_items.correct_stmt / trap_rules
-// (enforced by src/features/decks/__tests__/answerSecrecy.test.ts).
+// The ONLY place that reads content_nodes.trap_rules (enforced by
+// src/features/decks/__tests__/answerSecrecy.test.ts).
 //
-// After migration 20260928000100_hide_knowledge_answers, anon/authenticated cannot SELECT
-// these columns, so reads go through the service-role client. Callers must first confirm,
-// with the user's own client (RLS), that the nodes are readable: the admin client skips RLS.
-// Without SUPABASE_SERVICE_ROLE_KEY it falls back to the user's client, which works only
-// until the migration is applied (then Postgres answers 42501 and we log how to fix it).
-
-// parentItemId: the statement a sub-statement sits under (migration 20261010000000), else null.
-export type Answer = { itemId: string; nodeId: string; parentItemId: string | null; correctStmt: string; trapRules: TrapRules }
+// Statement text (content_nodes.content) is readable by anyone who can read the tree since migration
+// 20261013000000: visitors read a shared tree's statements anyway, and only the owner is graded.
+// trap_rules stay service-role only, so they are read here with the service-role client. Callers must
+// first confirm, with the user's own client (RLS), that the nodes are readable: the admin client
+// skips RLS. Without SUPABASE_SERVICE_ROLE_KEY it falls back to the user's client, which then can't
+// read the column (Postgres answers 42501 and we log how to fix it).
 
 const ID_CHUNK = 100
 const PERMISSION_DENIED = '42501'
@@ -37,57 +35,27 @@ function answersClient(userClient: SupabaseClient<Database>): SupabaseClient<Dat
   if (admin) return admin
   if (!warnedFallback) {
     warnedFallback = true
-    console.warn(
-      '[decks] SUPABASE_SERVICE_ROLE_KEY is not set: reading answers with the user client. ' +
-        'This stops working once the hide_knowledge_answers migration is applied.',
-    )
+    console.warn('[decks] SUPABASE_SERVICE_ROLE_KEY is not set: reading trap rules with the user client, which the column privileges refuse.')
   }
   return userClient
 }
 
-// Answers of every item in the given (already authorized) nodes, in statement order (sort_order,
-// then oldest first).
-export async function readAnswersForNodes(
-  userClient: SupabaseClient<Database>,
-  nodeIds: readonly string[],
-): Promise<ActionResult<Answer[]>> {
-  if (nodeIds.length === 0) return ok([])
+// Trap rules of the given (already authorized) statement ids.
+export async function readTrapRules(userClient: SupabaseClient<Database>, ids: readonly string[]): Promise<ActionResult<Map<string, TrapRules>>> {
+  const rules = new Map<string, TrapRules>()
+  if (ids.length === 0) return ok(rules)
   const client = answersClient(userClient)
-  const answers: Answer[] = []
-
-  for (let i = 0; i < nodeIds.length; i += ID_CHUNK) {
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
     const { data, error } = await client
-      .from('knowledge_items')
-      .select('id, node_id, parent_item_id, correct_stmt, trap_rules')
-      .in('node_id', nodeIds.slice(i, i + ID_CHUNK))
-      .order('sort_order')
-      .order('created_at')
-      .order('id')
-
+      .from('content_nodes')
+      .select('id, trap_rules')
+      .in('id', ids.slice(i, i + ID_CHUNK))
     if (error) {
-      if (error.code === PERMISSION_DENIED) {
-        console.error('[decks] answers are column-protected: set SUPABASE_SERVICE_ROLE_KEY on the server')
-      } else {
-        console.error('[decks] readAnswersForNodes failed', error)
-      }
+      if (error.code === PERMISSION_DENIED) console.error('[decks] trap rules are column-protected: set SUPABASE_SERVICE_ROLE_KEY on the server')
+      else console.error('[decks] readTrapRules failed', error)
       return fail('INTERNAL_ERROR', 'Could not load the statements')
     }
-    for (const row of data) {
-      answers.push({
-        itemId: row.id,
-        nodeId: row.node_id,
-        parentItemId: row.parent_item_id ?? null,
-        correctStmt: row.correct_stmt,
-        trapRules: parseTrapRules(row.trap_rules, row.id),
-      })
-    }
+    for (const row of data) rules.set(row.id, parseTrapRules(row.trap_rules, row.id))
   }
-  return ok(answers)
-}
-
-// Groups answers by node for sibling lookups.
-export function answersByNode(answers: readonly Answer[]): Map<string, Answer[]> {
-  const byNode = new Map<string, Answer[]>()
-  for (const a of answers) byNode.set(a.nodeId, [...(byNode.get(a.nodeId) ?? []), a])
-  return byNode
+  return ok(rules)
 }

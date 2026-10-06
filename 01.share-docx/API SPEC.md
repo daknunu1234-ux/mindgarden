@@ -108,8 +108,11 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root (the UI now uses `deleteRootBranch`) | Required |
 | Decks | `deleteRootBranch` | Action/POST | Owner deletes a root with its sub-roots, statements and their progress | Required |
 | Decks | `updateKnowledgeItem` | Action/POST | Owner edits a statement's text | Required |
-| Decks | `deleteKnowledgeItem` | Action/POST | Owner deletes a statement, its sub-statements and their progress | Required |
-| Decks | `moveKnowledgeItem` | Action/POST | Owner moves a statement (with its sub-statements) to another root or sub-root of the tree | Required |
+| Decks | `deleteKnowledgeItem` | Action/POST | Owner deletes a statement with everything under it, and their progress | Required |
+| Decks | `moveKnowledgeItem` | Action/POST | Owner moves a node (with its branch) under another root of the tree | Required |
+| Decks | `createContentNode` | Action/POST | Owner adds a root or statement anywhere in the outline (Enter: a sibling right below, same type) | Required |
+| Decks | `toggleNodeType` | Action/POST | Owner's Alt: a node becomes a root or a statement, in place | Required |
+| Decks | `indentContentNode` | Action/POST | Owner's Tab / Shift+Tab on any node, in place, with its branch | Required |
 | Decks | `setTournamentOpen` | Action/POST | Owner opens or closes the tree's Mind Tournament (public trees only) | Required (owner) |
 | Drill | `getTournamentSession` | Action | Mind Tournament round on someone else's public, hosting tree | Required (not the host) |
 | Tournament | `submitTournamentAnswer` | Action/POST | Grade one tournament pick; isolated score, practice days, graduation | Required (not the host) |
@@ -235,13 +238,13 @@ Array<{ deckId: string; ownerId: string; title: string; slug: string; treeType: 
 // Input: { slug: string }
 // data
 { deck: { id; userId; title; slug; description; isPublic; treeType; createdAt };
-  tree: DeckTreeNode[] }                     // roots (parent_id = null), ordered by sort_order
+  tree: DeckTreeNode[] }                     // top-level roots, then their sub-roots, in outline order
 type DeckTreeNode = { id: string; title: string; sortOrder: number;
-  items: { id: string; prompt: string }[];   // no correctStmt: answers stay hidden
-  children: DeckTreeNode[] }
+  items: { id: string; prompt: string; parentId?: string | null; depth?: number }[];   // the statements whose nearest root it is
+  children: DeckTreeNode[] }                 // the roots whose nearest root it is
 // Errors: VALIDATION_FAILED, DECK_NOT_FOUND
 ```
-- **One round trip**: `decks` by its unique slug with `mindmap_nodes(…, knowledge_items(id, prompt, created_at))` embedded (RLS applies to each embedded table). The deck page loads it in parallel with `getCurrentUser`, then runs every other read at once (two stages, no waterfall)
+- **One round trip**: `decks` by its unique slug with `content_nodes(id, parent_id, node_type, content, sort_order, created_at)` embedded (RLS applies to it; never `trap_rules`), shaped by `decks/lib/contentTree.ts` (`outlineRows` → `toDeckTree`). The deck page loads it in parallel with `getCurrentUser`, then runs every other read at once (two stages, no waterfall)
 
 ### `createDeck` (decks)
 ```typescript
@@ -277,47 +280,47 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - The Coin Shop's "Simulate Top-up (Dev Mode)": credits a package without payment via `dev_grant_coins` (service role). Revalidates `/profile` only, not `/` (the shop pushes `totalCoins` into `CoinsProvider`, so the farm HUD updates without a page re-render). Refused when `NODE_ENV = production`; the layout only passes it to the shop outside production. Packages: 10 🪙 = 10.000 ₫, 20 = 18.000 ₫ (−10%), 50 = 40.000 ₫ (−20%), 100 (1 Tree Seed 🌱) = 68.000 ₫ (Best Value, −32%). Real payment webhooks come in a later milestone
 
-### `createMindmapNode` (decks)
+### `createContentNode` (decks)
 ```typescript
-// Input (CreateMindmapNodeDto): { deckId: string; title: string; parentId?: string | null /* null = top level */ }
-// sort_order = number of existing siblings (appends)
-// data: { id: string; title: string } · Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (parent not in deck)
-```
-- The Tree Workshop calls it through the deck draft (`useDeckDraft` `addNode`): the root shows at once under a temp id, statements and sub-roots typed under it are sent once it has its real id, and a refusal removes it (and anything under it) with a toast. The page sends writes one at a time in typing order, so `sort_order` follows it. `updateMindmapNode` is used the same way for inline renames (`renameNode`). No `revalidatePath`; the mindmap's `AddRootDialog` and ⚙️ Manage dialog still call these directly and `router.refresh()`
-
-### `createKnowledgeItem` (decks)
-```typescript
-// Input (CreateKnowledgeItemDto): {
-//   nodeId: string; statement: string /* 1–500 chars, plain text, no \commands like \frac */
-//   parentItemId?: string | null  /* a sub-statement of this statement: same root, and a statement itself (one level) */
-//   afterItemId?: string | null   /* right below this row, same level (the Tree Workshop's Enter key); else last */
+// Input (CreateContentNodeDto): {
+//   deckId: string
+//   parentId: string | null      /* null = a top-level node, which must be a root */
+//   type: 'root' | 'statement'
+//   content: string              /* 1–500 (a root ≤ 150), statements plain text (no \commands) */
+//   afterId?: string | null      /* right below this sibling (the Tree Workshop's Enter key); else last */
 // }
-// Server sets: correct_stmt = statement, prompt = the root's title, trap_rules = { negate: true },
-//   parent_item_id, and with afterItemId sort_order = the midpoint between that row and the next one at its level
-//   (an anchor in another root or level is ignored: the row appends)
-// data: { id: string; drillable: boolean /* the question engine can ask it even alone in its deck: true unless it has no two distinct words or letters */ }
-// Errors: VALIDATION_FAILED (also: parent is a sub-statement), AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND,
-//         ITEM_NOT_FOUND (parent not in this root)
+// Server sets: sort_order = the midpoint between afterId and the next sibling (else max + 1),
+//   trap_rules = { negate: true } for a statement ({} for a root)
+// data: { id: string; drillable: boolean /* a statement the question engine can ask */ }
+// Errors: VALIDATION_FAILED (also: a top-level statement), AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND,
+//         NODE_NOT_FOUND (parent not in this tree), INTERNAL_ERROR
 ```
-- Authors never see or send trap rules. Zero drop: every note gets a question (cloze, recall, true/false, recognition, or "spot your exact note"; backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable
-- **Sub-statements** (migration `20261010000000`): drilled like any statement of their root (whole-tree and root rounds, tournaments, mastery coins). A sub-statement under a short statement (≤ 80 characters) takes it as context: breadcrumb `[Sinh học › Bào quan › Ty thể]`, and "sản sinh ATP" is asked as "Ty thể sản sinh ATP"
-- The Tree Workshop sends it through the deck draft (`placeStatement`), so a row typed below another or under a statement that is still saving waits for that row's real id
+- The Tree Workshop's lines (`ContentOutline`) go through the deck draft (`add` op): the row shows at once under a temp id and anything typed under or after it waits for its real id; a refusal removes it with a toast. **Enter** saves the line and opens a sibling of the **same type at the same level** right below. No `revalidatePath`
+- **Practice**: every statement node is drilled, at any depth (whole-tree and root rounds, tournaments, mastery coins). A statement under a short statement (≤ 80 characters) takes it as context: breadcrumb `[Sinh học › Bào quan › Ty thể]`, and "sản sinh ATP" is asked as "Ty thể sản sinh ATP"
+
+### `createMindmapNode` / `createKnowledgeItem` (decks) · kept for the dialogs
+```typescript
+// createMindmapNode({ deckId, title /* 1–150 */, parentId?: string | null })  → { id, title }      a root, last among its siblings
+// createKnowledgeItem({ nodeId, statement, parentItemId?, afterItemId? })     → { id, drillable }
+//   a statement under root nodeId, or under statement parentItemId (any depth), right below afterItemId when that is a sibling
+// Both are createContentNode underneath. Errors: as createContentNode, plus ITEM_NOT_FOUND (parentItemId not in the tree)
+```
+- Authors never see or send trap rules. Zero drop: every note gets a question (cloze, recall, true/false, recognition, or "spot your exact note"; backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable. The mindmap's `AddRootDialog` and ⚙️ Manage dialog call these and `router.refresh()`
 
 ### `createKnowledgeItems` (decks)
 ```typescript
-// Input (CreateKnowledgeItemsDto): { deckId: string; rootId: string; statements: string[] /* 1–100 */ }
+// Input (CreateKnowledgeItemsDto): { deckId: string; rootId: string /* any node: the statements go under it, last */; statements: string[] /* 1–100 */ }
 //   each statement: cleaned (NFC, invisible characters removed, spaces collapsed, trimmed), then 5–500 chars, plain text (no \commands)
-// data: { created: { id: string; statement: string; drillable: boolean }[]; skipped: number /* already in the root */ }
+// data: { created: { id: string; statement: string; drillable: boolean }[]; skipped: number /* already right under that node */ }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), NODE_NOT_FOUND (root not in this deck), INTERNAL_ERROR
 ```
 - "📋 Bulk Add via Notes / Bullets" (`BulkStatementImporter`, in the Tree Workshop list and the root's ✏️ manage dialog): the client splits the paste with `lib/bulkStatements.ts` `parseBulletedText` (one statement per line; strips `- * +`, `• ‣ ⁃ – —`, `1.` `1)` `[1]` `(1)`; drops empty and < 5-character lines; de-duplicates) and shows a live preview, flagging lines that are too long, LaTeX, or already in the root. Before importing, each parsed line can be fixed in place (✏️ or double-click; Enter / leaving the field keeps it, Esc reverts) or discarded (🗑️, with "Restore N discarded"); `reviewBulkStatements` lays these edits over the parse and checks edited lines again (too short, too long, LaTeX, already in the root, duplicate of another line). Only what the preview shows as importable is sent
-- One `INSERT` for all new rows, same defaults as `createKnowledgeItem` (`prompt` = root title, `trap_rules = { negate: true }`); statements already in the root are skipped, not duplicated. `drillable` counts the root's existing and newly imported statements as siblings
-- No `revalidatePath` and no `router.refresh()`: the deck page's draft (`useDeckDraft`) shows the statements the moment they're imported (pending until this answers, then with their real ids and drillable flags), and rolls back if it fails. `createKnowledgeItem` and `updateDeck` (species) are used the same way
+- One `INSERT` for all new rows, same defaults as `createContentNode` (`trap_rules = { negate: true }`, `sort_order` after the node's children); statements already in the root are skipped, not duplicated. `drillable` counts the root's existing and newly imported statements as siblings
+- No `revalidatePath` and no `router.refresh()`: the deck page's draft (`useDeckDraft`, `addMany` op) shows the statements the moment they're imported (pending until this answers, then with their real ids and drillable flags), and rolls back if it fails. `createKnowledgeItem` and `updateDeck` (species) are used the same way
 
-### `getDeckEditor` (decks)
-```typescript
-// Input: { deckId: string }
-// data: { deckId; nodes: { id; title; depth; items: { id; statement; drillable }[] }[] }   // tree order, flattened
+// data: { deckId; treeType;
+//   rows: { id; parentId; type: 'root' | 'statement'; content; depth }[]       // the outline: each node, then its branch
+//   nodes: { id; title; depth; items: { id; statement; drillable; parentId; depth }[] }[] }   // the roots (derived), for lists and dialogs
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND
 ```
 
@@ -456,7 +459,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Streak** (admin client): any saved answer, right or wrong, marks today (player's local day from `timeZone`, UTC if missing/invalid) in `practice_days`; streak = consecutive days ending today or yesterday (DATABASE.md "Daily streak"). This is the **only** thing that grows the streak: opening the game doesn't. The day is inserted once (watering more trees that day changes nothing); after a missed day the next answer starts at 1
 - **Streak reward** (admin client, `progress/services/coins.ts` `claimStreakReward`): when the streak after this answer is 7, 30 or a multiple of 100, `award_streak_reward(user, day)` pays 7 / 30 / the streak in 🪙, once that day (DATABASE.md "Streak rewards"). `streakReward` is what this answer paid and `totalCoins` includes it; other days make no call and pay 0. The drill shows a toast ("🌱 Tree watered today! 7-day streak: +7 🪙") and counts it in the round's coins. A failure never fails the answer
 - **Grading** is shared with `checkDrillAnswer` via `progress/server` `gradeSubmission`; it gives the engine the same whole-deck context as `getDrillSession` (one deck load per graded answer)
-- **Answers** (`correct_stmt`, `trap_rules`) are read with the service role in `decks/services/answers.ts` only (DATABASE.md "Answer secrecy"). Statements reach players only through `getDeckEditor` (owner) and `getDeckReader` (public trees, read-only); `trap_rules` and the correct tag never do
+- **Trap rules** are read with the service role in `decks/services/answers.ts` `readTrapRules` only (DATABASE.md "Answer secrecy"); a drill reads the tree's statement nodes (`content_nodes` where `node_type = 'statement'`) with the player's client. Statements reach players only through `getDeckEditor` (owner) and `getDeckReader` (public trees, read-only); `trap_rules` and the correct tag never do
 
 ### `updateDeck` (decks)
 ```typescript
@@ -470,27 +473,45 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 
 ### `updateMindmapNode` / `updateKnowledgeItem` / `deleteMindmapNode` / `deleteKnowledgeItem` / `deleteRootBranch` (decks)
 ```typescript
-// updateMindmapNode({ nodeId, title /* 1–150 */ })  → { id, title }
+// updateMindmapNode({ nodeId, title /* 1–150 */ })  → { id, title }     a root's content
 // updateKnowledgeItem({ deckId, itemId, text })    → { id, statement, drillable }
 //   text cleaned like a bulk import (NFC, single spaces, trimmed), then 5–500 chars of plain text; updates
-//   knowledge_items.correct_stmt (RETURNING id only), keeps trap_rules and players' progress, no revalidatePath
-// deleteMindmapNode({ nodeId })                    → { id }   only when the root has no statements and no sub-roots
-// deleteKnowledgeItem({ deckId, itemId })          → { id }   its sub-statements and everyone's user_progress +
-//   deck_tournament_item_progress on them cascade away
+//   content_nodes.content (RETURNING id only), keeps trap_rules and players' progress, no revalidatePath
+// deleteMindmapNode({ nodeId })                    → { id }   only when nothing sits under the root
+// deleteKnowledgeItem({ deckId, itemId })          → { id }   everything under it and everyone's user_progress +
+//   deck_tournament_item_progress on those statements cascade away
 // moveKnowledgeItem({ deckId, itemId, toNodeId })   → { id, nodeId, subStatements }
-//   one UPDATE sets node_id, parent_item_id = null, prompt = the target's title and sort_order = last there;
-//   its sub-statements follow through the composite FK's ON UPDATE CASCADE (their prompt is updated too).
-//   A sub-statement moved anywhere (its own root included) becomes a statement. Already a statement of the
-//   target: no-op. Progress and paid coins are kept. NODE_NOT_FOUND = target not in this deck
+//   one UPDATE sets parent_id = the target root and sort_order = last there; its branch follows (children keep
+//   their parent). Already right under the target: no-op. Progress and paid coins are kept.
+//   NODE_NOT_FOUND = target not a root of this deck. A node can't go under its own branch
 // deleteRootBranch({ deckId, rootId })             → { rootId, deletedStatements, deletedSubRoots }
-//   one DELETE of the root row; the database cascades sub-roots (parent FK), their knowledge_items, and
-//   every user_progress / deck_tournament_item_progress row on those items
+//   one DELETE of the node; the parent FK cascades its whole branch and every user_progress /
+//   deck_tournament_item_progress row on those statements
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND (root not in this deck),
 //         ITEM_NOT_FOUND (statement not in this deck), NODE_NOT_EMPTY (deleteMindmapNode only), INTERNAL_ERROR
 ```
-- `moveKnowledgeItem` doesn't revalidate: 📂 Move (Tree Workshop rows and the root drawer's statements) opens `MoveStatementDialog`, a list of every root and sub-root; picking one moves the statement and its sub-statements at once (deck draft `moveItem`), rolled back with a toast if this fails
-- `deleteKnowledgeItem` no longer revalidates: the deck page removes the statement at once (deck draft `removeItem`) and puts it back with a toast if this fails; its confirmation closes immediately
-- `updateKnowledgeItem` doesn't revalidate either: the Tree Workshop edits a statement in place through the deck draft (`editStatement`), showing the text at once and taking the server's cleaned text and drillable flag when it answers (a refusal restores the old text with a toast); `EditStatementDialog` still calls `router.refresh()` itself
+- **Alt: root ↔ statement in place** (owner only, no revalidate: the deck draft shows it at once and rolls back with a toast):
+  ```typescript
+  // toggleNodeType({ deckId, nodeId })  → { id, type: 'root' | 'statement', drillable }
+  //   one UPDATE of node_type (a new statement also gets trap_rules = { negate: true }); nothing is moved, inserted or
+  //   deleted, its children stay. Progress on a statement is kept while it is a root (not drilled) and counts again later
+  // Errors: VALIDATION_FAILED (a top-level root stays a root), AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, NODE_NOT_FOUND, INTERNAL_ERROR
+  ```
+  UI: **Alt** (a clean tap) or **Alt+Enter** in the Tree Workshop (on a row being edited: saves its text, then toggles; on a new line: flips the line's type), and ⇄ on Workshop rows, canvas cards and the root drawer (never on top-level roots). Toasts: "Converted to Root" / "Converted to Statement"
+- **In-place level changes** (the Tree Workshop's Tab / Shift+Tab; nothing is created or deleted, no revalidate, optimistic through the deck draft):
+  ```typescript
+  // indentContentNode({ deckId, nodeId, direction: 'in' | 'out' })  → { id, parentId, movedChildren }
+  //   in:  parent = the sibling right above; the node goes last under it, with its branch.
+  //   out: parent = its parent's parent; it lands right below its old parent, and the siblings that were below it
+  //        become its children (movedChildren), so nothing jumps. indent_content_node()
+  // Only the node and the direction are sent: the database finds the targets, so the visual order never changes.
+  // Errors: VALIDATION_FAILED (nothing above, already at the top, a statement can't be top-level), AUTH_UNAUTHORIZED,
+  //         AUTH_FORBIDDEN, DECK_NOT_FOUND, NODE_NOT_FOUND, INTERNAL_ERROR
+  ```
+  In place means the outline keeps its exact visual order; only levels change. The deck draft predicts the result with `decks/lib/contentTree.ts` `indentRow`, the same rule the SQL follows (tested row by row on PGlite). On a new, unsaved line Tab / Shift+Tab only move the line, and only where that doesn't jump. Enter is the only key that creates a row
+- `moveKnowledgeItem` doesn't revalidate: 📂 Move (Tree Workshop rows and the root drawer's statements) opens `MoveStatementDialog`, a list of every root and sub-root; picking one moves the node and its branch at once (deck draft `move` op), rolled back with a toast if this fails
+- `deleteKnowledgeItem` no longer revalidates: the deck page removes the statement at once (deck draft `remove` op) and puts it back with a toast if this fails; its confirmation closes immediately
+- `updateKnowledgeItem` doesn't revalidate either: the Tree Workshop edits a statement in place through the deck draft (`edit` op), showing the text at once and taking the server's cleaned text and drillable flag when it answers (a refusal restores the old text with a toast); `EditStatementDialog` still calls `router.refresh()` itself
 - Owner check first (`AUTH_FORBIDDEN`), then RLS as the final guard (a delete that touches 0 rows is `AUTH_FORBIDDEN` too). The other deletes revalidate `/deck/<slug>`
 - **Edit** (✏️): `EditStatementDialog` (textarea, live 5–500 counter, Save / Cancel) and `EditRootDialog` (rename via `updateMindmapNode`). The owner's ✏️ Edit / 🗑️ Delete sit in a **hover-to-reveal** group (`shared/components/game` `HoverActions`: hidden until hover or keyboard focus, always shown on touch screens) on mindmap root pills and statement cards, Tree Workshop rows, the root drawer's statements and the manage dialog's statements
 - UI (owner only, never rendered for visitors or contestants): 🗑️ on each statement and "🗑️ Delete Root" in the Tree Workshop list, the root drawer and the ✏️ manage dialog, each behind a confirmation ("Delete Statement"; "Delete Root Branch" with the number of statements and sub-roots it removes). A deleted root open in the drawer / manage dialog closes on the refresh

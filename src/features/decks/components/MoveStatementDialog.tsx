@@ -15,12 +15,14 @@ type MoveStatementDialogProps = {
   nodes: readonly EditorNode[]
   statement: StatementToMove | null
   onClose: () => void
+  // Roots it can't go under: a root's own branch.
+  excluded?: ReadonlySet<string>
 }
 
 // "📂 Move to…": a compact list of the tree's roots and sub-roots. Picking one moves the statement
 // (and its sub-statements) there at once through the deck draft; the server catches up in the
 // background and a refusal puts it back with a toast. Owner only.
-function MoveStatementDialog({ nodes, statement, onClose }: MoveStatementDialogProps) {
+function MoveStatementDialog({ nodes, statement, onClose, excluded }: MoveStatementDialogProps) {
   const { moveStatement, isPending } = useDeckDraftActions()
   return (
     <GameDialog open={statement !== null} onOpenChange={(open) => !open && onClose()}>
@@ -37,7 +39,7 @@ function MoveStatementDialog({ nodes, statement, onClose }: MoveStatementDialogP
               {nodes.map((node) => {
                 const here = node.id === statement.nodeId
                 // A statement already in this root can't move here; a sub-statement can (it un-nests).
-                const disabled = (here && !statement.isSubStatement) || isPending(node.id)
+                const disabled = (here && !statement.isSubStatement) || isPending(node.id) || Boolean(excluded?.has(node.id))
                 return (
                   <li key={node.id} role="option" aria-selected={here} aria-disabled={disabled}>
                     <button

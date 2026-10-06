@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { DeleteKnowledgeItemDto } from '../dto/ManageRootsDto'
-import { removeKnowledgeItem } from '../services/authoring'
+import { removeKnowledgeItem } from '../services/content'
 
 // Auth: Required (deck owner). Deletes one statement of `deckId`; everyone's progress on it
 // (user_progress, Mind Tournament item progress) goes with it by database cascade.

@@ -3,7 +3,7 @@
 import { createClient } from '@/shared/lib/supabase/server'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { CreateKnowledgeItemsDto } from '../dto/CreateKnowledgeItemsDto'
-import { insertKnowledgeItems } from '../services/authoring'
+import { insertKnowledgeItems } from '../services/content'
 
 export type BulkImportResult = { created: { id: string; statement: string; drillable: boolean }[]; skipped: number }
 

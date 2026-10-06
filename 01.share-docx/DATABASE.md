@@ -16,7 +16,7 @@
 
 | Element | Convention | Example |
 |---------|------------|---------|
-| Tables | snake_case, plural | `decks`, `mindmap_nodes` |
+| Tables | snake_case, plural | `decks`, `content_nodes` |
 | Columns | snake_case | `created_at`, `correct_stmt` |
 | Foreign Keys | `[singular_table]_id` | `deck_id`, `knowledge_item_id` |
 | Indexes | `idx_[table]_[column]` | `idx_decks_user_id` |
@@ -63,16 +63,25 @@
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | is_tournament_open | BOOLEAN | NOT NULL, DEFAULT FALSE | The owner hosts a Mind Tournament on this tree (migration `20260928000900`). Only meaningful while `is_public`: visitors join only public, hosting trees. Owner-only switch (`setTournamentOpen`); closing keeps every result |
 
-**mindmap_nodes** (self-referencing adjacency list) — *Nodes are underground Roots*
+**content_nodes** (self-referencing adjacency list, migration `20261013000000`) — *Roots and statements in one hierarchy*
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | |
+| id | UUID | PK, DEFAULT gen_random_uuid() | Kept from the old `mindmap_nodes` / `knowledge_items` rows by the migration |
 | deck_id | UUID | FK → decks, NOT NULL, ON DELETE CASCADE | |
-| parent_id | UUID | FK → mindmap_nodes, NULLABLE, ON DELETE CASCADE | NULL = top-level root |
-| title | VARCHAR(150) | NOT NULL | Concept name |
-| sort_order | INT | NOT NULL, DEFAULT 0 | Order among siblings |
+| parent_id | UUID | NULLABLE; FK `(parent_id, deck_id)` → `content_nodes (id, deck_id)` ON DELETE CASCADE; CHECK `<> id` | NULL = a top-level node. Any node can sit under any node (a statement under a statement, a root under a statement) |
+| content | TEXT | NOT NULL, non-empty, ≤ 500 | A root's title (the app caps a root at 150) or a statement's text |
+| node_type | TEXT | NOT NULL, DEFAULT 'statement', CHECK `root` / `statement` | Practice = every `statement` of a tree. Alt flips it with one UPDATE |
+| trap_rules | JSONB | NOT NULL, DEFAULT '{}', must be object | Rules for generating FALSE variants (statements). Readable by the service role only |
+| sort_order | DOUBLE PRECISION | NOT NULL, DEFAULT 0 | Order among siblings, roots and statements together (ties: `created_at`, then `id`). A node typed right below another gets the midpoint with the next sibling; appended / moved nodes get max + 1 |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
+| *(id, deck_id)* | — | UNIQUE `content_nodes_id_deck_key` | Target of the same-tree parent FK |
 
-⚠️ Parent must be in the **same deck**: enforced by composite FK `(parent_id, deck_id) → (id, deck_id)`. `CHECK (parent_id <> id)` blocks self-parenting.
+- ⚠️ **Shape** (trigger `content_nodes_shape`): a top-level node is a root (`TOP_LEVEL_STATEMENT`, also when Alt would turn one into a statement); no node goes under its own branch (`NODE_CYCLE`). Parents are always in the same tree (composite FK). Statements are plain text (`content_nodes_plain_statement`: no backslash commands)
+- **The outline** (Tree Workshop, `decks/lib/contentTree.ts` `outlineRows`): each node, then its children by `sort_order`, with depths. The canvas and the root lists show the roots; a statement belongs to its **nearest root** above (its "node" for branch rounds and sibling swaps)
+- **Practice**: `SELECT … FROM content_nodes WHERE deck_id = $1 AND node_type = 'statement'` (one table, no join; `decks/services/drillItems.ts`). A statement under a short statement (≤ 80 characters, `decks/lib/statements.ts` `parentContext`) takes it as its last breadcrumb step and subject
+- **Tab / Shift+Tab in place**: `public.indent_content_node(node, 'in' | 'out')` → `node_id, parent_id, moved_children` (`SECURITY DEFINER`, caller = `auth.uid()` must own the tree, EXECUTE for `authenticated`, one transaction; the app sends only the node and the direction). In: the last child of the sibling right above (`NO_ROW_ABOVE`). Out: up one level, right below its old parent (midpoint `sort_order`); the siblings below it become its children, after its own (`ALREADY_TOP`; `TOP_LEVEL_STATEMENT` for a statement that would land at the top). The outline order never changes, only parents; nothing is inserted or deleted. `decks/__tests__/indentContentNodeDb.test.ts` checks every row and direction against the page's own prediction (`indentRow`)
+- **Alt** (`toggleNodeType`): `UPDATE content_nodes SET node_type = …` on the one row (a top-level root stays a root). Progress on a statement is kept while it is a root (ignored there) and counts again when it is a statement again
+- **Legacy tables**: the migration renames `mindmap_nodes` / `knowledge_items` to `legacy_mindmap_nodes` / `legacy_knowledge_items` (no grants, kept for rollback); `20261013000100_drop_legacy_trees.sql` drops them
 
 **tree_visits** — *Visited Gardens: the shared trees a player has opened (migration `20260928000800_tree_visits.sql`)*
 | Column | Type | Constraints | Description |
@@ -88,20 +97,7 @@
 
 ### Knowledge & Trap Engine Feature
 
-**knowledge_items** — *Plain-text statements used to generate trap drills*
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | UUID | PK, DEFAULT gen_random_uuid() | |
-| node_id | UUID | FK → mindmap_nodes, NOT NULL, ON DELETE CASCADE | |
-| parent_item_id | UUID | NULLABLE; FK `(parent_item_id, node_id)` → `knowledge_items (id, node_id)` ON UPDATE CASCADE ON DELETE CASCADE; CHECK `<> id` | Migration `20261010000000`. NULL = a statement; else the statement this **sub-statement** sits under, always in the same root. One level only (trigger `knowledge_items_one_level`, `SUB_STATEMENT_TOO_DEEP`). Moving a statement (UPDATE `node_id`) carries its sub-statements; deleting it deletes them |
-| prompt | TEXT | NOT NULL, non-empty | Question shown to the player |
-| correct_stmt | TEXT | NOT NULL, non-empty, no LaTeX commands | The TRUE statement (plain text) |
-| trap_rules | JSONB | NOT NULL, DEFAULT '{}', must be object | Rules for generating FALSE variants |
-| sort_order | DOUBLE PRECISION | NOT NULL, DEFAULT epoch seconds of `clock_timestamp()` | Migration `20261010000000`. Order among a root's statements and among one statement's sub-statements: new rows append; a row typed right below another gets the midpoint with the next one; a moved statement goes last. Backfilled from `created_at` |
-| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
-| *(id, node_id)* | — | UNIQUE `knowledge_items_id_node_key` | Target of the sub-statement FK |
-
-**Sub-statements in practice**: a sub-statement is one more knowledge item of its root. Drill rounds (whole tree or one root branch), Mind Tournaments, mastery and coins treat both levels alike; nothing in the progress, coin or tournament functions changed. In questions, a sub-statement under a short statement (≤ 80 characters, `decks/lib/statements.ts` `parentContext`) takes it as its last breadcrumb step and subject.
+Statements are `content_nodes` rows with `node_type = 'statement'` (above). Until migration `20261013000000` they lived in `knowledge_items` (`node_id`, `parent_item_id` for one level of sub-statements, `prompt`, `correct_stmt`, `trap_rules`, `sort_order`); the drill prompt is now the nearest root's title.
 
 Example `trap_rules`:
 ```json
@@ -115,7 +111,7 @@ Example `trap_rules`:
 ```
 Applied to `"Mitochondria produce ATP through cellular respiration."` → traps like `"Mitochondria produce DNA through cellular respiration."`
 
-**Items created in the app** (`createKnowledgeItem`): authors write only the statement. The server stores `trap_rules = {"negate": true}` and `prompt` = the root's title; traps then come from the built-in dictionary (`shared/lib/trapDictionary.ts`). `swaps` stay supported for seeded or imported items.
+**Statements created in the app** (`createContentNode`, `createKnowledgeItem(s)`): authors write only the statement. The server stores `trap_rules = {"negate": true}` (a node turned into a statement by Alt gets the same); traps then come from the built-in dictionary (`shared/lib/trapDictionary.ts`). `swaps` stay supported for seeded or imported items.
 
 ### Mind Tournament Feature
 
@@ -142,7 +138,7 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 |--------|------|-------------|-------------|
 | id | UUID | PK, DEFAULT gen_random_uuid() | |
 | participant_id | UUID | FK → deck_tournament_participants, NOT NULL, ON DELETE CASCADE | |
-| knowledge_item_id | UUID | FK → knowledge_items, NOT NULL, ON DELETE CASCADE | The statement |
+| knowledge_item_id | UUID | FK → content_nodes (`deck_tournament_item_progress_content_node_fkey`), NOT NULL, ON DELETE CASCADE | The statement (column name kept from before migration `20261013000000`) |
 | mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–5 | Same ±1 rule as `user_progress` (correct +1 up to 5, wrong −1 down to 0), kept separately |
 | *(participant_id, knowledge_item_id)* | — | UNIQUE `unique_participant_statement` | |
 
@@ -212,7 +208,7 @@ Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 pe
 |--------|------|-------------|-------------|
 | id | UUID | PK, DEFAULT gen_random_uuid() | |
 | user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | |
-| knowledge_item_id | UUID | FK → knowledge_items, NOT NULL, ON DELETE CASCADE | |
+| knowledge_item_id | UUID | FK → content_nodes (`user_progress_content_node_fkey`), NOT NULL, ON DELETE CASCADE | A statement node (column name kept from before migration `20261013000000`; inserts require `node_type = 'statement'`) |
 | mastery_level | INT | NOT NULL, DEFAULT 0, CHECK 0–5 | 0 Seed → 1 Sprout → 2 Seedling → 3 Sapling → 4 Young Tree → 5 Mighty Root (mastered: 5 net correct answers). The scale was 0–3 before migration `20260928000400`. Old values were kept as they were, not rescaled, so a former 3/3 item is now 3/5 |
 | ~~mistake_count~~ | — | dropped by migration `20261007000000` | Was a tally of wrong answers that nothing read. The app no longer writes it |
 | last_practiced_at | TIMESTAMPTZ | NULLABLE | |
@@ -336,16 +332,15 @@ roles
   └─1:N─► users ◄─1:1── auth.users   (handle_new_user() trigger)
             │
             ├─1:N─► decks
-            │         └─1:N─► mindmap_nodes ◄──┐
+            │         └─1:N─► content_nodes ◄──┐   (roots + statements)
             │                   │   └──────────┘ parent_id (self-ref 1:N)
-            │                   └─1:N─► knowledge_items
-            │                             │
-            ├─1:N─► user_progress ◄─N:1───┘
-            │       (N:M bridge: one row per user per knowledge_item)
+            │                   │
+            ├─1:N─► user_progress ◄─N:1───┘   (statements only)
+            │       (N:M bridge: one row per user per statement)
             ├─1:N─► tree_visits ◄─N:1── decks
             │       (N:M bridge: one row per visitor per shared tree)
             └─1:N─► deck_tournament_participants ◄─N:1── decks
-                      └─1:N─► deck_tournament_item_progress ◄─N:1── knowledge_items
+                      └─1:N─► deck_tournament_item_progress ◄─N:1── content_nodes
 ```
 
 ---
@@ -357,11 +352,9 @@ roles
 | auth.users → users | 1:1 | Auto-created by `handle_new_user()` trigger |
 | roles → users | 1:N | Role-based access (ON DELETE RESTRICT) |
 | users → decks | 1:N | Ownership drives RLS |
-| decks → mindmap_nodes | 1:N | CASCADE |
-| mindmap_nodes → mindmap_nodes | 1:N | Self-ref, same-deck only, subtree cascades |
-| mindmap_nodes → knowledge_items | 1:N | CASCADE |
-| knowledge_items → knowledge_items | 1:N | Sub-statements, same root only, one level; UPDATE (move) and DELETE cascade |
-| **users ↔ knowledge_items** | N:M via `user_progress` | ⚠️ Decoupled progress: same public deck, separate progress per player |
+| decks → content_nodes | 1:N | CASCADE |
+| content_nodes → content_nodes | 1:N | Self-ref, same-deck only, branch cascades; top level = roots |
+| **users ↔ content_nodes** | N:M via `user_progress` | ⚠️ Decoupled progress: same public deck, separate progress per player; statements only |
 | users ↔ decks (visits) | N:M via `tree_visits` | Visited Gardens; both sides CASCADE |
 | users ↔ decks (tournament) | N:M via `deck_tournament_participants` | One run per contestant per tree; item levels in `deck_tournament_item_progress`; all CASCADE |
 
@@ -372,7 +365,7 @@ roles
 - **Primary Key**: UUID v4 via `gen_random_uuid()` (exceptions: `roles.id` static INT, `users.id` copied from `auth.users`)
 - **Cascades**: `ON DELETE CASCADE` on decks, nodes, items, progress
 - **Timestamps**: `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` (never plain `TIMESTAMP`)
-- **Plain Text**: `correct_stmt` rejects backslash commands (`\frac`, `\sqrt`); validate with Zod first for friendly errors
+- **Plain Text**: statement `content` rejects backslash commands (`\frac`, `\sqrt`); validate with Zod first for friendly errors
 - **JSONB**: `trap_rules` shape validated by Zod in `features/decks/dto` and read by `shared/lib/trapEngine.ts`, not in DB
 - **Schema-qualify**: Always write `public.users` vs `auth.users`
 - **Derived data**: Tree health is computed from `mastery_level`, never stored
@@ -385,12 +378,9 @@ roles
 -- Decks & Mindmap
 CREATE INDEX idx_decks_user_id ON public.decks(user_id);
 CREATE UNIQUE INDEX idx_decks_slug ON public.decks(slug);                 -- doubles as UNIQUE(slug)
-CREATE INDEX idx_mindmap_nodes_deck_id ON public.mindmap_nodes(deck_id);
-CREATE INDEX idx_mindmap_nodes_parent_id ON public.mindmap_nodes(parent_id);
-
--- Knowledge & Trap Engine
-CREATE INDEX idx_knowledge_items_node_id ON public.knowledge_items(node_id);
-CREATE INDEX idx_knowledge_items_parent_item_id ON public.knowledge_items(parent_item_id);  -- migration 22
+CREATE INDEX idx_content_nodes_deck_id ON public.content_nodes(deck_id);
+CREATE INDEX idx_content_nodes_parent_id ON public.content_nodes(parent_id);
+CREATE INDEX idx_content_nodes_deck_type ON public.content_nodes(deck_id, node_type);   -- practice: a tree's statements
 
 -- Visited Gardens (the PK (user_id, deck_id) covers per-player lookups)
 CREATE INDEX idx_tree_visits_user_visited_at ON public.tree_visits(user_id, visited_at DESC);
@@ -417,9 +407,8 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | roles | Everyone | ✗ | ✗ | ✗ |
 | users | Self (admin: all); others' `display_name` only via `get_display_names()` | ✗ (trigger only) | Self, `full_name` + `avatar_url` + `display_name` only | ✗ |
 | decks | `is_public` OR owner | ✗ direct; only via `plant_deck()` (100 🪙) or `clone_deck()` (min(100 + n, 150) 🪙) | Owner | Owner |
-| mindmap_nodes | If deck readable | Deck owner | Deck owner | Deck owner |
-| knowledge_items | If deck readable | Deck owner | Deck owner | Deck owner |
-| user_progress | Owner | Owner + item readable | Owner + item readable | ✗ |
+| content_nodes | If deck readable | Deck owner | Deck owner | Deck owner |
+| user_progress | Owner | Owner + readable statement node | Owner + item readable | ✗ |
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 | tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
 | garden_placements | Owner; others: items + public trees | ✗ direct; only via `purchase_and_place_item()` | ✗ | Owner |
@@ -441,32 +430,22 @@ CREATE POLICY "decks: update own" ON public.decks
   USING ((SELECT auth.uid()) = user_id)
   WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Nodes: inherit from deck (same pattern for INSERT/UPDATE/DELETE with owner check)
-CREATE POLICY "nodes: read if deck readable" ON public.mindmap_nodes
+-- Content nodes: inherit from deck (same pattern for INSERT/UPDATE/DELETE with an owner check)
+CREATE POLICY "content nodes: read if deck readable" ON public.content_nodes
   FOR SELECT TO anon, authenticated
   USING (EXISTS (
     SELECT 1 FROM public.decks d
-    WHERE d.id = mindmap_nodes.deck_id
+    WHERE d.id = content_nodes.deck_id
       AND (d.is_public OR d.user_id = (SELECT auth.uid()))
   ));
 
--- Items: inherit via node → deck
-CREATE POLICY "items: insert if deck owner" ON public.knowledge_items
-  FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM public.mindmap_nodes n
-    JOIN public.decks d ON d.id = n.deck_id
-    WHERE n.id = knowledge_items.node_id
-      AND d.user_id = (SELECT auth.uid())
-  ));
-
--- Progress: owner only, and only on items the player can see
+-- Progress: owner only, and only on statements the player can see
 CREATE POLICY "progress: insert own" ON public.user_progress
   FOR INSERT TO authenticated
   WITH CHECK (
     (SELECT auth.uid()) = user_id
-    AND EXISTS (SELECT 1 FROM public.knowledge_items ki
-                WHERE ki.id = user_progress.knowledge_item_id)
+    AND EXISTS (SELECT 1 FROM public.content_nodes c
+                WHERE c.id = user_progress.knowledge_item_id AND c.node_type = 'statement')
   );
 
 -- Users: block role_id / streak edits from the client
@@ -475,25 +454,22 @@ GRANT UPDATE (full_name, avatar_url) ON public.users TO authenticated;
 ```
 
 - **Perf**: Use `(SELECT auth.uid())` instead of bare `auth.uid()` so it's evaluated once per query
-- **Full policy set**: `supabase/migrations/20260928000000_initial_schema.sql` (all six baseline tables, one policy per action as in the table above, `public.is_admin()` for the admin read on `users`) and `20260928000200_practice_days.sql`
+- **Full policy set**: `supabase/migrations/20260928000000_initial_schema.sql` (the baseline tables; one policy per action as in the table above, `public.is_admin()` for the admin read on `users`) `20260928000200_practice_days.sql`, and `20261013000000_content_nodes.sql` (`content_nodes`, the progress policies re-created)
 
-### Answer secrecy (column privileges on `knowledge_items`)
+### Answer secrecy (column privileges on `content_nodes`)
 
-RLS picks **rows**; it cannot hide **columns**. Without extra grants, `GET /rest/v1/knowledge_items?select=correct_stmt` with the public anon key returns every answer.
-Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds column-level privileges:
+RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20261013000000`, as `20260928000100` did for `knowledge_items`):
 
-| Role | SELECT | INSERT / UPDATE |
-|------|--------|-----------------|
-| anon | `id`, `node_id`, `prompt`, `created_at`, `parent_item_id`, `sort_order` | ✗ |
-| authenticated | `id`, `node_id`, `prompt`, `created_at`, `parent_item_id`, `sort_order` | `node_id`, `prompt`, `correct_stmt`, `trap_rules`, `parent_item_id`, `sort_order` (RLS: deck owner) |
-| service_role | all | all |
+| Role | SELECT | INSERT | UPDATE |
+|------|--------|--------|--------|
+| anon | `id`, `deck_id`, `parent_id`, `content`, `node_type`, `sort_order`, `created_at` | ✗ | ✗ |
+| authenticated | same | those + `trap_rules` (RLS: deck owner) | `parent_id`, `content`, `node_type`, `trap_rules`, `sort_order` (RLS: deck owner) |
+| service_role | all | all | all |
 
-- **Why the service role**: anything a Server Action can do with the player's JWT, the player can do from the browser too. Answers are read only with a key the browser never has
-- **Code**: every `correct_stmt` / `trap_rules` read lives in `src/features/decks/services/answers.ts`, via `src/shared/lib/supabase/admin.ts`. The user's RLS client first proves the nodes/items are readable; the admin client then reads answers only for those ids. `decks/__tests__/answerSecrecy.test.ts` fails if any other file selects these columns
-- **Writes**: authors still insert/update statements with their own session; Postgres needs SELECT on columns used in `WHERE` / `RETURNING`, so writes can't be used as an oracle and inserts return only `id`
-- **Deploy order**: set `SUPABASE_SERVICE_ROLE_KEY` on the server → restart → run the migration. Without the key, `answers.ts` falls back to the user client (works only before the migration; after it, reads fail with `42501` and the server logs the fix)
-- **New columns** on `knowledge_items` are not readable by anon/authenticated until granted explicitly (fail closed)
-- **Who sees statements**: the deck owner (editor, `getDeckEditor`) and, in strict read-only visitor mode, anyone viewing a **public** tree (`getDeckReader`). `loadDeckReader` checks `is_public` (or ownership) with the player's client before `answers.ts` reads. This is safe because only the owner can be graded on a tree (`FORBIDDEN_VISITOR_PRACTICE` in `getDrillSession` / `checkDrillAnswer` / `submitDrillResult`), so a visitor who knows the statements earns no mastery or coins. `trap_rules` are never returned. Private trees of others stay fully hidden
+- ⚠️ **Changed by `20261013000000`**: a statement's text (`content`) is readable by anyone who can read the tree. Before, `correct_stmt` was service-role only. Every reader of a tree already saw every statement (the owner in the editor, visitors of a **public** tree in strict read-only mode), and only the owner can be graded (`FORBIDDEN_VISITOR_PRACTICE`), so knowing the statements earns a visitor no mastery or coins. Tournament contestants can read the statements of the tree they compete on (they could already, through the read-only view)
+- **trap_rules stay hidden**: only `decks/services/answers.ts` `readTrapRules` reads them, with `src/shared/lib/supabase/admin.ts`, after the player's RLS client has loaded the nodes. `decks/__tests__/answerSecrecy.test.ts` fails if any other file selects them
+- **Without `SUPABASE_SERVICE_ROLE_KEY`** `readTrapRules` falls back to the user client, which is refused (`42501`); the server log names the fix
+- **New columns** on `content_nodes` are not readable by anon/authenticated until granted explicitly (fail closed)
 
 ---
 
@@ -505,7 +481,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | # | File | What it does |
   |---|------|--------------|
   | 1 | `20260928000000_initial_schema.sql` | Baseline: `roles` (+ seed), `users` + `handle_new_user()` trigger, `decks`, `mindmap_nodes`, `knowledge_items`, `user_progress`; FKs and cascades, checks, indexes, RLS + policies, `users` column grants, `is_admin()` |
-  | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges: `correct_stmt` / `trap_rules` readable only by the service role |
+  | 2 | `20260928000100_hide_knowledge_answers.sql` | Column privileges: `correct_stmt` / `trap_rules` readable only by the service role (superseded by file 23's grants on `content_nodes`) |
   | 3 | `20260928000200_practice_days.sql` | Streak log table + RLS + backfill from `user_progress` |
   | 4 | `20260928000300_user_coins.sql` | `users.coins`, `user_progress.coin_awarded_at`, `award_mastery_coin()` (service role only), `user_progress` column grants, backfill of already-mastered (5/5) items |
   | 5 | `20260928000400_mastery_scale_5.sql` | `mastery_level` CHECK widened to 0–5 (no rescaling), `award_mastery_coin()` pays at 5/5. Order-independent with file 4 |
@@ -517,6 +493,8 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 24 | `20261013000100_drop_legacy_trees.sql` | Drops `legacy_mindmap_nodes` / `legacy_knowledge_items`. Destructive and optional |
+  | 23 | `20261013000000_content_nodes.sql` | `content_nodes` (roots + statements, ids kept, one sibling order) replaces `mindmap_nodes` + `knowledge_items` (renamed to `legacy_*`); shape trigger, RLS, column grants; progress FKs repointed; `award_mastery_coin()`, `uproot_deck()`, `clone_deck()`, `record_tournament_answer()` re-created on it; new `indent_content_node()` |
   | 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger) and `sort_order` (backfilled from `created_at`); their column grants; `clone_deck()` re-created to copy the hierarchy and order |
   | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180 🪙, else 1; service role) and `award_mastery_coin()` re-created to pay 1 × farm multiplier × species multiplier, fraction still carried in `users.coin_carry` |
   | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs` (RLS: read own; server writes only), `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one run a day, database-timed answers, coins = streak paid atomically) |
@@ -536,6 +514,8 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 8** can run any time after file 7. Until it runs, the Clone button answers "Could not clone this tree" and the server log names this migration (`PGRST202`); nothing else depends on it
 - **File 11** can run any time after file 10. Until it runs, saving a Garden Name answers "Could not save your garden name" (the log names the migration), names fall back to pseudonyms, and the boards still show `full_name`
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
+- **File 23** runs **with** the deploy of the content-node code, after file 22 (and 21): the old code reads `mindmap_nodes` / `knowledge_items`, which it renames, and the new code reads `content_nodes`, which it creates. Not re-runnable (it moves data); the rollback block at its end renames the legacy tables back. It re-creates `award_mastery_coin()`, `uproot_deck()`, `clone_deck()` and `record_tournament_answer()`: never re-run files 12, 18, 21 or 22 after it (they would point those functions at the old tables). Two never-shipped drafts (`20261011000000_convert_statements_roots`, `20261012000000_indent_rows`) were folded into it; it drops their functions if one was applied by hand
+- **File 24** only after file 23 has run and the app works on it: it drops the legacy tables (no rollback after that)
 - **File 22** runs any time after file 18, **before or with** the deploy of the sub-statement code: it only adds columns (older code keeps working), while the new code orders statements by `sort_order` and fails to load them without it. It re-creates `clone_deck()`: never re-run file 18 after it (cloned trees would lose their sub-statements' nesting)
 - **File 21** runs any time after file 18 (it uses `seed_price()`), with or after the deploy. Until it runs, the app shows "⭐ 1.5x Coins" on special trees but the database still pays ×1; nothing else is affected. It re-creates `award_mastery_coin()`: never re-run file 12 after it without re-running this one (file 12 would restore the farm-only payout)
 - **File 20** can run any time after file 18 (it does not need file 19), before or with the deploy. Until it runs, the ⚡ button shows as ready but starting a run answers "Could not start the Daily Rush" (the log names the migration); nothing else is affected
@@ -547,7 +527,7 @@ Migration `supabase/migrations/20260928000100_hide_knowledge_answers.sql` adds c
 - **File 12** can run any time after file 11. Until it runs, the farm is empty (the log names the migration), the Shop can't place anything, chopping falls back to the plain delete (no refund) and coins pay ×1
 - **File 10** can run any time after file 9. The app tolerates it missing: no boards on the deck page, the host switch answers "Could not open the tournament", and the log names the migration. Practice and drills are unaffected
 - **File 9** can run any time after file 7. Until it runs, opening a shared tree logs which migration to run (the page itself never fails) and the Visited Gardens drawer stays empty
-- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20260930000000`
+- **Format**: `[timestamp]_[description].sql` (e.g., `20260923000200_decks_mindmap.sql`); new migrations sort after `20261013000100`
 - **One feature per file** for new changes; the baseline groups auth_system → decks_mindmap → knowledge_trap_engine → progress_gamification → rls_policies in one file
 - **Forward-only**: Supabase has no `down()`; fix mistakes with a new migration, never edit an applied one
 - **Test locally**: `npx supabase db reset` before pushing
@@ -572,7 +552,7 @@ export const supabase = createClient<Database>(
 )
 
 export type Deck = Tables<'decks'>
-export type KnowledgeItem = Tables<'knowledge_items'>
+export type ContentNode = Tables<'content_nodes'>
 ```
 
 ```sql

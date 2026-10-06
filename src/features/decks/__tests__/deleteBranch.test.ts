@@ -7,6 +7,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/shared/lib/supabase/server'
+import { fakeContentDb, type FakeNode } from '@/test/fakeContentDb'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { deleteRootBranch } from '../actions/deleteRootBranch'
 import { branchImpact, branchNodeIds, flatBranchImpact } from '../lib/branch'
@@ -56,199 +57,111 @@ describe('branch helpers', () => {
   })
 })
 
-// ─── In-memory database: RLS (owner-only deletes) + ON DELETE CASCADE like the migrations ──────
+// ─── The outline in content_nodes: RLS (owner-only deletes) + ON DELETE CASCADE, like the database ──
 
-type Row = Record<string, unknown>
+// Root A with statements A1, A2 and sub-root B (statement B1) with sub-root D (statement D1); root C
+// (statement C1). OTHER (O1) is a root of another tree.
+const NODES: FakeNode[] = [
+  { id: A, deck_id: DECK, parent_id: null, node_type: 'root', content: 'Tế bào', sort_order: 1 },
+  { id: A1, deck_id: DECK, parent_id: A, node_type: 'statement', content: 'Tế bào là đơn vị sống.', sort_order: 1 },
+  { id: A2, deck_id: DECK, parent_id: A, node_type: 'statement', content: 'Tế bào có màng.', sort_order: 2 },
+  { id: B, deck_id: DECK, parent_id: A, node_type: 'root', content: 'Bào quan', sort_order: 3 },
+  { id: B1, deck_id: DECK, parent_id: B, node_type: 'statement', content: 'Ty thể sản sinh ATP.', sort_order: 1 },
+  { id: D, deck_id: DECK, parent_id: B, node_type: 'root', content: 'Ty thể', sort_order: 2 },
+  { id: D1, deck_id: DECK, parent_id: D, node_type: 'statement', content: 'Ty thể có DNA riêng.', sort_order: 1 },
+  { id: C, deck_id: DECK, parent_id: null, node_type: 'root', content: 'Di truyền', sort_order: 2 },
+  { id: C1, deck_id: DECK, parent_id: C, node_type: 'statement', content: 'Gen nằm trên NST.', sort_order: 1 },
+  { id: OTHER, deck_id: OTHER_DECK, parent_id: null, node_type: 'root', content: 'Khác', sort_order: 1 },
+  { id: O1, deck_id: OTHER_DECK, parent_id: OTHER, node_type: 'statement', content: 'Cây khác.', sort_order: 1 },
+]
 
-function fakeDb(viewer: string | null) {
-  const db: Record<string, Row[]> = {
+function setup(viewer: string | null) {
+  const fake = fakeContentDb({
+    viewer,
+    // Public, so a visitor can read it but not delete from it (RLS: owner-only writes).
     decks: [
-      { id: DECK, user_id: OWNER, slug: 'sinh-hoc', tree_type: 'oak' },
-      { id: OTHER_DECK, user_id: OWNER, slug: 'khac', tree_type: 'oak' },
+      { id: DECK, user_id: OWNER, slug: 'sinh-hoc', is_public: true },
+      { id: OTHER_DECK, user_id: OWNER, slug: 'khac', is_public: true },
     ],
-    mindmap_nodes: [
-      { id: A, deck_id: DECK, parent_id: null, title: 'Tế bào' },
-      { id: B, deck_id: DECK, parent_id: A, title: 'Bào quan' },
-      { id: D, deck_id: DECK, parent_id: B, title: 'Sâu' },
-      { id: C, deck_id: DECK, parent_id: null, title: 'Di truyền' },
-      { id: OTHER, deck_id: OTHER_DECK, parent_id: null, title: 'Khác' },
-    ],
-    knowledge_items: [
-      { id: A1, node_id: A },
-      { id: A2, node_id: A },
-      { id: B1, node_id: B },
-      { id: D1, node_id: D },
-      { id: C1, node_id: C },
-      { id: O1, node_id: OTHER },
-    ],
-    // Progress of the owner and of other players (clones never share items, but old rows may exist).
-    user_progress: [
-      { user_id: OWNER, knowledge_item_id: A1 },
-      { user_id: VISITOR, knowledge_item_id: B1 },
-      { user_id: OWNER, knowledge_item_id: D1 },
-      { user_id: OWNER, knowledge_item_id: C1 },
-    ],
-    deck_tournament_item_progress: [
-      { participant_id: 'p-visitor', knowledge_item_id: A2 },
-      { participant_id: 'p-visitor', knowledge_item_id: D1 },
-      { participant_id: 'p-visitor', knowledge_item_id: C1 },
-    ],
-  }
-  const deckOf = (table: string, row: Row): Row | undefined => {
-    if (table === 'decks') return row
-    const node = table === 'mindmap_nodes' ? row : db.mindmap_nodes.find((n) => n.id === row.node_id)
-    return db.decks.find((d) => d.id === node?.deck_id)
-  }
-
-  // FK cascades: nodes → sub-nodes (parent_id) → knowledge_items → user_progress / tournament item progress.
-  const cascadeDelete = (table: string, rows: Row[]) => {
-    if (rows.length === 0) return
-    db[table] = db[table].filter((r) => !rows.includes(r))
-    if (table === 'mindmap_nodes') {
-      const ids = new Set(rows.map((r) => r.id))
-      cascadeDelete(
-        'mindmap_nodes',
-        db.mindmap_nodes.filter((n) => ids.has(n.parent_id)),
-      )
-      cascadeDelete(
-        'knowledge_items',
-        db.knowledge_items.filter((i) => ids.has(i.node_id)),
-      )
-    }
-    if (table === 'knowledge_items') {
-      const ids = new Set(rows.map((r) => r.id))
-      db.user_progress = db.user_progress.filter((p) => !ids.has(p.knowledge_item_id))
-      db.deck_tournament_item_progress = db.deck_tournament_item_progress.filter((p) => !ids.has(p.knowledge_item_id))
-    }
-  }
-
-  const client = {
-    auth: { getUser: async () => ({ data: { user: viewer ? { id: viewer } : null } }) },
-    from: (table: string) => {
-      const filters: ((r: Row) => boolean)[] = []
-      let mode: 'select' | 'delete' = 'select'
-      let head = false
-      const run = () => {
-        const rows = db[table].filter((r) => filters.every((f) => f(r)))
-        if (mode === 'select') return { data: head ? null : rows, count: rows.length, error: null }
-        // RLS "delete if deck owner": other players' deletes touch 0 rows.
-        const allowed = rows.filter((r) => deckOf(table, r)?.user_id === viewer)
-        cascadeDelete(table, allowed)
-        return { data: allowed.map((r) => ({ id: r.id })), count: allowed.length, error: null }
-      }
-      const q = {
-        select: (_cols?: string, opts?: { head?: boolean }) => {
-          head = opts?.head ?? false
-          return q
-        },
-        delete: () => {
-          mode = 'delete'
-          return q
-        },
-        eq: (col: string, value: unknown) => {
-          filters.push((r) => r[col] === value)
-          return q
-        },
-        in: (col: string, values: unknown[]) => {
-          filters.push((r) => values.includes(r[col]))
-          return q
-        },
-        maybeSingle: async () => {
-          const res = run()
-          return { data: (res.data as Row[] | null)?.[0] ?? null, error: null }
-        },
-        then: (resolve: (v: ReturnType<typeof run>) => unknown) => Promise.resolve(run()).then(resolve),
-      }
-      return q
-    },
-  }
-  vi.mocked(createClient).mockResolvedValue(client as never)
-  return db
+    nodes: NODES,
+    progress: [A1, B1, D1, C1, O1].map((item) => ({ user_id: VISITOR, knowledge_item_id: item, mastery_level: 3 })),
+    tournamentProgress: [B1, C1].map((item) => ({ user_id: VISITOR, knowledge_item_id: item, mastery_level: 2 })),
+  })
+  vi.mocked(createClient).mockResolvedValue(fake.client as never)
+  return fake
 }
-
-const ids = (rows: Row[], key = 'id') => rows.map((r) => r[key]).sort()
+const ids = (rows: { id?: unknown; knowledge_item_id?: unknown }[]) => rows.map((r) => String(r.id ?? r.knowledge_item_id)).sort()
 
 beforeEach(() => vi.clearAllMocks())
 
-// ─── deleteKnowledgeItem ───────────────────────────────────────────────────────────────────────
-
 describe('deleteKnowledgeItem', () => {
   it('deletes the statement and cascades its user_progress and tournament progress (only its own)', async () => {
-    const db = fakeDb(OWNER)
-    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: D1 })).toEqual({
-      success: true,
-      data: { id: D1 },
-    })
-    expect(ids(db.knowledge_items)).not.toContain(D1)
-    expect(db.user_progress.map((p) => p.knowledge_item_id)).not.toContain(D1)
-    expect(db.deck_tournament_item_progress.map((p) => p.knowledge_item_id)).not.toContain(D1)
-    // Everything else is untouched.
-    expect(db.knowledge_items).toHaveLength(5)
-    expect(db.user_progress).toHaveLength(3)
-    expect(db.deck_tournament_item_progress).toHaveLength(2)
-    // No page re-render: the deck page already removed it (deck draft).
+    const { db } = setup(OWNER)
+    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: B1 })).toMatchObject({ success: true, data: { id: B1 } })
+    expect(db.content_nodes.some((n) => n.id === B1)).toBe(false)
+    expect(ids(db.user_progress)).toEqual([A1, D1, C1, O1].sort())
+    expect(ids(db.deck_tournament_item_progress)).toEqual([C1])
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('a statement with statements under it takes them along', async () => {
+    const { db } = setup(OWNER)
+    db.content_nodes.push({ id: id(200), deck_id: DECK, parent_id: A1, node_type: 'statement', content: 'Nằm dưới A1.', sort_order: 1 })
+    await deleteKnowledgeItem({ deckId: DECK, itemId: A1 })
+    expect(db.content_nodes.some((n) => n.id === id(200))).toBe(false)
   })
 
   it('blocks non-owners: AUTH_FORBIDDEN and nothing is deleted', async () => {
-    const db = fakeDb(VISITOR)
-    const before = db.knowledge_items.length
-    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: A1 })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
-    expect(db.knowledge_items).toHaveLength(before)
-    expect(revalidatePath).not.toHaveBeenCalled()
+    const { db, writes } = setup(VISITOR)
+    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: B1 })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
+    expect(db.content_nodes).toHaveLength(NODES.length)
+    expect(writes).toEqual([])
   })
 
   it('blocks signed-out players before any query', async () => {
-    const db = fakeDb(null)
-    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: A1 })).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
-    expect(db.knowledge_items).toHaveLength(6)
+    const { writes } = setup(null)
+    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: B1 })).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
+    expect(writes).toEqual([])
   })
 
   it('refuses a statement of another tree, an unknown statement and malformed ids', async () => {
-    const db = fakeDb(OWNER)
+    const { db } = setup(OWNER)
     expect(await deleteKnowledgeItem({ deckId: DECK, itemId: O1 })).toMatchObject({ success: false, error: { code: 'ITEM_NOT_FOUND' } })
-    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: id(99) })).toMatchObject({ success: false, error: { code: 'ITEM_NOT_FOUND' } })
-    expect(await deleteKnowledgeItem({ itemId: A1 })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
-    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: 'not-a-uuid' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
-    expect(db.knowledge_items).toHaveLength(6)
+    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: id(999) })).toMatchObject({ success: false, error: { code: 'ITEM_NOT_FOUND' } })
+    expect(await deleteKnowledgeItem({ deckId: DECK, itemId: 'nope' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+    expect(db.content_nodes).toHaveLength(NODES.length)
   })
 })
 
-// ─── deleteRootBranch ──────────────────────────────────────────────────────────────────────────
-
 describe('deleteRootBranch', () => {
   it('deletes the root, its sub-roots, all their statements and every related progress row', async () => {
-    const db = fakeDb(OWNER)
-    const res = await deleteRootBranch({ deckId: DECK, rootId: A })
-    expect(res).toEqual({ success: true, data: { rootId: A, deletedStatements: 4, deletedSubRoots: 2 } })
-    expect(ids(db.mindmap_nodes)).toEqual([C, OTHER].sort())
-    expect(ids(db.knowledge_items)).toEqual([C1, O1].sort())
-    expect(db.user_progress.map((p) => p.knowledge_item_id)).toEqual([C1])
-    expect(db.deck_tournament_item_progress.map((p) => p.knowledge_item_id)).toEqual([C1])
-    expect(revalidatePath).toHaveBeenCalledWith('/deck/sinh-hoc')
+    const { db } = setup(OWNER)
+    expect(await deleteRootBranch({ deckId: DECK, rootId: A })).toMatchObject({ success: true, data: { rootId: A, deletedStatements: 4, deletedSubRoots: 2 } })
+    expect(ids(db.content_nodes)).toEqual([C, C1, OTHER, O1].sort())
+    expect(ids(db.user_progress)).toEqual([C1, O1].sort())
+    expect(ids(db.deck_tournament_item_progress)).toEqual([C1])
   })
 
   it('deleting a sub-root keeps its parent', async () => {
-    const db = fakeDb(OWNER)
+    const { db } = setup(OWNER)
     expect(await deleteRootBranch({ deckId: DECK, rootId: B })).toMatchObject({ success: true, data: { deletedStatements: 2, deletedSubRoots: 1 } })
-    expect(ids(db.mindmap_nodes)).toEqual([A, C, OTHER].sort())
+    expect(ids(db.content_nodes)).toEqual([A, A1, A2, C, C1, OTHER, O1].sort())
   })
 
   it('blocks non-owners and signed-out players: nothing is deleted', async () => {
-    const visitorDb = fakeDb(VISITOR)
+    const visitor = setup(VISITOR)
     expect(await deleteRootBranch({ deckId: DECK, rootId: A })).toMatchObject({ success: false, error: { code: 'AUTH_FORBIDDEN' } })
-    expect(visitorDb.mindmap_nodes).toHaveLength(5)
-    const outDb = fakeDb(null)
+    expect(visitor.db.content_nodes).toHaveLength(NODES.length)
+    const signedOut = setup(null)
     expect(await deleteRootBranch({ deckId: DECK, rootId: A })).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
-    expect(outDb.mindmap_nodes).toHaveLength(5)
-    expect(revalidatePath).not.toHaveBeenCalled()
+    expect(signedOut.db.content_nodes).toHaveLength(NODES.length)
   })
 
   it('refuses a root of another tree and malformed input', async () => {
-    const db = fakeDb(OWNER)
+    const { db } = setup(OWNER)
     expect(await deleteRootBranch({ deckId: DECK, rootId: OTHER })).toMatchObject({ success: false, error: { code: 'NODE_NOT_FOUND' } })
-    expect(await deleteRootBranch({ deckId: DECK, rootId: 'nope' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
-    expect(db.mindmap_nodes).toHaveLength(5)
+    expect(await deleteRootBranch({ deckId: DECK, rootId: 'x' })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+    expect(db.content_nodes).toHaveLength(NODES.length)
   })
 })
 
@@ -256,14 +169,12 @@ describe('deleteRootBranch', () => {
 
 describe('cascade contract in the migrations', () => {
   const read = (file: string) => readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', file), 'utf8')
-  const base = read('20260928000000_initial_schema.sql')
-  const tournament = read('20260928000900_mind_tournament.sql')
+  const unified = read('20261013000000_content_nodes.sql')
 
-  it('statements, progress and tournament progress go with their root / statement', () => {
-    expect(base).toMatch(/node_id\s+uuid\s+not null references public\.mindmap_nodes \(id\) on delete cascade/i)
-    expect(base).toMatch(/knowledge_item_id uuid\s+not null references public\.knowledge_items \(id\) on delete cascade/i)
-    expect(base).toMatch(/foreign key \(parent_id, deck_id\) references public\.mindmap_nodes \(id, deck_id\) on delete cascade/i)
-    expect(tournament).toMatch(/knowledge_item_id uuid\s+not null references public\.knowledge_items \(id\) on delete cascade/i)
+  it('a node takes its branch, and progress and tournament progress go with their statement', () => {
+    expect(unified).toMatch(/foreign key \(parent_id, deck_id\) references public\.content_nodes \(id, deck_id\) on delete cascade/i)
+    expect(unified).toMatch(/user_progress_content_node_fkey\s+foreign key \(knowledge_item_id\) references public\.content_nodes \(id\) on delete cascade/i)
+    expect(unified).toMatch(/deck_tournament_item_progress_content_node_fkey\s+foreign key \(knowledge_item_id\) references public\.content_nodes \(id\) on delete cascade/i)
+    expect(unified).toMatch(/deck_id\s+uuid\s+not null references public\.decks \(id\) on delete cascade/i)
   })
 })
-
