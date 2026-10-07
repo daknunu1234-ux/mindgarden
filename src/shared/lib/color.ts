@@ -21,5 +21,14 @@ export function mix(a: string, b: string, t: number): string {
   return toHex([ca[0] + (cb[0] - ca[0]) * k, ca[1] + (cb[1] - ca[1]) * k, ca[2] + (cb[2] - ca[2]) * k])
 }
 
+// More saturated: each channel pushed away from the colour's grey (k > 1 punchier, k < 1 duller),
+// clamped. Greys stay grey. Invalid input returns it unchanged.
+export function vivid(hex: string, k = 1.2): string {
+  const c = parse(hex)
+  if (!c) return hex
+  const grey = (c[0] + c[1] + c[2]) / 3
+  return toHex([grey + (c[0] - grey) * k, grey + (c[1] - grey) * k, grey + (c[2] - grey) * k])
+}
+
 // amount > 0 lightens toward white, < 0 darkens toward black (−1 … 1).
 export const shade = (hex: string, amount: number): string => (amount >= 0 ? mix(hex, '#ffffff', amount) : mix(hex, '#000000', -amount))

@@ -183,6 +183,25 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 - **Grand Windmill**: the Large Windmill is now a 2×2 stone tower (60 🪙) powering a **6×6** area
   (migration 27; ones already standing shrink to 2×2).
 
+### Vivid casual-game look
+
+- The island's buildings are brighter and punchier: saturated colours, warm sunlit faces, deep indigo
+  shadows (never grey), crisp bevel highlights on edges and ridges, and a soft shadow under each
+  building's footprint.
+- New details: flower planters and lanterns on the Small Windmill; cobblestones, amber windows, brass
+  cogs and red-and-white striped sails on the Grand Windmill; a cobalt tin roof and a saw throwing
+  sawdust sparks at the Furniture Factory; gumdrops, a lollipop, a candy-cane chimney and magenta candies
+  at the Candy Factory; water ripples, diagonal hazard curbs, bright containers and a ship's wake at the
+  Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
+  ribbons and gold coins.
+
+### Rendered building sprites
+
+- The Small Windmill, Candy Factory and Furniture Factory now show detailed rendered artwork (static
+  images, no animation), anchored on their 2×2 tiles; an unpowered factory looks muted.
+- `npm run sprites` prepares the images from `raw-assets/structures/*.png` (outside `public/`) (removes the baked-in checkerboard and
+  watermark, crops, and shrinks each from 6–7 MB to about 100 KB WebP).
+
 ### Fruit, candy and the railway
 
 - **Harvesting gives fruit**: tapping 🍎 over a ripe tree adds 2 🍎 to the island (no more coins); the
@@ -851,7 +870,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): restyle island buildings into 3D low-poly faceted aesthetic and resize Grand Windmill to 2x2 (migration 27). Also carries: power grid with windmills, Furniture Factory and coastal Seaport, Farmer's House and Woodshop retired (migration 25); fruit harvests, Candy Factory, Railroad Track (1 🪙) and Freight Train, candy exported by train for 15 🪙 a box (migration 26) |
+| (pending) | feat(garden): integrate optimized 3D low-poly WebP sprites for Small Windmill and factories (`BuildingImage`, WebP made by `npm run sprites` from `raw-assets/structures/*.png`, anchored on the 2×2 footprint, unpowered factories muted). Also carries: vivid casual-game look for island buildings: saturated lighting with warm highlights and indigo shadows (`vivid`, `lit`), bevel highlights, footprint shadows, new props and details (planters, lanterns, brass cogs, striped sails, sawdust sparks, gumdrops, ripples, ship wake, ribboned candy crates) |
+| fb5953c | feat(garden): restyle island buildings into 3D low-poly faceted aesthetic and resize Grand Windmill to 2x2 (migration 27). Also carries: power grid with windmills, Furniture Factory and coastal Seaport, Farmer's House and Woodshop retired (migration 25); fruit harvests, Candy Factory, Railroad Track (1 🪙) and Freight Train, candy exported by train for 15 🪙 a box (migration 26) |
 | `dc04f9e` | feat(garden): auto-glide and focus camera on planted trees upon initial load. Also carries: buy a seed in the Shop → place it (open tiles glow) → name it → its Workshop opens on the first root; ✏️ rename trees inline (`renameDeck`); only 💧 / 🍎 icons over trees, resting on each species' crown tip; perf (Workshop rows memoized, farm dialogs lazy after idle, island animations paused when hidden or behind a dialog; happy-dom); a wider Tree Workshop column |
 | `bf7a8e6` | feat(decks): unified `content_nodes` (roots + statements in one hierarchy, `node_type`), practice = every statement node, Enter / Tab / Shift+Tab / Alt in place on one outline (`lib/contentTree.ts` + `indent_content_node()`), compact "⌨️ Shortcuts" panel; tree connector lines (│ through-lines, ├ / └ elbows, stems) in the Workshop outline; migrations 23–24 |
 | `15ab043` | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
@@ -902,7 +922,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 103 files, 1011 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 104 files, 1021 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

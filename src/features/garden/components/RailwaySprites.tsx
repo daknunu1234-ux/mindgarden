@@ -1,11 +1,31 @@
-// The railway as 3D low-poly miniatures (lowPolyKit; pure markup, no hooks): track tiles in the ground
-// layer (gravel ballast, timber ties, steel rails) that join the tracks beside them in straights,
-// curves and junctions; the Freight Train standing on its three tiles (a retro steam locomotive with a
-// dark boiler, gold bands, a red cab and a cowcatcher, puffing smoke, and hopper wagons of covered
-// candy crates); and the small train that runs a linked route (FarmIsometricGrid TrainRun).
+// The railway as vivid 3D low-poly miniatures (lowPolyKit; pure markup, no hooks): track tiles in the
+// ground layer (light-grey gravel ballast, mahogany ties, dark iron rails with a polished running
+// surface) that join the tracks beside them in straights, curves and junctions; the Freight Train
+// standing on its three tiles (a retro steam locomotive with a gloss obsidian body, glowing brass bands
+// and lantern, a bright-red cowcatcher and voluminous cartoon smoke, and wagons of candy crates tied
+// with ribbons and stamped with gold coins); and the small train that runs a linked route
+// (FarmIsometricGrid TrainRun).
 import { memo } from 'react'
 import { TILE_H, TILE_W, tileToScreen, type Links } from '../lib/farmGrid'
-import { Contact, Cylinder, Face, IsoBox, lit, type Pt } from './lowPolyKit'
+import { Bevel, Contact, Cylinder, Face, IsoBox, lit, type Pt } from './lowPolyKit'
+
+// The railway palette.
+export const RAIL_COLORS = {
+  gravel: '#cfd2da',
+  gravelCrown: '#e6e8ee',
+  tie: '#7c2814',
+  tieShadow: '#3f1208',
+  iron: '#2a2e3a',
+  railTop: '#d5dde8',
+  obsidian: '#16181f',
+  brass: '#f2b62a',
+  red: '#ff2433',
+  lantern: '#ffd45c',
+  wagon: '#8c3412',
+  crate: '#ff4fa3',
+  ribbon: '#ffffff',
+  coin: '#ffc61a',
+} as const
 
 // Half a tile towards each side, on screen (north = y − 1, east = x + 1, south = y + 1, west = x − 1).
 const ARM: Record<keyof Links, Pt> = {
@@ -42,24 +62,26 @@ const Tie = ({ at, dir }: { at: Pt; dir: Pt }) => {
   const [ax, ay] = dir
   const w = GAUGE + 4
   const t = 2.6
+  const corners: Pt[] = [
+    [at[0] - ax * w - ay * t, at[1] - ay * w + ax * t],
+    [at[0] + ax * w - ay * t, at[1] + ay * w + ax * t],
+    [at[0] + ax * w + ay * t, at[1] + ay * w - ax * t],
+    [at[0] - ax * w + ay * t, at[1] - ay * w - ax * t],
+  ]
+  // A deep shadow under the tie, then the mahogany tie itself.
   return (
-    <Face
-      at={[
-        [at[0] - ax * w - ay * t, at[1] - ay * w + ax * t],
-        [at[0] + ax * w - ay * t, at[1] + ay * w + ax * t],
-        [at[0] + ax * w + ay * t, at[1] + ay * w - ax * t],
-        [at[0] - ax * w + ay * t, at[1] - ay * w - ax * t],
-      ]}
-      fill="#7a4a22"
-    />
+    <g>
+      <Face at={corners.map(([x, y]) => [x, y + 1.4] as Pt)} fill={RAIL_COLORS.tieShadow} />
+      <Face at={corners} fill={RAIL_COLORS.tie} />
+    </g>
   )
 }
 
-// One rail: a dark web with a bright running surface.
+// One rail: a dark iron web with a polished running surface.
 const Rail = ({ d }: { d: string }) => (
   <g>
-    <path d={d} fill="none" stroke="#475569" strokeWidth={2.6} strokeLinecap="round" />
-    <path d={d} fill="none" stroke="#e2e8f0" strokeWidth={1.1} strokeLinecap="round" transform="translate(0 -0.8)" />
+    <path d={d} fill="none" stroke={RAIL_COLORS.iron} strokeWidth={2.8} strokeLinecap="round" />
+    <path d={d} fill="none" stroke={RAIL_COLORS.railTop} strokeWidth={1.1} strokeLinecap="round" transform="translate(0 -0.8)" />
   </g>
 )
 
@@ -71,8 +93,8 @@ export function TrackTile({ links }: { links: Links }) {
   return (
     <g data-track-arms={arms.join(' ')} data-track-shape={shape}>
       {/* Ballast: a slim gravel bed with a lighter crown and a few stones. */}
-      <Face at={[[0, -TILE_H / 2 + 7], [TILE_W / 2 - 12, 0], [0, TILE_H / 2 - 7], [-TILE_W / 2 + 12, 0]]} fill="#9c958c" opacity={0.9} />
-      <Face at={[[0, -TILE_H / 2 + 12], [TILE_W / 2 - 22, 0], [0, TILE_H / 2 - 12], [-TILE_W / 2 + 22, 0]]} fill="#b8b1a7" opacity={0.85} />
+      <Face at={[[0, -TILE_H / 2 + 7], [TILE_W / 2 - 12, 0], [0, TILE_H / 2 - 7], [-TILE_W / 2 + 12, 0]]} fill={RAIL_COLORS.gravel} opacity={0.95} />
+      <Face at={[[0, -TILE_H / 2 + 12], [TILE_W / 2 - 22, 0], [0, TILE_H / 2 - 12], [-TILE_W / 2 + 22, 0]]} fill={RAIL_COLORS.gravelCrown} opacity={0.9} />
       {[
         [-14, -3],
         [10, 6],
@@ -80,7 +102,7 @@ export function TrackTile({ links }: { links: Links }) {
         [-6, 9],
         [4, -10],
       ].map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r={1.3} fill={i % 2 ? '#78716c' : '#d6d3d1'} />
+        <circle key={i} cx={x} cy={y} r={1.3} fill={i % 2 ? '#8b8fa0' : '#f6f7fa'} />
       ))}
       {shape === 'curve' ? <Curve a={arms[0]} b={arms[1]} /> : arms.map((arm) => <StraightArm key={arm} arm={arm} />)}
     </g>
@@ -157,26 +179,32 @@ export const RailNetwork = memo(RailNetworkImpl)
 const STEP: Pt = [-TILE_W / 2, TILE_H / 2]
 const along = (k: number, at: Pt = [0, 0]): Pt => [at[0] + STEP[0] * k, at[1] + STEP[1] * k]
 
-// Faceted puffy smoke over a stack (`.mg-smoke` puffs, off for reduced motion).
-function Smoke({ at }: { at: Pt }) {
+// Voluminous cartoon smoke over a stack: billowing clouds of round puffs with a shaded underside and a
+// sunlit top (`.mg-smoke`, off for reduced motion).
+function Smoke({ at, scale = 1 }: { at: Pt; scale?: number }) {
+  const s = scale
   return (
     <g transform={`translate(${at[0]} ${at[1]})`} data-train-smoke="">
-      {[0, 0.9, 1.8].map((delay, i) => (
-        <polygon
-          key={delay}
-          points="-6,0 -3,-5 3,-6 7,-1 4,5 -3,5"
-          fill={i === 1 ? '#f1f5f9' : '#e2e8f0'}
-          className="mg-smoke"
-          transform={`translate(${i * 3} ${-i * 4})`}
-          style={{ animationDelay: `${delay}s`, transformBox: 'fill-box', transformOrigin: 'center' }}
-        />
+      {[0, 0.8, 1.6, 2.4].map((delay, i) => (
+        // The offset sits on an outer group: the animation's transform would replace it on the same one.
+        <g key={delay} transform={`translate(${i * 3 * s} ${-i * 5 * s})`}>
+          <g className="mg-smoke" style={{ animationDelay: `${delay}s`, transformBox: 'fill-box', transformOrigin: 'center' }}>
+            <circle cx={-5 * s} cy={1 * s} r={5 * s} fill="#c9cfdc" />
+            <circle cx={5 * s} cy={1 * s} r={4.6 * s} fill="#c9cfdc" />
+            <circle cx={-4 * s} cy={-2 * s} r={5.4 * s} fill="#f4f6fb" />
+            <circle cx={4 * s} cy={-2.4 * s} r={5 * s} fill="#f4f6fb" />
+            <circle cx={0} cy={-6 * s} r={6.6 * s} fill="#ffffff" />
+            <circle cx={-2.4 * s} cy={-8.6 * s} r={2.2 * s} fill="#ffffff" opacity={0.9} />
+          </g>
+        </g>
       ))}
     </g>
   )
 }
 
-// The locomotive around `at`, nose towards the viewer (+y): a dark boiler with gold bands, a
-// smokestack, a red cab at the back, a cowcatcher at the front and red driving wheels.
+// The locomotive around `at`, nose towards the viewer (+y): a gloss obsidian boiler with glowing brass
+// bands, a smokestack, an obsidian cab with a red roof, a bright-red cowcatcher, a brass lantern
+// glowing at the nose and red driving wheels.
 function Locomotive({ at, scale = 1 }: { at: Pt; scale?: number }) {
   const s = scale
   const nose = along(0.42 * s, at)
@@ -188,50 +216,78 @@ function Locomotive({ at, scale = 1 }: { at: Pt; scale?: number }) {
         const w = add(along(k * s, at), [9 * s, 6 * s])
         return (
           <g key={k}>
-            <circle cx={w[0]} cy={w[1]} r={6 * s} fill="#991b1b" />
-            <circle cx={w[0]} cy={w[1]} r={2.2 * s} fill="#fbbf24" />
+            <circle cx={w[0]} cy={w[1]} r={6 * s} fill={RAIL_COLORS.red} />
+            <circle cx={w[0]} cy={w[1]} r={4.4 * s} fill={lit(RAIL_COLORS.red, 0.5)} />
+            <circle cx={w[0]} cy={w[1]} r={2.2 * s} fill={RAIL_COLORS.brass} />
           </g>
         )
       })}
       {/* Running board, boiler and its gold bands. */}
-      <IsoBox at={at} a={10 * s} b={30 * s} h={6 * s} color="#1f2937" />
-      <IsoBox at={add(along(0.12 * s, at), [0, -6 * s])} a={8 * s} b={20 * s} h={13 * s} color="#2b2f36" />
+      <IsoBox at={at} a={10 * s} b={30 * s} h={6 * s} color="#262a35" />
+      <IsoBox at={add(along(0.12 * s, at), [0, -6 * s])} a={8 * s} b={20 * s} h={13 * s} color={RAIL_COLORS.obsidian} top="#4a5068" />
+      {/* Gloss: a bright streak along the boiler's lit flank. */}
+      <Bevel from={add(along(-0.06 * s, at), [-10 * s, -15 * s])} to={add(along(0.3 * s, at), [-10 * s, -15 * s])} width={1.6 * s} opacity={0.55} />
       {[-0.08, 0.12, 0.32].map((k) => (
-        <IsoBox key={k} at={add(along(k * s, at), [0, -6 * s])} a={8.6 * s} b={1.4 * s} h={13.6 * s} color="#d4a017" />
+        <IsoBox key={k} at={add(along(k * s, at), [0, -6 * s])} a={8.6 * s} b={1.4 * s} h={13.6 * s} color={RAIL_COLORS.brass} />
       ))}
       {/* Smokestack and dome. */}
-      <Cylinder at={add(along(0.3 * s, at), [0, -19 * s])} rx={3.6 * s} ry={1.8 * s} h={11 * s} facets={8} color="#111827" />
-      <Cylinder at={add(along(0.3 * s, at), [0, -30 * s])} rx={5.4 * s} ry={2.7 * s} h={3 * s} facets={8} color="#d4a017" />
-      <Cylinder at={add(along(0.05 * s, at), [0, -19 * s])} rx={3.4 * s} ry={1.7 * s} h={4 * s} facets={8} color="#d4a017" />
-      {/* Red cab with a dark roof and a window. */}
-      <IsoBox at={add(back, [0, -6 * s])} a={10 * s} b={9 * s} h={20 * s} color="#b91c1c" />
-      <IsoBox at={add(back, [0, -26 * s])} a={11.5 * s} b={10.5 * s} h={3 * s} color="#111827" />
-      <Face at={[add(back, [4 * s, -20 * s]), add(back, [12 * s, -16 * s]), add(back, [12 * s, -10 * s]), add(back, [4 * s, -14 * s])]} fill="#fde68a" />
-      {/* Cowcatcher: a gold-and-red wedge at the nose. */}
-      <Face at={[add(nose, [-10 * s, -2 * s]), add(nose, [10 * s, 8 * s]), add(nose, [-6 * s, 12 * s])]} fill="#b91c1c" />
-      <Face at={[add(nose, [-10 * s, -2 * s]), add(nose, [-6 * s, 12 * s]), add(nose, [-14 * s, 6 * s])]} fill={lit('#d4a017', -0.5)} />
-      <Smoke at={add(along(0.3 * s, at), [0, -36 * s])} />
+      <Cylinder at={add(along(0.3 * s, at), [0, -19 * s])} rx={3.6 * s} ry={1.8 * s} h={11 * s} facets={8} color={RAIL_COLORS.obsidian} />
+      <Cylinder at={add(along(0.3 * s, at), [0, -30 * s])} rx={5.4 * s} ry={2.7 * s} h={3 * s} facets={8} color={RAIL_COLORS.brass} />
+      <Cylinder at={add(along(0.05 * s, at), [0, -19 * s])} rx={3.4 * s} ry={1.7 * s} h={4 * s} facets={8} color={RAIL_COLORS.brass} />
+      {/* Obsidian cab with a red roof and a lit window. */}
+      <IsoBox at={add(back, [0, -6 * s])} a={10 * s} b={9 * s} h={20 * s} color={RAIL_COLORS.obsidian} top="#4a5068" />
+      <IsoBox at={add(back, [0, -26 * s])} a={11.5 * s} b={10.5 * s} h={3 * s} color={RAIL_COLORS.red} />
+      <Face at={[add(back, [4 * s, -20 * s]), add(back, [12 * s, -16 * s]), add(back, [12 * s, -10 * s]), add(back, [4 * s, -14 * s])]} fill={RAIL_COLORS.lantern} />
+      {/* Cowcatcher: a bright-red wedge at the nose. */}
+      <Face at={[add(nose, [-10 * s, -2 * s]), add(nose, [10 * s, 8 * s]), add(nose, [-6 * s, 12 * s])]} fill={RAIL_COLORS.red} />
+      <Face at={[add(nose, [-10 * s, -2 * s]), add(nose, [-6 * s, 12 * s]), add(nose, [-14 * s, 6 * s])]} fill={lit(RAIL_COLORS.red, -0.5)} />
+      {/* The brass lantern on the smokebox, glowing. */}
+      <g data-part="lantern">
+        <circle cx={nose[0] - 2 * s} cy={nose[1] - 14 * s} r={8 * s} fill={RAIL_COLORS.lantern} opacity={0.3} />
+        <circle cx={nose[0] - 2 * s} cy={nose[1] - 14 * s} r={3.4 * s} fill={RAIL_COLORS.brass} />
+        <circle cx={nose[0] - 2.6 * s} cy={nose[1] - 14.4 * s} r={2.2 * s} fill="#fff6c8" />
+      </g>
+      <Smoke at={add(along(0.3 * s, at), [0, -36 * s])} scale={s} />
     </g>
   )
 }
 
-// An open hopper wagon of covered candy crates around `at`.
+// An open wagon of candy crates around `at`: each crate tied with a white ribbon and a bow on top, and
+// stamped with a gold coin.
 function Wagon({ at, scale = 1 }: { at: Pt; scale?: number }) {
   const s = scale
   return (
     <g data-wagon="">
       {[-0.22, 0.22].map((k) => {
         const w = add(along(k * s, at), [9 * s, 6 * s])
-        return <circle key={k} cx={w[0]} cy={w[1]} r={5 * s} fill="#1f2937" />
+        return (
+          <g key={k}>
+            <circle cx={w[0]} cy={w[1]} r={5 * s} fill="#1e2230" />
+            <circle cx={w[0]} cy={w[1]} r={1.8 * s} fill={RAIL_COLORS.brass} />
+          </g>
+        )
       })}
-      <IsoBox at={at} a={10 * s} b={26 * s} h={12 * s} color="#6b4423" top="#3b2412" />
-      {/* Covered candy crates: pink with a white ribbon. */}
-      {[-0.13, 0.13].map((k) => (
-        <g key={k}>
-          <IsoBox at={add(along(k * s, at), [0, -12 * s])} a={7 * s} b={9 * s} h={8 * s} color="#f472b6" />
-          <IsoBox at={add(along(k * s, at), [0, -12 * s])} a={7.4 * s} b={1.2 * s} h={8.4 * s} color="#ffffff" />
-        </g>
-      ))}
+      <IsoBox at={at} a={10 * s} b={26 * s} h={12 * s} color={RAIL_COLORS.wagon} top="#3d1206" />
+      <IsoBox at={add(at, [0, -11 * s])} a={10.6 * s} b={26.6 * s} h={1.6 * s} color={RAIL_COLORS.brass} />
+      {[-0.13, 0.13].map((k) => {
+        const c = add(along(k * s, at), [0, -12 * s])
+        // The crate's lit front face: from its west corner (−16, −2) to its south corner (−2, 8), × s.
+        const coin = add(c, [-9 * s, -1 * s])
+        return (
+          <g key={k} data-part="crate">
+            <IsoBox at={c} a={7 * s} b={9 * s} h={8 * s} color={RAIL_COLORS.crate} />
+            <IsoBox at={c} a={7.4 * s} b={1.2 * s} h={8.4 * s} color={RAIL_COLORS.ribbon} />
+            {/* The bow on top. */}
+            <Face at={[add(c, [0, -9 * s]), add(c, [-5 * s, -12 * s]), add(c, [-5 * s, -8 * s])]} fill={RAIL_COLORS.ribbon} />
+            <Face at={[add(c, [0, -9 * s]), add(c, [5 * s, -12 * s]), add(c, [5 * s, -7 * s])]} fill="#e7e2f0" />
+            {/* A gold coin emblem. */}
+            <g data-part="coin">
+              <circle cx={coin[0]} cy={coin[1]} r={2.8 * s} fill={RAIL_COLORS.coin} />
+              <circle cx={coin[0]} cy={coin[1]} r={1.5 * s} fill="#fff1a0" />
+            </g>
+          </g>
+        )
+      })}
     </g>
   )
 }

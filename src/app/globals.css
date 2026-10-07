@@ -236,6 +236,30 @@
   .mg-ship { animation: mg-ship 36s ease-in-out infinite; }
 }
 
+/* A static building sprite (garden BuildingImages.tsx) without power: muted, so it reads as idle. */
+.mg-unpowered { filter: saturate(0.45) brightness(0.82); }
+
+/* Vivid building details: sawdust sparks fly off a running saw (along --mg-dx/--mg-dy), azure ripples
+   swell round the seaport's pilings, and foam rings trail the freighter. Transform and opacity only,
+   so they stay cheap; hidden for reduced motion, paused with the farm (`.mg-paused`). */
+@keyframes mg-spark {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate(var(--mg-dx, -12px), var(--mg-dy, -12px)) scale(0.4); opacity: 0; }
+}
+@keyframes mg-wave {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-spark { animation: mg-spark 1.5s ease-out infinite both; }
+  .mg-wave { animation: mg-wave 2.7s ease-out infinite both; }
+  .mg-wake { animation: mg-wave 1.8s ease-out infinite both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-spark, .mg-wake { display: none; }
+}
+
 /* Farm animals: a cow ambles around its tile, a pig snuffles and wiggles (off for reduced motion). */
 @keyframes mg-wander {
   0%, 100% { transform: translate(0, 0) scaleX(1); }

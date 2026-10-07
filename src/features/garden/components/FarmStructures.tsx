@@ -6,7 +6,8 @@ import { memo, type CSSProperties, type ReactNode } from 'react'
 import type { CatalogItem } from '../lib/farmCatalog'
 import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
 import { streamShapes, type StreamLayer } from '../lib/streamTiles'
-import { FactorySprite, SeaportSprite, WindmillSprite, type Shore } from './PowerBuildings'
+import { BuildingImage } from './BuildingImages'
+import { SeaportSprite, WindmillSprite, type Shore } from './PowerBuildings'
 import { TrackTile, TrainSprite } from './RailwaySprites'
 import { Blossom, facetedVolume, rampColor } from './treeKit'
 
@@ -604,13 +605,13 @@ export function ItemDrawing({
 }) {
   switch (item.itemType) {
     case 'windmill_small':
-      return <WindmillSprite size="small" />
+      return <BuildingImage kind="windmill_small" />
     case 'windmill_large':
       return <WindmillSprite size="large" />
     case 'furniture_factory':
-      return <FactorySprite powered={powered} />
+      return <BuildingImage kind="furniture_factory" powered={powered} />
     case 'candy_factory':
-      return <FactorySprite powered={powered} kind="candy" />
+      return <BuildingImage kind="candy_factory" powered={powered} />
     case 'freight_train':
       return <TrainSprite />
     case 'rail_track':
