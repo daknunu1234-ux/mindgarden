@@ -9,7 +9,7 @@ export const fruitAfterHarvest = (fruit: number | null): number | null => (fruit
 // A harvest refused by the server: the count goes back to what it was.
 export const fruitAfterRefusal = (before: number | null): number | null => before
 
-// The floating rewards over the Seaport when the train delivers: one "+15 🪙" per candy box, at most
+// The floating rewards over the Seaport when the Delivery Truck delivers: one "+15 🪙" per candy box, at most
 // `max` of them (a big delivery says the total on the last one instead of flooding the screen).
 export function exportRewards(candyShipped: number, max = 4): string[] {
   const n = Math.max(0, Math.floor(candyShipped))

@@ -7,7 +7,6 @@ import { catalogItem } from '../lib/farmCatalog'
 import { vivid } from '@/shared/lib/color'
 import { Cone, Cylinder, DEEP_SHADOW, FootprintShadow, isoCorners, IsoBox, lit } from '../components/lowPolyKit'
 import { BASES, diamond, FactorySprite, PALETTE, SeaportSprite } from '../components/PowerBuildings'
-import { RunningTrain, TrackTile, trackArms, trackShape, TrainSprite } from '../components/RailwaySprites'
 
 // The island's buildings in the 3D low-poly style: the faceted kit, tile bounds, and what each
 // building shows (and animates) in each state.
@@ -156,36 +155,8 @@ describe('the buildings', () => {
     for (const c of [PALETTE.vermilion, PALETTE.royalBlue, PALETTE.emerald]) expect(on).toContain(c)
   })
 
-  it('tracks: straights, curves (Bézier rails) and junctions', () => {
-    expect(trackShape(trackArms({ north: false, east: true, south: false, west: true }))).toBe('straight')
-    expect(trackShape(trackArms({ north: true, east: true, south: false, west: false }))).toBe('curve')
-    expect(trackShape(trackArms({ north: true, east: true, south: true, west: true }))).toBe('junction')
-    const curve = svg(createElement(TrackTile, { links: { north: true, east: true, south: false, west: false } }))
-    expect(curve).toContain('data-track-shape="curve"')
-    expect((curve.match(/d="M [^"]* Q /g) ?? []).length).toBe(4) // two rails, each a web and a running surface
-    const straight = svg(createElement(TrackTile, { links: { north: false, east: false, south: false, west: false } }))
-    expect(straight).toContain('data-track-shape="straight"')
-  })
-
-  it('Freight Train: a steam locomotive (smoking) and two wagons of candy crates; the running one too', () => {
-    const html = svg(createElement(TrainSprite))
-    expect(html).toContain('data-locomotive=""')
-    expect((html.match(/data-wagon=""/g) ?? []).length).toBe(2)
-    expect(html).toContain('data-train-smoke=""')
-    expect(html).toContain('mg-smoke')
-    // Gloss obsidian body, a glowing brass lantern; crates with ribbons and gold coin emblems.
-    expect(html).toContain('data-part="lantern"')
-    expect((html.match(/data-part="crate"/g) ?? []).length).toBe(4)
-    expect((html.match(/data-part="coin"/g) ?? []).length).toBe(4)
-    // Voluminous smoke: every puff is a cluster of blobs.
-    expect((html.match(/<g class="mg-smoke"/g) ?? []).length).toBe(4)
-    const running = renderToStaticMarkup(createElement(RunningTrain))
-    expect(running).toContain('data-locomotive=""')
-    expect(running).toContain('🍬')
-  })
-
   it('the art is English-only and draws no text labels on the buildings', () => {
-    for (const f of ['components/PowerBuildings.tsx', 'components/RailwaySprites.tsx', 'components/lowPolyKit.tsx']) {
+    for (const f of ['components/PowerBuildings.tsx', 'components/RoadSprites.tsx', 'components/lowPolyKit.tsx']) {
       const src = readFileSync(join(__dirname, '..', f), 'utf8')
       expect(src, f).not.toMatch(/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/)
     }

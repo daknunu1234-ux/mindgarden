@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -18,6 +18,7 @@ import {
   type BuildingImageKind,
 } from '../components/BuildingImages'
 import { ItemDrawing } from '../components/FarmStructures'
+import { TRUCK_IMAGE, TruckSprite } from '../components/RoadSprites'
 import { buildingStatus } from '../lib/buildingStatus'
 import { catalogItem, FARM_CATALOG } from '../lib/farmCatalog'
 import type { Pt } from '../components/lowPolyKit'
@@ -183,6 +184,20 @@ describe('PNG building sprites', () => {
       expect(webpSize(file), kind).toEqual(size)
       expect(statSync(file).size, kind).toBeLessThan(200 * 1024)
     }
+  })
+
+  it('the Delivery Truck sprite: real transparency, its configured size, light; drawn on its ground point', () => {
+    const file = join(PUBLIC, TRUCK_IMAGE.href)
+    expect(webpSize(file)).toEqual(TRUCK_IMAGE.size)
+    expect(statSync(file).size).toBeLessThan(80 * 1024)
+    // About a tile and a half long on the farm, its mid-wheelbase on (0, 0).
+    expect(TRUCK_IMAGE.size[0] * TRUCK_IMAGE.scale).toBeGreaterThan(70)
+    expect(TRUCK_IMAGE.size[0] * TRUCK_IMAGE.scale).toBeLessThan(110)
+    const html = svg(createElement(TruckSprite))
+    expect(html).toContain(`href="${TRUCK_IMAGE.href}"`)
+    expect(html).toContain(`y="${-TRUCK_IMAGE.anchor[1] * TRUCK_IMAGE.scale}"`)
+    // No train art is left among the sprites.
+    expect(existsSync(join(__dirname, '..', 'components', 'RailwaySprites.tsx'))).toBe(false)
   })
 
   it('the sprite code is English-only', () => {

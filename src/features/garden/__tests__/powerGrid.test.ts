@@ -30,7 +30,9 @@ const at = (id: string, itemType: Placement['itemType'], x: number, y: number): 
 const migration = (file: string) => readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', file), 'utf8').split('-- Verify')[0]
 const SQL = migration('20261014000000_power_grid.sql')
 // Today's catalogue and settlement: the latest migration that re-created them.
-const LATEST = migration('20261017000000_unified_windmill.sql')
+const LATEST = migration('20261018000000_road_logistics.sql')
+// The one Windmill (its reach, the conversion of Grand Windmills).
+const WINDMILL = migration('20261017000000_unified_windmill.sql')
 
 describe('the catalogue', () => {
   it('sells the power-grid buildings at today’s prices and sizes, and no longer the two retired ones', () => {
@@ -86,11 +88,12 @@ describe('checkIsPowered: the power grid', () => {
   })
 
   it('the database: reach 4, price 60, standing Grand Windmills become Windmills, buying one is refused', () => {
-    expect(LATEST).toMatch(/select case p_item_type when 'windmill_small' then 4 else 0 end;/)
-    expect(LATEST).toMatch(/set item_type = 'windmill_small', width = 2, height = 2\s+where item_type = 'windmill_large';/)
-    expect(LATEST).toMatch(/when 'farmer_house', 'woodshop', 'windmill_large' then raise exception 'ITEM_RETIRED'/)
+    expect(WINDMILL).toMatch(/select case p_item_type when 'windmill_small' then 4 else 0 end;/)
+    expect(WINDMILL).toMatch(/set item_type = 'windmill_small', width = 2, height = 2\s+where item_type = 'windmill_large';/)
+    // Still refused today (with the railway since 20261018000000).
+    expect(LATEST).toMatch(/when 'farmer_house', 'woodshop', 'windmill_large', 'rail_track', 'freight_train' then raise exception 'ITEM_RETIRED'/)
     // The item type check no longer allows it.
-    const check = LATEST.slice(LATEST.indexOf('add constraint garden_placements_item_type_check'), LATEST.indexOf('-- 3.'))
+    const check = LATEST.slice(LATEST.indexOf('add constraint garden_placements_item_type_check'), LATEST.indexOf('drop index'))
     expect(check).toContain("'windmill_small'")
     expect(check).not.toContain('windmill_large')
   })
@@ -199,7 +202,7 @@ describe('the buildings on the island', () => {
   it('the inspector says what each building is doing, its power and its goods', () => {
     const stock = { timber: 12, produce: 3, furniture: 4.25, fruit: 0, candy: 0, candyShipped: 0, candyPayout: 0, payout: 0, totalCoins: 100, lastExportAt: null }
     expect(buildingStatus('furniture_factory', { powered: false, economy: stock })).toMatchObject({ status: 'Paused: Needs Power', tone: 'off' })
-    expect(buildingStatus('furniture_factory', { powered: true, economy: stock })).toMatchObject({ status: '🪑 Making furniture', outputs: [{ value: '4.3' }] })
+    expect(buildingStatus('furniture_factory', { powered: true, economy: stock })).toMatchObject({ status: '🪑 Making furniture', outputs: [{ value: '4.3' }, { label: '🚚 Delivery Truck', value: 'No road yet: build a Road to the Seaport' }] })
     expect(buildingStatus('furniture_factory', { powered: true, economy: { ...stock, timber: 1 } })?.status).toBe('Waiting for timber')
     expect(buildingStatus('seaport', { powered: true, economy: stock })?.status).toBe('Exporting Goods...')
     const now = Date.parse('2026-10-14T10:00:00Z')

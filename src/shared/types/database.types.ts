@@ -502,7 +502,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'road'
           deck_id: string | null
           grid_x: number
           grid_y: number
@@ -514,7 +514,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'road'
           deck_id?: string | null
           grid_x: number
           grid_y: number
@@ -526,7 +526,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
-          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'road'
           deck_id?: string | null
           grid_x?: number
           grid_y?: number
@@ -752,7 +752,7 @@ export type Database = {
         Args: { p_placement_id: string }
         Returns: boolean
       }
-      // Migration 20261015000000: a powered Candy Factory linked to a powered Seaport by track with a train.
+      // Migration 20261018000000: a powered Candy Factory linked to a powered Seaport by a connected road.
       farm_candy_linked: {
         Args: { p_user_id: string }
         Returns: boolean

@@ -40,8 +40,7 @@ const PERKS: Record<CatalogItem['id'], { label: string; tone: PerkTone }> = {
   furniture_factory: { label: 'Needs power', tone: 'wood' },
   seaport: { label: 'Coast · Needs power', tone: 'port' },
   candy_factory: { label: '10 🍎 → 1 🍬', tone: 'animal' },
-  rail_track: { label: '1 🪙 a tile', tone: 'wood' },
-  freight_train: { label: 'Runs on tracks', tone: 'port' },
+  road: { label: '1 🪙 a tile · Auto-joins', tone: 'port' },
   stream: { label: '+20% 🪙 beside', tone: 'stream' },
   fence: { label: 'Auto-joins', tone: 'decor' },
   rockery: { label: 'Decoration', tone: 'decor' },
@@ -62,7 +61,7 @@ const PERK_TONES: Record<PerkTone, string> = {
 // Card header colour per shop tab.
 const HEADERS: Record<Exclude<ShopTab, 'trees'>, string> = {
   structures: 'from-[#fb923c] to-[#c2410c] [--edge:#7c2d12]',
-  railway: 'from-[#94a3b8] to-[#475569] [--edge:#1e293b]',
+  roads: 'from-[#94a3b8] to-[#475569] [--edge:#1e293b]',
   landscape: 'from-[#22d3ee] to-[#0e7490] [--edge:#164e63]',
   decorations: 'from-[#a3e635] to-[#4d7c0f] [--edge:#365314]',
   animals: 'from-[#fb7185] to-[#be123c] [--edge:#881337]',
@@ -122,6 +121,15 @@ function FarmShopModal({ open, onOpenChange, coins, unplacedTrees, onPlantTree, 
                     <ShopCard item={item} header={HEADERS[t.id]} coins={coins} onBuy={() => onBuy(item)} />
                   </li>
                 ))}
+                {t.id === 'roads' && (
+                  <li data-road-logistics="" className="rounded-2xl border-4 border-[#1e293b] bg-white/80 p-3 text-sm font-semibold text-slate-800 shadow-[0_4px_0_#1e293b] sm:col-span-2">
+                    <p className="font-game text-base font-extrabold">🚚 Road Logistics: Delivery Trucks</p>
+                    <p className="mt-1">
+                      Free and automatic: when a Road links a powered Candy Factory or Furniture Factory to a powered Seaport, a Delivery Truck starts
+                      driving goods to the dock. Candy boxes it delivers sell for 15 🪙 each.
+                    </p>
+                  </li>
+                )}
               </ul>
             </GameTabsContent>
           ))}

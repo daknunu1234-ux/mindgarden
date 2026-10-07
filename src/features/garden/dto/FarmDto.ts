@@ -12,7 +12,7 @@ export const PlaceFarmItemDto = z.discriminatedUnion('item', [
   z.object({ item: z.literal('tree'), deckId: z.uuid('Invalid tree'), x: tile, y: tile }),
   // Retired buildings (farmer_house, woodshop) are no longer sold.
   z.object({
-    item: z.enum(['windmill_small', 'furniture_factory', 'candy_factory', 'seaport', 'rail_track', 'freight_train', 'stream', 'fence', 'rockery', 'cow', 'pig']),
+    item: z.enum(['windmill_small', 'furniture_factory', 'candy_factory', 'seaport', 'road', 'stream', 'fence', 'rockery', 'cow', 'pig']),
     x: tile,
     y: tile,
   }),

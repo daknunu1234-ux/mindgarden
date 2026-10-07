@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { cn } from '@/shared/utils/cn'
 import { beachPalms, FARM_WORLD } from '../lib/diorama'
 import { holdMs, pressOutcome, tileAtPoint } from '../lib/dragGesture'
@@ -43,8 +43,8 @@ import {
 } from './FarmStructures'
 import { LABEL_LAYER, PlotButton, PlotLabels, treeSwayPhase } from './FarmTree'
 import { shoreOf } from './PowerBuildings'
-import { RailNetwork, RunningTrain, type TrackCell } from './RailwaySprites'
-import { railLink } from '../lib/railway'
+import { RoadNetwork, TruckRun, type RoadCell } from './RoadSprites'
+import { roadLinks } from '../lib/roads'
 
 export { FARM_WORLD }
 
@@ -241,21 +241,21 @@ function FarmIsometricGridImpl({
       streams: others.filter((p) => p.itemType === 'stream').map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) })),
       // Streams are painted as one network; each tile still gets its own (invisible) button.
       streamHits: placements.filter((p) => p.itemType === 'stream' && p.id !== movingId),
-      // Railroad Track: drawn flat in the ground layer, joined to the tracks beside it; each tile gets
-      // an invisible button like a stream's.
-      tracks: layout
-        .filter((p) => p.itemType === 'rail_track')
-        .map((p): TrackCell => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'rail_track', p) })),
-      trackHits: placements.filter((p) => p.itemType === 'rail_track' && p.id !== movingId),
-      // A Freight Train on a line linking a Candy Factory to the Seaport runs it (lib/railway railLink).
-      link: railLink(placements),
+      // Roads: drawn flat in the ground layer, joined to the roads beside them; each tile gets an
+      // invisible button like a stream's.
+      roads: layout
+        .filter((p) => p.itemType === 'road')
+        .map((p): RoadCell => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'road', p) })),
+      roadHits: placements.filter((p) => p.itemType === 'road' && p.id !== movingId),
+      // A Delivery Truck for every working factory a road links to a working Seaport (lib/roads).
+      deliveries: roadLinks(placements, (p) => powered.get(p.id) !== false),
       trees: trees.map(({ placement, plot }) => {
         const current = treeBuff(placement.x, placement.y, placements)
         const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
         return { placement, plot, animate: animated.has(placement.id), buffs: buffKey(current, next) }
       }),
       items: placements
-        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree' && p.itemType !== 'rail_track')
+        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree' && p.itemType !== 'road')
         .sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
         .map((p) => ({
           placement: p,
@@ -317,7 +317,7 @@ function FarmIsometricGridImpl({
         <IslandBase origin={origin} seed={seed} />
         <TreePlots trees={scene.treeBeds} origin={origin} />
         <StreamNetwork streams={scene.streams} origin={origin} />
-        <RailNetwork tracks={scene.tracks} origin={origin} />
+        <RoadNetwork roads={scene.roads} origin={origin} />
         {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
         {build?.highlightFree && <FreeTileMarks placements={placements} origin={origin} />}
         {build?.itemType === 'seaport' && <CoastMarks placements={placements} movingId={movingId} origin={origin} />}
@@ -338,16 +338,24 @@ function FarmIsometricGridImpl({
             placement={placement}
             links={links}
             powered={powered}
-            // The train out on its run: the parked one isn't drawn (its button stays).
-            running={!build && scene.link?.train.id === placement.id}
             lifted={placement.id === movingId}
             onOpen={onOpenItem}
           />
         ))}
-        {scene.trackHits.map((placement) => (
-          <StreamHit key={placement.id} placement={placement} label="Railroad Track" onOpen={onOpenItem} />
+        {scene.roadHits.map((placement) => (
+          <StreamHit key={placement.id} placement={placement} label="Road" onOpen={onOpenItem} />
         ))}
-        {!build && scene.link && <TrainRun route={scene.link.route} />}
+        {!build &&
+          scene.deliveries.map(({ factory, route }, i) => (
+            <TruckRun
+              key={factory.id}
+              route={route}
+              points={route.map((t) => groundOf({ x: t.x, y: t.y, width: 1, height: 1 }))}
+              // Several trucks leave a few seconds apart.
+              delay={i * 2.5}
+              zIndex={LABEL_LAYER - 2}
+            />
+          ))}
         {scene.streamHits.map((placement) => (
           <StreamHit key={placement.id} placement={placement} onOpen={onOpenItem} />
         ))}
@@ -539,7 +547,6 @@ const FarmItem = memo(function FarmItem({
   placement,
   links,
   powered,
-  running = false,
   lifted,
   onOpen,
 }: {
@@ -547,8 +554,6 @@ const FarmItem = memo(function FarmItem({
   links: string
   // A building that needs power: whether it has it (undefined: needs none).
   powered?: boolean
-  // The Freight Train out on its route (TrainRun draws it): nothing drawn here, the button stays.
-  running?: boolean
   lifted: boolean
   onOpen: (placement: Placement) => void
 }) {
@@ -586,8 +591,7 @@ const FarmItem = memo(function FarmItem({
           {(placement.itemType === 'windmill_small' ||
             placement.itemType === 'furniture_factory' ||
             placement.itemType === 'candy_factory' ||
-            placement.itemType === 'seaport' ||
-            (placement.itemType === 'freight_train' && !running)) && (
+            placement.itemType === 'seaport') && (
             <ItemDrawing item={{ itemType: placement.itemType, variant: null }} powered={powered !== false} shore={shoreOf(placement.y)} />
           )}
         </svg>
@@ -691,30 +695,5 @@ function PowerFields({ fields, focus, origin }: { fields: readonly Footprint[]; 
         ]
       })}
     </g>
-  )
-}
-
-// Seconds the running train spends on each track tile (one way; it runs there and back).
-const TRAIN_SECONDS_PER_TILE = 1.1
-
-// The Freight Train on its line: a small train moving along the route's track tiles, from the Candy
-// Factory's end to the Seaport's and back (CSS offset-path through the tiles' centres,
-// `.mg-train-run`). Off for reduced motion (it waits at the factory end). No pointer events.
-function TrainRun({ route }: { route: readonly { x: number; y: number }[] }) {
-  const points = route.map((t) => groundOf({ x: t.x, y: t.y, width: 1, height: 1 }))
-  // A route of one tile still needs a path: a tiny hop.
-  const path = points.length > 1 ? points : [points[0], { x: points[0].x + 1, y: points[0].y }]
-  const d = path.map((q, i) => `${i === 0 ? 'M' : 'L'} ${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ')
-  const style: CSSProperties & Record<'--mg-dur', string> = {
-    offsetPath: `path('${d}')`,
-    offsetRotate: '0deg',
-    offsetAnchor: '50% 80%',
-    '--mg-dur': `${Math.max(2, route.length * TRAIN_SECONDS_PER_TILE).toFixed(1)}s`,
-    zIndex: LABEL_LAYER - 2,
-  }
-  return (
-    <div aria-hidden data-train-run={route.length} className="mg-train-run pointer-events-none absolute top-0 left-0" style={style}>
-      <RunningTrain />
-    </div>
   )
 }

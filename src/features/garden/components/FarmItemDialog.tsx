@@ -23,15 +23,18 @@ type FarmItemDialogProps = {
   poweredCount?: number
   // The island's stock (owner; null while unknown or for visitors).
   economy?: FarmEconomyView | null
-  // The freight line (Candy Factory → track + Freight Train → Seaport) is complete.
+  // Road logistics (lib/roads roadLinks): a factory's road reaches a working Seaport; the Seaport has
+  // a delivery route; a road tile is on one.
   linked?: boolean
+  // The Seaport: how many Delivery Trucks come to its dock.
+  trucks?: number
 }
 
 // A bought item on the farm: what it is and what it does. The owner can move it to another tile, or
 // pick it up again (it's gone, no refund), which frees its tiles.
-function FarmItemDialog({ placement, isOwner, onClose, onMove, onPickUp, powered, poweredCount, economy = null, linked = false }: FarmItemDialogProps) {
+function FarmItemDialog({ placement, isOwner, onClose, onMove, onPickUp, powered, poweredCount, economy = null, linked = false, trucks = 0 }: FarmItemDialogProps) {
   const entry = placement ? catalogFor(placement.itemType, placement.variant) : undefined
-  const status = placement ? buildingStatus(placement.itemType, { powered, poweredCount, linked, economy: isOwner ? economy : null }) : null
+  const status = placement ? buildingStatus(placement.itemType, { powered, poweredCount, linked, trucks, economy: isOwner ? economy : null }) : null
   return (
     <GameDialog open={placement !== null} onOpenChange={(open) => !open && onClose()}>
       <GameDialogContent title={entry ? `${entry.icon} ${entry.name}` : 'Farm item'} ribbon="wood" tone="parchment">

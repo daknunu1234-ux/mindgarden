@@ -8,7 +8,7 @@ import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint,
 import { streamShapes, type StreamLayer } from '../lib/streamTiles'
 import { BuildingImage, SeaportImage } from './BuildingImages'
 import type { Shore } from './PowerBuildings'
-import { TrackTile, TrainSprite } from './RailwaySprites'
+import { RoadTile } from './RoadSprites'
 import { Blossom, facetedVolume, rampColor } from './treeKit'
 
 type Pt = { x: number; y: number }
@@ -610,11 +610,9 @@ export function ItemDrawing({
       return <BuildingImage kind="furniture_factory" powered={powered} />
     case 'candy_factory':
       return <BuildingImage kind="candy_factory" powered={powered} />
-    case 'freight_train':
-      return <TrainSprite />
-    case 'rail_track':
-      // Flat: one tile of track, centred on (0, 0).
-      return <TrackTile links={links ?? { north: false, east: true, south: false, west: true }} />
+    case 'road':
+      // Flat: one tile of road, centred on (0, 0).
+      return <RoadTile links={links ?? { north: false, east: true, south: false, west: true }} />
     case 'seaport':
       return <SeaportImage shore={shore} powered={powered} />
     case 'farmer_house':

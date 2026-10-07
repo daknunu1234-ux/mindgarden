@@ -23,6 +23,11 @@
 // azure blues, the block's darker sides) counts as background too, and only the ship itself (the
 // biggest piece, with the foam against its hull) is kept, not the loose foam streaks around it.
 //
+// `road` (the delivery truck): the render parks the truck on a painted strip of road; its asphalt
+// (dark warm or blue-tinted greys), the strip's side and the truck's cast shadow count as background
+// too (near-black stays: the tyres), and only the truck itself (the biggest piece) is kept, not the
+// loose lane markings.
+//
 // Run: node scripts/prepare-building-sprites.mjs   (re-run after replacing a source PNG; uses `sharp`,
 // which Next.js installs). Sources with real alpha are passed through untouched apart from the crop.
 import sharp from 'sharp'
@@ -35,6 +40,7 @@ const SOURCES = {
   furniture_factory: {},
   seaport: { flip: true, maxWidth: 960 },
   cargo_ship: { flip: true, water: true, maxWidth: 720 },
+  truck: { road: true, maxWidth: 480 },
 }
 const IN = 'raw-assets/structures'
 const OUT = 'public/assets/sprites'
@@ -47,6 +53,21 @@ const hue = (r, g, b) => {
   const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
   return (h * 60 + 360) % 360
 }
+// Painted road under a vehicle: its asphalt and side (a warm dark grey, red over blue, or the same
+// tinted blue by the light), the cast shadow on it (a distinctly blue dark grey) and its white lane
+// paint. The vehicle's own dark parts (tyres, chassis: near-black, neutral or purplish greys) are not
+// road.
+const isRoad = (r, g, b) => {
+  const l = lum(r, g, b)
+  const s = spread(r, g, b)
+  if (l >= 70 && l <= 125 && s <= 28 && r >= b + 6 && r >= g) return true // warm asphalt
+  if (l >= 80 && l <= 125 && b - r >= 10 && b - r <= 26 && g <= b && r >= g) return true // asphalt in blue light
+  if (l >= 30 && l < 70 && s <= 25 && r >= b + 4) return true // asphalt in the vehicle's shade
+  if (l >= 25 && l < 60 && b - r >= 18 && b - r <= 40 && b - g >= 16) return true // the cast shadow (a muted blue-grey)
+  if (l > 165 && b - r >= 8 && b - r <= 45 && s < 50) return true // lane paint in blue light
+  return l > 205 && s < 20 // lane paint
+}
+
 // Painted sea: cyan to azure, strongly saturated (also the darker sides of a block of it). A white
 // hull in shadow picks up a blue tint from the water but stays much paler, so it is kept.
 const isWater = (r, g, b) => {
@@ -58,7 +79,7 @@ const isWater = (r, g, b) => {
 const spread = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b)
 const lum = (r, g, b) => (r + g + b) / 3
 
-async function prepare(name, { flip = false, water = false, maxWidth = MAX_WIDTH } = {}) {
+async function prepare(name, { flip = false, water = false, road = false, maxWidth = MAX_WIDTH } = {}) {
   const { data, info } = await sharp(join(IN, `${name}.png`)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   const { width: w, height: h } = info
   const px = (i) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]]
@@ -156,6 +177,24 @@ async function prepare(name, { flip = false, water = false, maxWidth = MAX_WIDTH
       return region
     }
     flood(borderIdx, bg)
+    // A vehicle on a painted road: grow the background from what the checker flood cleared into the
+    // road's colours only. The vehicle's dark running gear touches the road, never the checker, so the
+    // checker's shadow rule (any darker grey) can't reach it.
+    if (road) {
+      const stack = []
+      for (let i = 0; i < w * h; i++) if (bg[i]) stack.push(i)
+      while (stack.length) {
+        const i = stack.pop()
+        const x = i % w
+        for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+          if (j < 0 || j >= w * h || bg[j]) continue
+          const [r, g, b] = px(j)
+          if (!isRoad(r, g, b)) continue
+          bg[j] = 1
+          stack.push(j)
+        }
+      }
+    }
     // Enclosed holes (between a crane's beams, behind a chimney): a closed region of background-like
     // pixels counts as background only if it shows the checkerboard: almost all of it on the two
     // tones, both in good measure (shaded metal, like a windmill hub, has every shade in between).
@@ -221,7 +260,7 @@ async function prepare(name, { flip = false, water = false, maxWidth = MAX_WIDTH
   const keep = new Set(
     pieces
       .filter((p) => p.area >= Math.max(400, biggest * 0.002))
-      .filter((p) => !water || p.area === biggest)
+      .filter((p) => !(water || road) || p.area === biggest)
       .filter((p) => p.area === biggest || p.checker < p.area * 0.5)
       .filter((p) => !(p.minX > w * 0.82 && p.minY > h * 0.78))
       .map((p) => p.id),

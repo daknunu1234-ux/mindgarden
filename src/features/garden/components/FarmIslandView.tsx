@@ -31,7 +31,7 @@ import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
 import type { FarmEconomyView } from '../lib/farmEconomy'
 import { firstFreeTile, footprintCenter, overlaps, type Placement } from '../lib/farmGrid'
 import { checkItemPlacement, poweredMap, powerField, requiresPower } from '../lib/powerGrid'
-import { railLink, trackInUse } from '../lib/railway'
+import { roadLinks } from '../lib/roads'
 import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 import { lightingModeClass } from '../lib/dayNight'
 import { exportRewards, fruitAfterHarvest, fruitAfterRefusal } from '../lib/inventory'
@@ -394,14 +394,9 @@ function FarmIslandView({
     })
   }
 
-  // Takes a Shop item off the farm at once. Trees can't be picked up: they are moved or chopped. A
-  // track a train stands on stays (the database refuses it too).
+  // Takes a Shop item off the farm at once. Trees can't be picked up: they are moved or chopped.
   const pickUp = (placement: Placement, message: string, icon: string) => {
     if (isPendingId(placement.id)) return
-    if (trackInUse(farm, placement)) {
-      toast({ message: 'A train stands on that track: move the train first', icon: '🚂', tone: 'amber' })
-      return
-    }
     const key = `op${nextKey.current++}`
     editOps((list) => [...list, { key, kind: 'remove', id: placement.id }])
     toast({ message, icon })
@@ -574,7 +569,7 @@ function FarmIslandView({
         if (res.data.payout > 0) toast({ message: `Cargo ship departed · Exporting Goods +${res.data.payout} 🪙`, icon: '🚢' })
         if (res.data.candyPayout > 0) {
           toast({
-            message: `Freight Train delivered ${res.data.candyShipped} candy ${res.data.candyShipped === 1 ? 'box' : 'boxes'} · +${res.data.candyPayout} 🪙`,
+            message: `Delivery Truck delivered ${res.data.candyShipped} candy ${res.data.candyShipped === 1 ? 'box' : 'boxes'} · +${res.data.candyPayout} 🪙`,
             icon: '🍬',
           })
           showExport(res.data.candyShipped)
@@ -590,13 +585,21 @@ function FarmIslandView({
 
   // The inspected building's power: on / off, and for a windmill how many buildings it powers.
   const inspectedPower = useMemo(() => {
-    if (!selectedItem) return { linked: false, powered: undefined, poweredCount: 0 }
+    if (!selectedItem) return { linked: false, trucks: 0, powered: undefined, poweredCount: 0 }
     const current = farm.find((p) => p.id === selectedItem.id) ?? selectedItem
     const field = powerField(current)
+    const powers = poweredMap(farm)
+    // Delivery routes: working factories a road links to a working Seaport.
+    const routes = roadLinks(farm, (p) => powers.get(p.id) !== false)
     return {
-      // The freight line (Candy Factory → track + train → Seaport) is complete.
-      linked: railLink(farm) !== null,
-      powered: poweredMap(farm).get(current.id),
+      linked:
+        current.itemType === 'seaport'
+          ? routes.length > 0
+          : current.itemType === 'road'
+            ? routes.some((r) => r.route.some((t) => t.x === current.x && t.y === current.y))
+            : routes.some((r) => r.factory.id === current.id),
+      trucks: routes.length,
+      powered: powers.get(current.id),
       poweredCount: field ? farm.filter((b) => b.id !== current.id && requiresPower(b.itemType) && overlaps(field, b)).length : 0,
     }
   }, [farm, selectedItem])
@@ -835,6 +838,7 @@ function FarmIslandView({
           powered={inspectedPower.powered}
           poweredCount={inspectedPower.poweredCount}
           linked={inspectedPower.linked}
+          trucks={inspectedPower.trucks}
           economy={economy}
           onClose={() => setSelectedItem(null)}
           onMove={isOwner ? startMove : undefined}

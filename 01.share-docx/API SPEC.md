@@ -553,17 +553,16 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Errors: AUTH_UNAUTHORIZED, INTERNAL_ERROR
 ```
 - Calls `settle_farm_economy()` (DATABASE.md "Power and the export loop"): everything (production since the last visit, the power state, the ship every 4 hours, its payout up to 15 🪙) is computed in the database from timestamps; the client sends nothing. No `revalidatePath`
-- Candy: powered Candy Factories turn 10 fruit into 1 box an hour; with a Freight Train on track linking a powered Candy Factory to a powered Seaport (`lib/railway.ts` `railLink`, `farm_candy_linked()` in SQL), every whole box is exported for 15 🪙 (`candyShipped`, `candyPayout`): the farm floats "+15 🪙" labels and a coin burst over the Seaport and shows a toast
+- Candy: powered Candy Factories turn 10 fruit into 1 box an hour; with a Road linking a powered Candy Factory to a powered Seaport (`lib/roads.ts` `candyLinked` / `roadLinks`, `farm_candy_linked()` in SQL; a Delivery Truck drives the route on the farm), every whole box is exported for 15 🪙 (`candyShipped`, `candyPayout`): the farm floats "+15 🪙" labels and a coin burst over the Seaport and shows a toast
 - The farm (owner) calls it once the browser is idle after arriving and every 10 minutes while the tab is visible; a payout shows a toast ("Cargo ship departed · Exporting Goods +N 🪙") and updates the purse. The building inspector (`FarmItemDialog`) shows the stock as inputs / outputs
 
 ### `getFarmPlacements` / `placeFarmItem` / `moveFarmPlacement` / `removeFarmPlacement` (garden)
 ```typescript
 // getFarmPlacements({ ownerId?: uuid }) → Placement[]   // { id, itemType, deckId, x, y, width, height, variant }
 //   yours without ownerId (signed out → []); a neighbour's: their items and PUBLIC trees only (RLS)
-// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'windmill_small' | 'furniture_factory' | 'candy_factory' | 'seaport' | 'rail_track' | 'freight_train' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
-//   freight_train: on three Railroad Tracks in a row, else TILE_UNAVAILABLE "A Freight Train needs three Railroad Tracks in a row under it" (NOT_ON_TRACK);
-//   a track under a train can't be moved or picked up (TILE_UNAVAILABLE "A train stands on that track: move the train first", TRACK_IN_USE)
-//   (farmer_house / woodshop / windmill_large are retired: VALIDATION_FAILED; the database refuses them too: ITEM_RETIRED)
+// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'windmill_small' | 'furniture_factory' | 'candy_factory' | 'seaport' | 'road' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
+//   road: 1 × 1, 1 coin; joins the roads beside it (migration 20261018000000)
+//   (farmer_house / woodshop / windmill_large / rail_track / freight_train are retired: VALIDATION_FAILED; the database refuses them too: ITEM_RETIRED)
 //   windmill_small is the one Windmill: 2 × 2, 60 coins, a 10 × 10 power field (migration 20261017000000)
 //   seaport: coast only (its top tile on row 0 or row 14), else TILE_UNAVAILABLE "A Seaport must stand on the shore" (NOT_COASTAL; moves too)
 //   → { placementId, remainingCoins, cost }   x, y = top tile, 0–15

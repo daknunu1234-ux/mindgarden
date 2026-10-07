@@ -1,7 +1,7 @@
 // The farm shop catalogue (pure). The database charges the same prices and uses the same sizes in
 // purchase_and_place_item() (migrations 20260930000000_farm_grid.sql, 20261014000000_power_grid.sql and,
-// for today's prices, 20261015000000_rail_logistics.sql and 20261017000000_unified_windmill.sql); tests
-// check they match.
+// for today's prices, 20261015000000_rail_logistics.sql, 20261017000000_unified_windmill.sql and
+// 20261018000000_road_logistics.sql); tests check they match.
 
 export type FarmItemType =
   | 'tree'
@@ -15,9 +15,8 @@ export type FarmItemType =
   | 'furniture_factory'
   | 'seaport'
   | 'candy_factory'
-  | 'rail_track'
-  | 'freight_train'
-export type ShopTab = 'trees' | 'structures' | 'railway' | 'landscape' | 'decorations' | 'animals'
+  | 'road'
+export type ShopTab = 'trees' | 'structures' | 'roads' | 'landscape' | 'decorations' | 'animals'
 export type AnimalVariant = 'cow' | 'pig'
 
 export type CatalogItem = {
@@ -29,8 +28,7 @@ export type CatalogItem = {
     | 'furniture_factory'
     | 'candy_factory'
     | 'seaport'
-    | 'rail_track'
-    | 'freight_train'
+    | 'road'
     | 'stream'
     | 'fence'
     | 'rockery'
@@ -51,8 +49,6 @@ export type CatalogItem = {
   requiresPower?: boolean
   // Seaport: its long edge must lie on the shore (lib/powerGrid.ts validateSeaportPlacement).
   coastal?: boolean
-  // Freight Train: stands only on Railroad Track tiles (lib/railway.ts checkTrainPlacement).
-  onTracks?: boolean
 }
 
 // Retired buildings: no longer sold (the database refuses new ones too), but ones already standing
@@ -111,7 +107,7 @@ export const FARM_CATALOG: readonly CatalogItem[] = [
     price: 50,
     width: 2,
     height: 2,
-    description: 'Turns timber from your trees into furniture for export. Needs power.',
+    description: 'Turns timber from your trees into furniture for export. Needs power; a Road to the Seaport brings a Delivery Truck.',
     requiresPower: true,
   },
   {
@@ -124,7 +120,7 @@ export const FARM_CATALOG: readonly CatalogItem[] = [
     price: 50,
     width: 2,
     height: 2,
-    description: 'Turns 10 fruits 🍎 into 1 candy box 🍬. Needs power; a Freight Train carries the boxes to the Seaport.',
+    description: 'Turns 10 fruits 🍎 into 1 candy box 🍬. Needs power; build a Road to the Seaport and a Delivery Truck carries the boxes there.',
     requiresPower: true,
   },
   {
@@ -142,29 +138,16 @@ export const FARM_CATALOG: readonly CatalogItem[] = [
     coastal: true,
   },
   {
-    id: 'rail_track',
-    itemType: 'rail_track',
+    id: 'road',
+    itemType: 'road',
     variant: null,
-    tab: 'railway',
-    name: 'Railroad Track',
-    icon: '🛤️',
+    tab: 'roads',
+    name: 'Road',
+    icon: '🛣️',
     price: 1,
     width: 1,
     height: 1,
-    description: 'One tile of track. Joins up with the tracks next to it; connect your factories to the Seaport.',
-  },
-  {
-    id: 'freight_train',
-    itemType: 'freight_train',
-    variant: null,
-    tab: 'railway',
-    name: 'Freight Train',
-    icon: '🚂',
-    price: 30,
-    width: 1,
-    height: 3,
-    description: 'Carries candy boxes from the Candy Factory to the Seaport. Place it on three tracks in a row.',
-    onTracks: true,
+    description: 'One tile of road. Joins the roads next to it into straights, bends and junctions. Link a factory to the Seaport and a Delivery Truck starts running.',
   },
   {
     id: 'stream',
@@ -231,7 +214,7 @@ export const FARM_CATALOG: readonly CatalogItem[] = [
 export const SHOP_TABS: readonly { id: ShopTab; label: string }[] = [
   { id: 'trees', label: '🌳 Trees' },
   { id: 'structures', label: '🏗️ Buildings' },
-  { id: 'railway', label: '🚂 Railway' },
+  { id: 'roads', label: '🛣️ Roads' },
   { id: 'landscape', label: '🌊 Landscape' },
   { id: 'decorations', label: '🪵 Decorations' },
   { id: 'animals', label: '🐮 Animals' },

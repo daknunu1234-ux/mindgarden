@@ -3,7 +3,6 @@
 // in purchase_and_place_item() / move_garden_placement()); tests check they agree.
 import { catalogFor, type FarmItemType } from './farmCatalog'
 import { checkPlacement, GRID_SIZE, overlaps, type Footprint, type Placement, type PlacementCheck } from './farmGrid'
-import { checkTrackMove, checkTrainPlacement, type TrainCheck } from './railway'
 
 // How far a power source's field reaches beyond its footprint, by type (0 = not a power source).
 export function powerReachOf(itemType: FarmItemType): number {
@@ -71,15 +70,12 @@ export function seaportSpots(placements: readonly Placement[], ignoreId?: string
   return out
 }
 
-export type ItemCheck = SeaportCheck | TrainCheck | 'in-use'
+export type ItemCheck = SeaportCheck
 
-// Any item: whether it can go here (bounds, overlaps; the seaport on the coast; the Freight Train on
-// three tracks; a track never from under a train). Move mode passes the moving placement's id.
+// Any item: whether it can go here (bounds, overlaps; the seaport on the coast). Move mode passes the
+// moving placement's id.
 export function checkItemPlacement(placements: readonly Placement[], itemType: FarmItemType, spot: Footprint, movingId?: string): ItemCheck {
   if (catalogFor(itemType, null)?.coastal) return validateSeaportPlacement(spot, placements, movingId)
-  if (itemType === 'freight_train') return checkTrainPlacement(placements, spot, movingId)
-  const moving = movingId ? placements.find((p) => p.id === movingId) : undefined
-  if (moving && itemType === 'rail_track') return checkTrackMove(placements, moving, spot)
   const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
   return checkPlacement(others, spot)
 }

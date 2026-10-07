@@ -365,14 +365,9 @@
   100% { transform: translate(-50%, -70px) scale(1); opacity: 0; }
 }
 .mg-reward { animation: mg-reward 2.2s cubic-bezier(.2, .7, .3, 1) both; }
-/* The Freight Train running its route (offset-path set inline from the track tiles), there and back. */
-@keyframes mg-train-run {
-  from { offset-distance: 0%; }
-  to { offset-distance: 100%; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .mg-train-run { animation: mg-train-run var(--mg-dur, 12s) ease-in-out infinite alternate; }
-}
+/* Delivery Trucks (garden RoadSprites.tsx TruckRun) carry their own keyframes, generated per route
+   (offset-path through the road tiles, a quick mirror-flip at each bend), behind a reduced-motion
+   guard; .mg-paused freezes them with the rest of the island. */
 @keyframes mg-burst {
   0% { transform: translate(0, 0) scale(0.3) rotate(0deg); opacity: 1; }
   70% { opacity: 1; }

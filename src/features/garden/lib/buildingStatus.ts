@@ -25,13 +25,17 @@ export function buildingStatus(
     poweredCount = 0,
     economy,
     linked = false,
+    trucks = 0,
     now = Date.now(),
   }: {
     powered?: boolean
     poweredCount?: number
     economy: FarmEconomyView | null
-    // Candy Factory / Seaport / train: a Freight Train runs between them on connected track.
+    // A factory: a road links it to a working Seaport (a Delivery Truck runs). The Seaport: at least
+    // one factory is linked. A road tile: it is part of a delivery route (lib/roads roadLinks).
     linked?: boolean
+    // The Seaport: how many Delivery Trucks come to its dock.
+    trucks?: number
     now?: number
   },
 ): BuildingStatus | null {
@@ -59,7 +63,10 @@ export function buildingStatus(
         tone: !powered ? 'off' : timber < 2 ? 'warn' : 'ok',
         power: powered ? '⚡ Powered' : '⚡ No Power: place a Windmill nearby',
         inputs: [{ label: '🪵 Timber (from your trees)', value: stock ? units(timber) : '–' }],
-        outputs: [{ label: '🪑 Furniture', value: stock ? units(stock.furniture) : '–' }],
+        outputs: [
+          { label: '🪑 Furniture', value: stock ? units(stock.furniture) : '–' },
+          { label: '🚚 Delivery Truck', value: linked ? 'On the road to the Seaport' : 'No road yet: build a Road to the Seaport' },
+        ],
       }
     }
     case 'candy_factory': {
@@ -71,25 +78,17 @@ export function buildingStatus(
         inputs: [{ label: '🍎 Fruit (from your harvests)', value: stock ? units(fruit) : '–' }],
         outputs: [
           { label: '🍬 Candy boxes', value: stock ? units(stock.candy) : '–' },
-          { label: '🚂 Railway pickup', value: linked ? 'Connected to the Seaport' : 'Not connected: lay track to the Seaport and add a Freight Train' },
+          { label: '🚚 Delivery Truck', value: linked ? 'On the road to the Seaport' : 'No road yet: build a Road to the Seaport' },
         ],
       }
     }
-    case 'rail_track':
+    case 'road':
       return {
-        status: linked ? '🛤️ Part of a freight line' : 'Railroad Track',
+        status: linked ? '🚚 On a delivery route' : 'Road',
         tone: 'ok',
         power: null,
         inputs: [],
-        outputs: [],
-      }
-    case 'freight_train':
-      return {
-        status: linked ? '🚂 Carrying candy boxes to the Seaport' : 'Idle: no Candy Factory and Seaport on its line',
-        tone: linked ? 'ok' : 'warn',
-        power: null,
-        inputs: [{ label: '🍬 Candy boxes waiting', value: stock ? units(stock.candy) : '–' }],
-        outputs: [{ label: '🪙 Each box at the Seaport', value: `${CANDY_EXPORT_COINS} coins` }],
+        outputs: linked ? [{ label: '🚚 Delivery Trucks', value: 'Drive this way to the Seaport' }] : [],
       }
     case 'seaport': {
       const docked = stock?.lastExportAt ? now - new Date(stock.lastExportAt).getTime() < DOCKED_MS && stock.payout > 0 : false
@@ -101,7 +100,7 @@ export function buildingStatus(
           { label: '🪑 Furniture', value: stock ? units(stock.furniture) : '–' },
           { label: '🪵 Timber', value: stock ? units(stock.timber) : '–' },
           { label: '🥛 Produce', value: stock ? units(stock.produce) : '–' },
-          { label: '🍬 Candy boxes (by train)', value: linked ? 'Arriving by Freight Train' : 'No train line yet' },
+          { label: '🚚 Delivery Trucks', value: trucks > 0 ? `${trucks} on the road to the dock` : 'None yet: link a factory with a Road' },
         ],
         outputs: [
           { label: '🪙 Each candy box', value: `${CANDY_EXPORT_COINS} coins` },

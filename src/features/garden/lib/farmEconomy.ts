@@ -11,8 +11,8 @@
 //                       and pays up to SHIP_MAX_PAYOUT coins (what it can't pay for stays in stock)
 //   Harvest  → fruit    (FRUIT_PER_HARVEST 🍎 per ripe tree, shared/lib/economy; harvest_tree_fruit())
 //   Candy Factory (powered) → turns FRUIT_PER_CANDY fruit into 1 candy box, CANDY_PER_FACTORY_HOUR each
-//   Freight Train on track linking a Candy Factory to the Seaport (lib/railway.ts railLink) → every
-//                       whole candy box is exported at CANDY_EXPORT_COINS coins
+//   A Road linking a powered Candy Factory to a powered Seaport (lib/roads.ts candyLinked; a Delivery
+//                       Truck runs it) → every whole candy box is exported at CANDY_EXPORT_COINS coins
 // Stocks are capped (STOCK_CAPS); a long absence counts at most CATCH_UP_HOURS.
 
 export const TIMBER_PER_TREE_HOUR = 1
@@ -36,7 +36,7 @@ export type CandyStock = { fruit: number; candy: number }
 // What the farm shows: the stock after the last settlement, and what the last ship paid.
 export type FarmEconomyView = FarmStock &
   CandyStock & {
-  // Candy boxes the train delivered on this settlement, and the coins they fetched.
+  // Candy boxes the Delivery Truck brought to the dock on this settlement, and the coins they fetched.
   candyShipped: number
   candyPayout: number
   // Coins the ship that just left paid (0 when none left on this settlement).
@@ -82,7 +82,7 @@ export function makeCandy(stock: CandyStock, poweredFactories: number, hours: nu
   return { fruit: stock.fruit - made * FRUIT_PER_CANDY, candy: stock.candy + made }
 }
 
-// The train's delivery to the Seaport: every whole candy box is exported for CANDY_EXPORT_COINS.
+// The Delivery Truck's run to the Seaport: every whole candy box is exported for CANDY_EXPORT_COINS.
 export function deliverCandy(candy: number): { shipped: number; payout: number; left: number } {
   const shipped = Math.max(0, Math.floor(candy + 1e-9))
   return { shipped, payout: shipped * CANDY_EXPORT_COINS, left: candy - shipped }

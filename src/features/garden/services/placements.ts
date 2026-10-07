@@ -52,7 +52,6 @@ export async function placeItem(supabase: Client, input: PlaceFarmItemInput): Pr
     if (message.includes('TILE_UNAVAILABLE')) return fail('TILE_UNAVAILABLE', 'That spot is taken or off the farm')
     if (message.includes('NOT_COASTAL')) return fail('TILE_UNAVAILABLE', 'A Seaport must stand on the shore')
     if (message.includes('ITEM_RETIRED')) return fail('VALIDATION_FAILED', 'That building is no longer sold')
-    if (message.includes('NOT_ON_TRACK')) return fail('TILE_UNAVAILABLE', 'A Freight Train needs three Railroad Tracks in a row under it')
     if (message.includes('TREE_ALREADY_PLACED')) return fail('TILE_UNAVAILABLE', 'This tree is already on your farm')
     if (message.includes('DECK_NOT_FOUND')) return fail('DECK_NOT_FOUND', 'Tree not found')
     if (message.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to build your farm')
@@ -76,7 +75,6 @@ export async function removePlacement(supabase: Client, userId: string, { placem
     .neq('item_type', 'tree')
     .select('id')
   if (error) {
-    if ((error.message ?? '').includes('TRACK_IN_USE')) return fail('TILE_UNAVAILABLE', 'A train stands on that track: move the train first')
     console.error('[garden] removePlacement failed', error.code, error.message)
     return fail('INTERNAL_ERROR', 'Could not pick that up')
   }
@@ -94,8 +92,6 @@ export async function movePlacement(supabase: Client, { placementId, x, y }: Mov
     const message = error.message ?? ''
     if (message.includes('TILE_UNAVAILABLE')) return fail('TILE_UNAVAILABLE', 'That spot is taken or off the farm')
     if (message.includes('NOT_COASTAL')) return fail('TILE_UNAVAILABLE', 'A Seaport must stand on the shore')
-    if (message.includes('NOT_ON_TRACK')) return fail('TILE_UNAVAILABLE', 'A Freight Train needs three Railroad Tracks in a row under it')
-    if (message.includes('TRACK_IN_USE')) return fail('TILE_UNAVAILABLE', 'A train stands on that track: move the train first')
     if (message.includes('PLACEMENT_NOT_FOUND')) return fail('AUTH_FORBIDDEN', 'That is not on your farm')
     if (message.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to build your farm')
     if (MISSING.has(error.code)) console.error('[garden] movePlacement: run supabase/migrations/20261002000000_move_garden_placement.sql')
