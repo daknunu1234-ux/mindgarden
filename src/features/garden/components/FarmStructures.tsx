@@ -605,7 +605,7 @@ export function ItemDrawing({
 }) {
   switch (item.itemType) {
     case 'windmill_small':
-      return <BuildingImage kind="windmill_small" />
+      return <BuildingImage kind="windmill_small" powered={powered} />
     case 'windmill_large':
       return <WindmillSprite size="large" />
     case 'furniture_factory':

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { BUILDING_IMAGES, BuildingImage, type BuildingImageKind } from '../components/BuildingImages'
+import { BUILDING_IMAGES, BuildingImage, OVERLAY_POINTS, spritePoint, WINDMILL_RENDER, WindmillRotor, type BuildingImageKind } from '../components/BuildingImages'
 import { ItemDrawing } from '../components/FarmStructures'
 import { diamond } from '../components/PowerBuildings'
 
@@ -25,14 +25,12 @@ function webpSize(file: string): [number, number] {
 }
 
 describe('PNG building sprites', () => {
-  it('the Small Windmill, Candy Factory and Furniture Factory draw as static images', () => {
+  it('the Small Windmill, Candy Factory and Furniture Factory draw as images', () => {
     for (const kind of KINDS) {
       const html = svg(createElement(ItemDrawing, { item: { itemType: kind, variant: null } }))
       expect(html, kind).toContain(`data-building="${kind}"`)
       expect(html, kind).toContain('data-sprite="image"')
       expect(html, kind).toContain(`href="${BUILDING_IMAGES[kind].href}"`)
-      // Static: no animation classes.
-      expect(html, kind).not.toMatch(/class="mg-(spin|spin-slow|smoke|conveyor|spark)"/)
     }
     // The Grand Windmill keeps its vector drawing.
     expect(svg(createElement(ItemDrawing, { item: { itemType: 'windmill_large', variant: null } }))).not.toContain('data-sprite="image"')
@@ -70,6 +68,84 @@ describe('PNG building sprites', () => {
     expect(off).toContain('data-powered="false"')
     expect(off).toContain('class="mg-unpowered"')
     expect(on).not.toContain('mg-unpowered')
+  })
+
+  it('a powered Candy Factory puffs chimney smoke and rolls candies off its belt; unpowered, nothing moves', () => {
+    const on = svg(createElement(BuildingImage, { kind: 'candy_factory', powered: true }))
+    const off = svg(createElement(BuildingImage, { kind: 'candy_factory', powered: false }))
+    expect(on).toContain('data-overlay="candy_factory"')
+    expect((on.match(/class="mg-smoke"/g) ?? []).length).toBe(3)
+    expect(on).toContain('data-part="rolling-candies"')
+    expect((on.match(/class="mg-roll"/g) ?? []).length).toBe(3)
+    // The candies roll from the belt's start towards its end (down-left on screen).
+    const [fx, fy] = spritePoint('candy_factory', OVERLAY_POINTS.candyBeltFrom)
+    const [tx, ty] = spritePoint('candy_factory', OVERLAY_POINTS.candyBeltTo)
+    expect(on).toContain(`translate(${fx.toFixed(1)} ${fy.toFixed(1)})`)
+    expect(on).toContain(`--mg-cx:${(tx - fx).toFixed(1)}px`)
+    expect(tx).toBeLessThan(fx)
+    expect(ty).toBeGreaterThan(fy)
+    expect(off).not.toMatch(/mg-smoke|mg-roll|data-overlay/)
+    expect(off).toContain('class="mg-unpowered"')
+  })
+
+  it('a powered Furniture Factory smokes from its pipe and sprays sawdust and chips at the bench; unpowered, nothing moves', () => {
+    const on = svg(createElement(BuildingImage, { kind: 'furniture_factory', powered: true }))
+    const off = svg(createElement(BuildingImage, { kind: 'furniture_factory', powered: false }))
+    expect(on).toContain('data-overlay="furniture_factory"')
+    expect((on.match(/class="mg-smoke"/g) ?? []).length).toBe(3)
+    expect(on).toContain('data-part="sawdust"')
+    expect((on.match(/class="mg-spark"/g) ?? []).length).toBe(8)
+    expect(on).toMatch(/<rect[^>]*class="mg-spark"/) // wood chips
+    expect(on).toMatch(/<circle[^>]*class="mg-spark"/) // sparks
+    expect(off).not.toMatch(/mg-smoke|mg-spark|data-overlay/)
+    expect(off).toContain('class="mg-unpowered"')
+  })
+
+  it('overlay points lie on their sprites: chimneys and the pipe high up, the belt and bench lower down', () => {
+    const inside = (kind: BuildingImageKind, [x, y]: readonly [number, number]) => {
+      const [w, h] = BUILDING_IMAGES[kind].size
+      return x >= 0 && x <= w && y >= 0 && y <= h
+    }
+    for (const [kind, key] of [
+      ['candy_factory', 'candyChimney'],
+      ['candy_factory', 'candyBeltFrom'],
+      ['candy_factory', 'candyBeltTo'],
+      ['furniture_factory', 'furniturePipe'],
+      ['furniture_factory', 'furnitureBench'],
+      ['windmill_small', 'windmillHub'],
+    ] as const) {
+      expect(inside(kind, OVERLAY_POINTS[key]), key).toBe(true)
+    }
+    // In farm pixels: smoke leaves well above the ground point; the belt end and bench are near it.
+    expect(spritePoint('candy_factory', OVERLAY_POINTS.candyChimney)[1]).toBeLessThan(-100)
+    expect(spritePoint('furniture_factory', OVERLAY_POINTS.furniturePipe)[1]).toBeLessThan(-80)
+    expect(Math.abs(spritePoint('furniture_factory', OVERLAY_POINTS.furnitureBench)[1])).toBeLessThan(20)
+    // The anchor maps to the ground point.
+    expect(spritePoint('candy_factory', BUILDING_IMAGES.candy_factory.anchor)).toEqual([0, 0])
+  })
+
+  it('the windmill rotor turns about the painted hub, in the plane of the sails, and stops without power', () => {
+    const html = svg(createElement(WindmillRotor, { spinning: true }))
+    const [hx, hy] = spritePoint('windmill_small', OVERLAY_POINTS.windmillHub)
+    const { scale } = BUILDING_IMAGES.windmill_small
+    const [ax, ay] = OVERLAY_POINTS.windmillAxisX.map((v) => (v * scale) / 100)
+    const [bx, by] = OVERLAY_POINTS.windmillAxisY.map((v) => (v * scale) / 100)
+    expect(html).toContain(`matrix(${ax.toFixed(4)} ${ay.toFixed(4)} ${bx.toFixed(4)} ${by.toFixed(4)} ${hx.toFixed(2)} ${hy.toFixed(2)})`)
+    expect(html).toContain('class="mg-spin"')
+    expect((html.match(/rotate\((0|90|180|270)\)/g) ?? []).length).toBe(4)
+    expect(html).not.toContain('animation-play-state')
+    expect(svg(createElement(WindmillRotor, { spinning: false }))).toContain('animation-play-state:paused')
+    // A sail tip (100 along an axis) lands on the painted sail tip.
+    const tip = [hx + bx * 100, hy + by * 100]
+    const painted = spritePoint('windmill_small', [OVERLAY_POINTS.windmillHub[0] + OVERLAY_POINTS.windmillAxisY[0], OVERLAY_POINTS.windmillHub[1] + OVERLAY_POINTS.windmillAxisY[1]])
+    expect(tip[0]).toBeCloseTo(painted[0], 6)
+    expect(tip[1]).toBeCloseTo(painted[1], 6)
+  })
+
+  it('the windmill rotor stays off while the render has its sails painted in', () => {
+    const html = svg(createElement(BuildingImage, { kind: 'windmill_small' }))
+    expect(WINDMILL_RENDER.bakedSails).toBe(true)
+    expect(html).not.toContain('data-part="rotor"')
   })
 
   it('the files exist, have real transparency, match their configured size and stay light', () => {

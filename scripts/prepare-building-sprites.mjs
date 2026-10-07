@@ -8,7 +8,13 @@
 //      darker / lighter neutral pixels of the baked ground shadow, so building parts that happen to
 //      be grey are kept unless they touch the outside directly,
 //   3. drops small loose specks and anything that only lives in the watermark corner,
-//   4. softens the cut edge by one pixel, crops to the building, and writes a WebP at most 640 px wide.
+//   4. softens the cut edge by one pixel, crops to the building, and resizes it to at most 640 px wide,
+//   5. strips painted parts the game animates on top (POST, in output pixels): the candy factory's
+//      smoke clouds (animated puffs replace them), then writes a WebP. The POST coordinates match the
+//      current renders: re-check them (and BuildingImages.tsx) after replacing a source.
+//
+// The windmill's sails stay: a single render has no tower behind them to fill the gap with, so an
+// animated rotor needs a render of the windmill without its sails (see BuildingImages.tsx).
 //
 // Run: node scripts/prepare-building-sprites.mjs   (re-run after replacing a source PNG; uses `sharp`,
 // which Next.js installs). Sources with real alpha are passed through untouched apart from the crop.
@@ -212,12 +218,26 @@ async function prepare(name) {
   const crop = { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
   const width = Math.min(MAX_WIDTH, crop.width)
   const file = join(OUT, `${name}.webp`)
-  const result = await sharp(out, { raw: { width: w, height: h, channels: 4 } })
+  const sized = await sharp(out, { raw: { width: w, height: h, channels: 4 } })
     .extract(crop)
     .resize({ width })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  POST[name]?.(sized.data, sized.info.width, sized.info.height)
+  const result = await sharp(sized.data, { raw: { width: sized.info.width, height: sized.info.height, channels: 4 } })
     .webp({ quality: 88, alphaQuality: 100, effort: 6 })
     .toFile(file)
   console.log(`${name}: crop ${crop.width}×${crop.height} at (${crop.left}, ${crop.top}) → ${file} ${result.width}×${result.height}, ${(result.size / 1024).toFixed(0)} KB`)
+}
+
+// ── 5. Painted parts the game animates on top ────────────────────────────────
+
+const POST = {
+  // The painted smoke clouds over the chimney: everything in the top-right corner above the lollipop
+  // and the chimney rim.
+  candy_factory(px, w) {
+    for (let y = 0; y < 120; y++) for (let x = 335; x < w; x++) px[(y * w + x) * 4 + 3] = 0
+  },
 }
 
 await mkdir(OUT, { recursive: true })
