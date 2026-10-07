@@ -6,8 +6,8 @@ import { memo, type CSSProperties, type ReactNode } from 'react'
 import type { CatalogItem } from '../lib/farmCatalog'
 import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
 import { streamShapes, type StreamLayer } from '../lib/streamTiles'
-import { BuildingImage } from './BuildingImages'
-import { SeaportSprite, WindmillSprite, type Shore } from './PowerBuildings'
+import { BuildingImage, SeaportImage } from './BuildingImages'
+import { WindmillSprite, type Shore } from './PowerBuildings'
 import { TrackTile, TrainSprite } from './RailwaySprites'
 import { Blossom, facetedVolume, rampColor } from './treeKit'
 
@@ -618,7 +618,7 @@ export function ItemDrawing({
       // Flat: one tile of track, centred on (0, 0).
       return <TrackTile links={links ?? { north: false, east: true, south: false, west: true }} />
     case 'seaport':
-      return <SeaportSprite shore={shore} powered={powered} />
+      return <SeaportImage shore={shore} powered={powered} />
     case 'farmer_house':
       return <FarmerHouse />
     case 'woodshop':

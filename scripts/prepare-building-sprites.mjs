@@ -8,7 +8,10 @@
 //      darker / lighter neutral pixels of the baked ground shadow, so building parts that happen to
 //      be grey are kept unless they touch the outside directly,
 //   3. drops small loose specks and anything that only lives in the watermark corner,
-//   4. softens the cut edge by one pixel, crops to the building, and resizes it to at most 640 px wide,
+//   4. softens the cut edge by one pixel, crops to the building, resizes it (SOURCES: maxWidth) and
+//      mirrors it if asked (flip: the seaport and ship renders face the other way round from the
+//      game's coast),
+//      (sources: windmill_small, candy_factory, furniture_factory, seaport, cargo_ship),
 //   5. strips painted parts the game animates on top (POST, in output pixels): the candy factory's
 //      smoke clouds (animated puffs replace them), then writes a WebP. The POST coordinates match the
 //      current renders: re-check them (and BuildingImages.tsx) after replacing a source.
@@ -16,21 +19,46 @@
 // The windmill's sails stay: a single render has no tower behind them to fill the gap with, so an
 // animated rotor needs a render of the windmill without its sails (see BuildingImages.tsx).
 //
+// `water` (the cargo ship): the render floats the ship on a painted block of sea; its water (cyan to
+// azure blues, the block's darker sides) counts as background too, and only the ship itself (the
+// biggest piece, with the foam against its hull) is kept, not the loose foam streaks around it.
+//
 // Run: node scripts/prepare-building-sprites.mjs   (re-run after replacing a source PNG; uses `sharp`,
 // which Next.js installs). Sources with real alpha are passed through untouched apart from the crop.
 import sharp from 'sharp'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const SOURCES = ['windmill_small', 'candy_factory', 'furniture_factory']
+const SOURCES = {
+  windmill_small: {},
+  candy_factory: {},
+  furniture_factory: {},
+  seaport: { flip: true, maxWidth: 960 },
+  cargo_ship: { flip: true, water: true, maxWidth: 720 },
+}
 const IN = 'raw-assets/structures'
 const OUT = 'public/assets/sprites'
 const MAX_WIDTH = 640
 
+const hue = (r, g, b) => {
+  const max = Math.max(r, g, b)
+  const d = max - Math.min(r, g, b)
+  if (d === 0) return 0
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return (h * 60 + 360) % 360
+}
+// Painted sea: cyan to azure, strongly saturated (also the darker sides of a block of it). A white
+// hull in shadow picks up a blue tint from the water but stays much paler, so it is kept.
+const isWater = (r, g, b) => {
+  const max = Math.max(r, g, b)
+  const hu = hue(r, g, b)
+  return hu >= 172 && hu <= 222 && max > 50 && (max - Math.min(r, g, b)) / max > 0.45
+}
+
 const spread = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b)
 const lum = (r, g, b) => (r + g + b) / 3
 
-async function prepare(name) {
+async function prepare(name, { flip = false, water = false, maxWidth = MAX_WIDTH } = {}) {
   const { data, info } = await sharp(join(IN, `${name}.png`)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   const { width: w, height: h } = info
   const px = (i) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]]
@@ -94,6 +122,7 @@ async function prepare(name) {
     // chimney at the top stays).
     const isBg = (i) => {
       const [r, g, b] = px(i)
+      if (water && isWater(r, g, b)) return true
       const s = spread(r, g, b)
       const l = lum(r, g, b)
       // Warm-tinted checker: the render's glow spills over it (in the upper half only on a dark
@@ -192,6 +221,7 @@ async function prepare(name) {
   const keep = new Set(
     pieces
       .filter((p) => p.area >= Math.max(400, biggest * 0.002))
+      .filter((p) => !water || p.area === biggest)
       .filter((p) => p.area === biggest || p.checker < p.area * 0.5)
       .filter((p) => !(p.minX > w * 0.82 && p.minY > h * 0.78))
       .map((p) => p.id),
@@ -216,11 +246,12 @@ async function prepare(name) {
     maxY = Math.max(maxY, y)
   }
   const crop = { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
-  const width = Math.min(MAX_WIDTH, crop.width)
+  const width = Math.min(maxWidth, crop.width)
   const file = join(OUT, `${name}.webp`)
   const sized = await sharp(out, { raw: { width: w, height: h, channels: 4 } })
     .extract(crop)
     .resize({ width })
+    .flop(flip)
     .raw()
     .toBuffer({ resolveWithObject: true })
   POST[name]?.(sized.data, sized.info.width, sized.info.height)
@@ -241,4 +272,4 @@ const POST = {
 }
 
 await mkdir(OUT, { recursive: true })
-for (const name of SOURCES) await prepare(name)
+for (const [name, options] of Object.entries(SOURCES)) await prepare(name, options)

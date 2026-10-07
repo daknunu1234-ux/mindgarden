@@ -3,9 +3,23 @@ import { join } from 'node:path'
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { BUILDING_IMAGES, BuildingImage, OVERLAY_POINTS, spritePoint, WINDMILL_RENDER, WindmillRotor, type BuildingImageKind } from '../components/BuildingImages'
+import {
+  BUILDING_IMAGES,
+  BuildingImage,
+  CARGO_SHIP_IMAGE,
+  CargoShip,
+  OVERLAY_POINTS,
+  SEAPORT_IMAGE,
+  seaportFit,
+  shipBerth,
+  spritePoint,
+  WINDMILL_RENDER,
+  WindmillRotor,
+  type BuildingImageKind,
+} from '../components/BuildingImages'
 import { ItemDrawing } from '../components/FarmStructures'
-import { diamond } from '../components/PowerBuildings'
+import type { Pt } from '../components/lowPolyKit'
+import { diamond, type Shore } from '../components/PowerBuildings'
 
 // The PNG-rendered building sprites: which buildings use them, how they sit on their 2 × 2 tiles,
 // and the files they load.
@@ -160,5 +174,100 @@ describe('PNG building sprites', () => {
   it('the sprite code is English-only', () => {
     const src = readFileSync(join(__dirname, '..', 'components', 'BuildingImages.tsx'), 'utf8')
     expect(src).not.toMatch(/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/)
+  })
+})
+
+describe('the rendered Seaport and its cargo ship', () => {
+  const css = readFileSync(join(__dirname, '..', '..', '..', 'app', 'globals.css'), 'utf8')
+  const seaport = (shore: Shore, powered = true) => svg(createElement(ItemDrawing, { item: { itemType: 'seaport', variant: null }, shore, powered }))
+  const slope = (p: Pt, q: Pt) => (q[1] - p[1]) / (q[0] - p[0])
+
+  it('the Seaport draws as the rendered wharf, its ship only while powered; unpowered it is muted', () => {
+    const on = seaport('front')
+    expect(on).toContain('data-building="seaport"')
+    expect(on).toContain('data-sprite="image"')
+    expect(on).toContain(`href="${SEAPORT_IMAGE.href}"`)
+    expect(on).toContain(`href="${CARGO_SHIP_IMAGE.href}"`)
+    expect(on).toContain('data-ship=""')
+    expect(on).toContain('data-ao="6x2"')
+    const off = seaport('front', false)
+    expect(off).not.toContain('data-ship')
+    expect(off).not.toContain(CARGO_SHIP_IMAGE.href)
+    expect(off).toContain('class="mg-unpowered"')
+    expect(on).not.toContain('mg-unpowered')
+  })
+
+  it('the wharf fits its 6 × 2 footprint: edges on the tile slopes, the long edge 6 tiles, verticals upright', () => {
+    const [top, right, bottom, left] = diamond(6, 2)
+    const { left: sl, front: sf, right: sr } = SEAPORT_IMAGE.slab
+    const back: Pt = [sl[0] + sr[0] - sf[0], sl[1] + sr[1] - sf[1]]
+    for (const shore of ['front', 'back'] as const) {
+      const { map } = seaportFit(shore)
+      expect(slope(map(sl), map(sf)), shore).toBeCloseTo(0.5, 6)
+      expect(slope(map(sf), map(sr)), shore).toBeCloseTo(-0.5, 6)
+      expect(map(sf)[0] - map(sl)[0], shore).toBeCloseTo(right[0] - top[0], 6)
+      // Upright: the image transform has no x-from-y term (matrix(a b 0 d e f)).
+      expect(seaport(shore)).toMatch(/href="\/assets\/sprites\/seaport\.webp"[^>]*transform="matrix\([-\d.]+ [-\d.]+ 0 [-\d.]+ [-\d.]+ [-\d.]+\)"/)
+    }
+    // Front shore: the harbour block's inland (back) edge lies on the footprint's back edge; the extra
+    // depth hangs out over the sea in front.
+    const front = seaportFit('front').map
+    expect(front(sr)[0]).toBeCloseTo(right[0], 6)
+    expect(front(sr)[1]).toBeCloseTo(right[1], 6)
+    expect(front(back)[0]).toBeCloseTo(top[0], 6)
+    expect(front(back)[1]).toBeCloseTo(top[1], 6)
+    // Back shore: its front edge lies on the footprint's front edge; the extra depth hangs out behind.
+    const backFit = seaportFit('back').map
+    expect(backFit(sf)[0]).toBeCloseTo(bottom[0], 6)
+    expect(backFit(sf)[1]).toBeCloseTo(bottom[1], 6)
+    expect(backFit(sl)[0]).toBeCloseTo(left[0], 6)
+    expect(backFit(sl)[1]).toBeCloseTo(left[1], 6)
+  })
+
+  it('the ship berths out at sea, beside the wharf: in front of it on the front shore, behind it on the back shore', () => {
+    // Out to sea: front shore down-left (−x, +y), back shore up-right (+x, −y), beyond the footprint.
+    const [fx, fy] = shipBerth('front')
+    expect(fx).toBeLessThan(0)
+    expect(fy).toBeGreaterThan(0)
+    expect(Math.abs(fx) / 224 + Math.abs(fy) / 112).toBeGreaterThan(1) // outside the 6 × 2 diamond
+    const [bx, by] = shipBerth('back')
+    expect(bx).toBeGreaterThan(0)
+    expect(by).toBeLessThan(0)
+    expect(Math.abs(bx) / 224 + Math.abs(by) / 112).toBeGreaterThan(1)
+    // Drawing order: the ship after the wharf on the front shore, before it on the back shore.
+    const order = (html: string) => [html.indexOf(SEAPORT_IMAGE.href), html.indexOf(CARGO_SHIP_IMAGE.href)]
+    const [wf, sf] = order(seaport('front'))
+    expect(sf).toBeGreaterThan(wf)
+    const [wb, sb] = order(seaport('back'))
+    expect(sb).toBeLessThan(wb)
+  })
+
+  it('the ship loops: arrives from the open sea, docks, turns and departs; it bobs; all pause and respect reduced motion', () => {
+    const html = svg(createElement(CargoShip, { shore: 'front' }))
+    expect(html).toContain('class="mg-dock"')
+    expect(html).toContain('class="mg-float"')
+    // Its course: one tile out to sea (front shore: down-left) and one along the coast.
+    expect(html).toContain('--mg-ox:-56.0px')
+    expect(html).toContain('--mg-oy:28.0px')
+    expect(svg(createElement(CargoShip, { shore: 'back' }))).toContain('--mg-ox:56.0px')
+    // The keyframes: out at sea and hidden, then at the berth (0, 0) for a stretch, then turning away.
+    const dock = css.slice(css.indexOf('@keyframes mg-dock'), css.indexOf('@keyframes mg-float'))
+    expect(dock).toMatch(/0% \{[^}]*opacity: 0/)
+    expect(dock).toMatch(/34% \{ transform: translate\(0, 0\)/)
+    expect(dock).toMatch(/64% \{ transform: translate\(0, 0\)/)
+    expect(dock).toMatch(/rotate\(4deg\)/)
+    // Animated only without a reduced-motion preference; frozen with the farm (hidden tab, dialog).
+    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*\.mg-dock \{ animation: mg-dock/)
+    expect(css).toMatch(/\.mg-dock \{ animation[^}]*\}\s*\.mg-float \{ animation: mg-float/)
+    expect(css).not.toMatch(/^\.mg-(dock|float) \{ animation/m)
+    expect(css).toMatch(/\.mg-paused \*,[\s\S]*?animation-play-state: paused !important/)
+  })
+
+  it('the seaport and ship files have real transparency, match their configured size and stay light', () => {
+    for (const { href, size } of [SEAPORT_IMAGE, CARGO_SHIP_IMAGE]) {
+      const file = join(PUBLIC, href)
+      expect(webpSize(file), href).toEqual(size)
+      expect(statSync(file).size, href).toBeLessThan(200 * 1024)
+    }
   })
 })

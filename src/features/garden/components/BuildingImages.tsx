@@ -14,8 +14,9 @@
 //     (`.mg-spin`). Off while the render has its sails painted in (`bakedSails`): turning sails over
 //     still ones would show both. A render without sails turns it on.
 import type { CSSProperties } from 'react'
+import { TILE_H, TILE_W } from '../lib/farmGrid'
 import { FootprintShadow, type Pt } from './lowPolyKit'
-import { smoke } from './PowerBuildings'
+import { diamond, smoke, type Shore } from './PowerBuildings'
 
 type Vars = CSSProperties & Record<`--mg-${string}`, string>
 
@@ -184,6 +185,127 @@ export function WindmillRotor({ spinning = true }: { spinning?: boolean }) {
         <circle r={10} fill="#8f98a3" />
         <circle r={5} fill="#5b636d" />
         <circle cx={-3} cy={-3} r={2.2} fill="#ffffff" opacity={0.8} />
+      </g>
+    </g>
+  )
+}
+
+// ── Seaport and cargo ship ───────────────────────────────────────────────────
+
+// The seaport render (a wharf on a block of harbour water, mirrored so its long side runs along the
+// coast like a 6 × 2 footprint, its berth facing the sea) and the cargo ship render (its painted sea
+// removed). Both come from the same camera; the prep script resized them by different factors
+// (960 / 2007 and 720 / 1139: each crop to its sprite width), so the ship is drawn at the seaport's
+// scale times the ratio of the two.
+export const SEAPORT_IMAGE = {
+  href: '/assets/sprites/seaport.webp',
+  size: [960, 680] as [number, number],
+  // The harbour water block's top corners, in sprite pixels: its left end, its front corner and its
+  // right end (its back corner is left + right − front).
+  slab: { left: [5, 296] as Pt, front: [634, 640] as Pt, right: [959, 466] as Pt },
+}
+export const CARGO_SHIP_IMAGE = {
+  href: '/assets/sprites/cargo_ship.webp',
+  size: [720, 612] as [number, number],
+  // The middle of the hull at the waterline, in sprite pixels.
+  anchor: [365, 425] as Pt,
+  // Sprite pixels of the ship per sprite pixel of the seaport, at the render's own scale.
+  relativeScale: 960 / 2007 / (720 / 1139),
+}
+// How far out from the harbour water's edge the ship berths (its middle), in tiles.
+const BERTH_OUT = 0.62
+// One tile's step out to sea, perpendicular to the shore, and one along it (as in PowerBuildings).
+const SEAWARD: Record<Shore, Pt> = { front: [-TILE_W / 2, TILE_H / 2], back: [TILE_W / 2, -TILE_H / 2] }
+const ALONG: Pt = [TILE_W / 2, TILE_H / 2]
+
+const sub = (p: Pt, q: Pt): Pt => [p[0] - q[0], p[1] - q[1]]
+const mid = (p: Pt, q: Pt): Pt => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
+
+// The fit of the seaport render onto the farm: x' = a·x + e, y' = b·x + d·y + f. Verticals stay
+// vertical (x' does not depend on y): the crane stands straight. `a` makes the long edge span the
+// footprint's 6 tiles; the vertical squash `d` and shear `b` turn both edges of the water block into
+// the tiles' slopes (±1/2). The render's wharf is about 3 tiles deep, not 2: the extra depth hangs out
+// over the sea, so the block's inland edge lies on the footprint's inland edge (front shore: its back
+// edge on the footprint's back edge; back shore: its front edge on the footprint's front edge).
+export function seaportFit(shore: Shore) {
+  const { left, front, right } = SEAPORT_IMAGE.slab
+  const [ux, uy] = sub(front, left)
+  const [vx, vy] = sub(right, front)
+  const slope = TILE_H / TILE_W
+  const a = (6 * TILE_W) / 2 / ux
+  const d = (a * 2 * slope) / (uy / ux - vy / vx)
+  const b = slope * a - d * (uy / ux)
+  // The footprint diamond's corners (6 × 2, around its centre): its right end and front corner.
+  const [, footRight, footFront] = diamond(6, 2)
+  const [pin, onto] = shore === 'front' ? [right, footRight] : [front, footFront]
+  const e = onto[0] - a * pin[0]
+  const f = onto[1] - b * pin[0] - d * pin[1]
+  const map = ([x, y]: Pt): Pt => [a * x + e, b * x + d * y + f]
+  return { a, b, d, e, f, map }
+}
+
+// Where the ship berths (its middle at the waterline), around the seaport's ground point: just off
+// the harbour water's seaward edge, half way along it.
+export function shipBerth(shore: Shore): Pt {
+  const { map } = seaportFit(shore)
+  const { left, front, right } = SEAPORT_IMAGE.slab
+  const back: Pt = [left[0] + right[0] - front[0], left[1] + right[1] - front[1]]
+  const edge = shore === 'front' ? mid(map(left), map(front)) : mid(map(back), map(right))
+  const out = SEAWARD[shore]
+  return [edge[0] + out[0] * BERTH_OUT, edge[1] + out[1] * BERTH_OUT]
+}
+
+// The Seaport on its 6 × 2 coastal footprint: the rendered wharf (muted without power) and, while
+// powered, the cargo ship's loop. The ship is drawn behind the wharf on the back shore (the sea lies
+// behind it there) and in front of it on the front shore.
+export function SeaportImage({ shore = 'front', powered = true }: { shore?: Shore; powered?: boolean }) {
+  const { a, b, d, e, f } = seaportFit(shore)
+  const [w, h] = SEAPORT_IMAGE.size
+  const ship = powered && <CargoShip shore={shore} />
+  return (
+    <g data-building="seaport" data-shore={shore} data-powered={powered} data-sprite="image">
+      <FootprintShadow w={6} h={2} />
+      {shore === 'back' && ship}
+      <image
+        href={SEAPORT_IMAGE.href}
+        width={w}
+        height={h}
+        preserveAspectRatio="none"
+        transform={`matrix(${a.toFixed(5)} ${b.toFixed(5)} 0 ${d.toFixed(5)} ${e.toFixed(2)} ${f.toFixed(2)})`}
+        className={powered ? undefined : 'mg-unpowered'}
+      />
+      {shore === 'front' && ship}
+    </g>
+  )
+}
+
+// The cargo ship's loop (`.mg-dock`, globals.css): it glides in from the open sea, berths beside the
+// wharf for a while, then turns gently and heads back out, along --mg-ox/--mg-oy (one tile out to sea)
+// and --mg-ax/--mg-ay (one tile along the coast). Inside, it bobs on the water (`.mg-float`) over a
+// soft shadow. Both pause with the farm and are off for reduced motion (the ship then rests at its
+// berth).
+export function CargoShip({ shore = 'front' }: { shore?: Shore }) {
+  const { a, b, d } = seaportFit(shore)
+  const { href, size, anchor, relativeScale: k } = CARGO_SHIP_IMAGE
+  const [bx, by] = shipBerth(shore)
+  const out = SEAWARD[shore]
+  const vars: Vars = {
+    '--mg-ox': `${out[0].toFixed(1)}px`,
+    '--mg-oy': `${out[1].toFixed(1)}px`,
+    '--mg-ax': `${ALONG[0].toFixed(1)}px`,
+    '--mg-ay': `${ALONG[1].toFixed(1)}px`,
+  }
+  // The ship's own fit: the seaport's, at the ship's relative scale, with its anchor on (0, 0).
+  const [sa, sb, sd] = [a * k, b * k, d * k]
+  const e = -sa * anchor[0]
+  const f = -(sb * anchor[0] + sd * anchor[1])
+  return (
+    <g transform={`translate(${bx.toFixed(1)} ${by.toFixed(1)})`}>
+      <g className="mg-dock" style={vars} data-ship="">
+        <g className="mg-float">
+          <ellipse cx={0} cy={4} rx={size[0] * sa * 0.42} ry={size[0] * sa * 0.1} transform="rotate(22)" fill="#0b3d6e" opacity={0.28} />
+          <image href={href} width={size[0]} height={size[1]} preserveAspectRatio="none" transform={`matrix(${sa.toFixed(5)} ${sb.toFixed(5)} 0 ${sd.toFixed(5)} ${e.toFixed(2)} ${f.toFixed(2)})`} />
+        </g>
       </g>
     </g>
   )

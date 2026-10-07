@@ -203,6 +203,9 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   conveyor, and the Furniture Factory smokes from its pipe and sprays sawdust sparks and wood chips at
   the saw bench. The Small Windmill's turning rotor is built but off until a render without painted
   sails is supplied.
+- The **Seaport** is now the rendered wharf with its crane and containers, fitted onto its 6×2 coastal
+  footprint (the harbour water hangs out over the sea). While powered, a rendered cargo ship glides in
+  from the open sea, docks beside the wharf, bobbing, then turns and heads back out.
 - `npm run sprites` prepares the images from `raw-assets/structures/*.png` (outside `public/`) (removes the baked-in checkerboard and
   watermark, crops, and shrinks each from 6–7 MB to about 100 KB WebP).
 
@@ -874,7 +877,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): add powered SVG overlay animations for Candy Factory and Furniture Factory: chimney / pipe smoke, rolling candies (`.mg-roll`), sawdust sparks; windmill rotor built, off while the render has painted sails (`WINDMILL_RENDER.bakedSails`); candy sprite without painted smoke |
+| (pending) | feat(garden): integrate 3D low-poly Seaport and animated Cargo Ship loop (`SeaportImage`, `seaportFit`, `CargoShip`; prep script `flip`, `water`, `maxWidth`) with the ship's arrive / dock / depart loop (`.mg-dock`, `.mg-float`) |
+| 68a97fa | feat(garden): add powered SVG overlay animations for Candy Factory and Furniture Factory: chimney / pipe smoke, rolling candies (`.mg-roll`), sawdust sparks; windmill rotor built, off while the render has painted sails (`WINDMILL_RENDER.bakedSails`); candy sprite without painted smoke |
 | c186840 | feat(garden): integrate optimized 3D low-poly WebP sprites for Small Windmill and factories (`BuildingImage`, WebP made by `npm run sprites` from `raw-assets/structures/*.png`, anchored on the 2×2 footprint, unpowered factories muted). Also carries: vivid casual-game look for island buildings: saturated lighting with warm highlights and indigo shadows (`vivid`, `lit`), bevel highlights, footprint shadows, new props and details (planters, lanterns, brass cogs, striped sails, sawdust sparks, gumdrops, ripples, ship wake, ribboned candy crates) |
 | fb5953c | feat(garden): restyle island buildings into 3D low-poly faceted aesthetic and resize Grand Windmill to 2x2 (migration 27). Also carries: power grid with windmills, Furniture Factory and coastal Seaport, Farmer's House and Woodshop retired (migration 25); fruit harvests, Candy Factory, Railroad Track (1 🪙) and Freight Train, candy exported by train for 15 🪙 a box (migration 26) |
 | `dc04f9e` | feat(garden): auto-glide and focus camera on planted trees upon initial load. Also carries: buy a seed in the Shop → place it (open tiles glow) → name it → its Workshop opens on the first root; ✏️ rename trees inline (`renameDeck`); only 💧 / 🍎 icons over trees, resting on each species' crown tip; perf (Workshop rows memoized, farm dialogs lazy after idle, island animations paused when hidden or behind a dialog; happy-dom); a wider Tree Workshop column |
@@ -927,7 +931,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 104 files, 1026 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 104 files, 1031 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

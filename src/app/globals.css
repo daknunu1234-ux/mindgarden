@@ -238,6 +238,33 @@
 
 /* A static building sprite (garden BuildingImages.tsx) without power: muted, so it reads as idle. */
 .mg-unpowered { filter: saturate(0.45) brightness(0.82); }
+/* The rendered cargo ship at a powered Seaport (garden BuildingImages.tsx CargoShip): it glides in
+   from the open sea (along --mg-ox/--mg-oy, out to sea, and --mg-ax/--mg-ay, along the coast), slows
+   to its berth, stays docked while it unloads, then turns gently and heads back out. It bobs on the
+   water all the while. Transform and opacity only; off for reduced motion (it rests at its berth),
+   paused with the farm. */
+@keyframes mg-dock {
+  0% {
+    transform: translate(calc(var(--mg-ox) * 6 - var(--mg-ax) * 5), calc(var(--mg-oy) * 6 - var(--mg-ay) * 5)) rotate(-3deg);
+    opacity: 0;
+    animation-timing-function: ease-out;
+  }
+  8% { opacity: 1; }
+  34% { transform: translate(0, 0) rotate(0deg); animation-timing-function: linear; }
+  64% { transform: translate(0, 0) rotate(0deg); animation-timing-function: ease-in; }
+  74% { transform: translate(calc(var(--mg-ox) * 0.9), calc(var(--mg-oy) * 0.9)) rotate(2deg); animation-timing-function: ease-in-out; }
+  92% { transform: translate(calc(var(--mg-ox) * 6 + var(--mg-ax) * 4), calc(var(--mg-oy) * 6 + var(--mg-ay) * 4)) rotate(4deg); opacity: 1; }
+  100% { transform: translate(calc(var(--mg-ox) * 6 + var(--mg-ax) * 4), calc(var(--mg-oy) * 6 + var(--mg-ay) * 4)) rotate(4deg); opacity: 0; }
+}
+@keyframes mg-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-1.6px) rotate(0.6deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-dock { animation: mg-dock 30s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .mg-float { animation: mg-float 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+}
+
 /* Candies rolling off the Candy Factory's conveyor (along --mg-cx/--mg-cy), fading in and out. */
 @keyframes mg-roll {
   0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
