@@ -17,7 +17,7 @@ function fakeSupabase(viewer: string | null, { coins = 100, taken = false, owned
   const calls: Record<string, unknown>[] = []
   const deletes: unknown[] = []
   const excluded: [string, unknown][] = []
-  const prices: Record<string, number> = { tree: 0, farmer_house: 50, woodshop: 50, stream: 5, fence: 1, rockery: 2, animal: 5 }
+  const prices: Record<string, number> = { tree: 0, windmill_small: 60, windmill_large: 100, furniture_factory: 120, seaport: 150, stream: 5, fence: 1, rockery: 2, animal: 5 }
   const client = {
     auth: { getUser: async () => ({ data: { user: viewer ? { id: viewer } : null } }) },
     rpc: async (fn: string, args: Record<string, unknown>) => {
@@ -54,13 +54,21 @@ beforeEach(() => vi.clearAllMocks())
 describe('placeFarmItem', () => {
   it('buys a shop item at the catalogue price (the client never sends a price)', async () => {
     const { calls } = fakeSupabase(ME, { coins: 100 })
-    expect(await placeFarmItem({ item: 'woodshop', x: 3, y: 4, price: 0, cost: 0 })).toEqual({
+    expect(await placeFarmItem({ item: 'windmill_small', x: 3, y: 4, price: 0, cost: 0 })).toEqual({
       success: true,
-      data: { placementId: 'new', remainingCoins: 50, cost: 50 },
+      data: { placementId: 'new', remainingCoins: 40, cost: 60 },
     })
-    expect(calls).toEqual([{ p_item_type: 'woodshop', p_x: 3, p_y: 4, p_deck_id: null, p_variant: null }])
+    expect(calls).toEqual([{ p_item_type: 'windmill_small', p_x: 3, p_y: 4, p_deck_id: null, p_variant: null }])
     // No page re-render: the farm shows the change optimistically (a revalidate would cost seconds).
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('no longer sells the retired Farmer’s House and Woodshop (refused before any call)', async () => {
+    const { calls } = fakeSupabase(ME, { coins: 500 })
+    for (const item of ['farmer_house', 'woodshop']) {
+      expect(await placeFarmItem({ item, x: 3, y: 4 })).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+    }
+    expect(calls).toEqual([])
   })
 
   it('sends animals as item type animal with their variant, and plants trees for free', async () => {

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { FARM_CATALOG } from '../lib/farmCatalog'
+import { FARM_CATALOG, RETIRED_CATALOG } from '../lib/farmCatalog'
 import {
   checkPlacement,
   depthOf,
@@ -104,7 +104,12 @@ describe('migration 20260930000000_farm_grid.sql', () => {
   const body = sql.split('-- Verify')[0]
 
   it('charges the catalogue prices and sizes itself (never a client-sent price)', () => {
-    for (const entry of FARM_CATALOG) {
+    // The items this migration introduced: the retired buildings and the ones still sold from then
+    // (the power-grid buildings are priced by 20261014000000, tested in powerGrid.test.ts).
+    const ORIGINAL = new Set(['farmer_house', 'woodshop', 'stream', 'fence', 'rockery', 'cow', 'pig'])
+    const original = [...RETIRED_CATALOG, ...FARM_CATALOG].filter((i) => ORIGINAL.has(i.id))
+    expect(original).toHaveLength(7)
+    for (const entry of original) {
       const size = entry.width > 1 ? `; v_w := ${entry.width}; v_h := ${entry.height}` : ''
       expect(body).toContain(`when '${entry.itemType}'`)
       expect(body).toMatch(new RegExp(`when '${entry.itemType}'\\s+then v_cost := ${entry.price}${size.replace(/[;:]/g, (m) => `\\${m}`)}`))

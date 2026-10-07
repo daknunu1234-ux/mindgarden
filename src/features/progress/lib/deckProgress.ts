@@ -20,7 +20,7 @@ export type DeckProgress = {
   practicedToday: boolean
   // Newest practice of any item (ISO timestamp), or null: drives withering (shared/lib/treeVitality).
   lastPracticedAt: string | null
-  // Practised yesterday and not harvested today: the tree bears fruit (FRUIT_COINS 🪙).
+  // Practised yesterday and not harvested today: the tree bears fruit (FRUIT_PER_HARVEST 🪙).
   fruitReady: boolean
 }
 

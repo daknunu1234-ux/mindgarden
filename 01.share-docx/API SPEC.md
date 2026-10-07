@@ -120,9 +120,11 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Tournament | `getTournamentBoards` | Action | Hall of Fame + Active Learners boards, and your own standing | Optional |
 | Garden | `getFarmPlacements` | Action | A farm's placements: yours, or a neighbour's (items + public trees) | Optional |
 | Garden | `placeFarmItem` | Action/POST | Plant one of your trees (free) or buy + place a Shop item on your farm | Required |
+| Garden | `settleFarmEconomy` | Action/POST | Bring your island's production up to date; a powered Seaport's cargo ship pays coins | Required |
 | Garden | `moveFarmPlacement` | Action/POST | Move one of your farm trees or items to another tile (free) | Required |
 | Garden | `removeFarmPlacement` | Action/POST | Pick up one of your farm's Shop items (no refund; trees are refused: move or chop them) | Required |
-| Progress | `harvestTreeFruit` | Action/POST | Collect today's fruit of a tree you practised yesterday: +2 🪙, once per tree per day | Required (owner) |
+| Progress | `harvestTreeFruit` | Action/POST | Collect today's fruit of a tree you practised yesterday: +2 🍎 (fruit, not coins), once per tree per day | Required (owner) |
+| Garden | `getFarmInventory` | Action | Your island's 🍎 fruit and 🍬 candy boxes (the header's fruit counter) | Optional |
 | Rush | `getDailyRushStatus` | Action | Whether today's Daily Rush is used, and the last run's result (null when signed out) | Optional |
 | Rush | `startDailyRush` | Action/POST | Claim today's one Daily Rush on one of your trees and get the first card | Required (owner) |
 | Rush | `answerDailyRush` | Action/POST | One pick (or a timeout) of the running Daily Rush: next card, or game over + coins | Required |
@@ -544,11 +546,25 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - `removeDeck` → `uproot_deck()` (DATABASE.md "Farm Grid"): deletes the deck and, with a Woodshop on the farm, refunds `least(floor(statements × 0.25), 50)` 🪙 in the same transaction (before that migration, a plain delete with no refund). Returns instead of redirecting and never calls `revalidatePath` (in a Server Action that re-renders the whole farm page before answering). The farm has already removed the tree (with a puff), credited the refund (`calculateWoodshopRefund`, the same rule) and rolls back on error; it settles the purse on `totalCoins`
 - UI: `DeleteDeckDialog` with `onChop` (farm mode), composed in `app/_components/FarmWorld.tsx`: confirming hands `chopDeck` to the farm's chop and closes. On the deck page (Danger Zone, type the tree's name to confirm) the dialog turns to "Uprooting…" at once, awaits `chopDeck`, then `router.replace('/')` (or `/?refund=N`): the farm's `loading.tsx` shows straight away and Back never returns to the deleted tree. (`deleteDeck`, which revalidated `/`, `/deck/<slug>` and `/profile` and redirected on the server, is gone.)
 
+### `settleFarmEconomy` (garden)
+```typescript
+// settleFarmEconomy() → { timber, produce, furniture, fruit, candy, payout, candyShipped, candyPayout, totalCoins, lastExportAt }
+// getFarmInventory() → { fruit, candy, asOf } | null   // signed out / unreadable: null (read only; the layout's header)
+// Errors: AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+- Calls `settle_farm_economy()` (DATABASE.md "Power and the export loop"): everything (production since the last visit, the power state, the ship every 4 hours, its payout up to 15 🪙) is computed in the database from timestamps; the client sends nothing. No `revalidatePath`
+- Candy: powered Candy Factories turn 10 fruit into 1 box an hour; with a Freight Train on track linking a powered Candy Factory to a powered Seaport (`lib/railway.ts` `railLink`, `farm_candy_linked()` in SQL), every whole box is exported for 15 🪙 (`candyShipped`, `candyPayout`): the farm floats "+15 🪙" labels and a coin burst over the Seaport and shows a toast
+- The farm (owner) calls it once the browser is idle after arriving and every 10 minutes while the tab is visible; a payout shows a toast ("Cargo ship departed · Exporting Goods +N 🪙") and updates the purse. The building inspector (`FarmItemDialog`) shows the stock as inputs / outputs
+
 ### `getFarmPlacements` / `placeFarmItem` / `moveFarmPlacement` / `removeFarmPlacement` (garden)
 ```typescript
 // getFarmPlacements({ ownerId?: uuid }) → Placement[]   // { id, itemType, deckId, x, y, width, height, variant }
 //   yours without ownerId (signed out → []); a neighbour's: their items and PUBLIC trees only (RLS)
-// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'farmer_house' | 'woodshop' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
+// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'candy_factory' | 'seaport' | 'rail_track' | 'freight_train' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
+//   freight_train: on three Railroad Tracks in a row, else TILE_UNAVAILABLE "A Freight Train needs three Railroad Tracks in a row under it" (NOT_ON_TRACK);
+//   a track under a train can't be moved or picked up (TILE_UNAVAILABLE "A train stands on that track: move the train first", TRACK_IN_USE)
+//   (farmer_house / woodshop are retired: VALIDATION_FAILED; the database refuses them too: ITEM_RETIRED)
+//   seaport: coast only (its top tile on row 0 or row 14), else TILE_UNAVAILABLE "A Seaport must stand on the shore" (NOT_COASTAL; moves too)
 //   → { placementId, remainingCoins, cost }   x, y = top tile, 0–15
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS, TILE_UNAVAILABLE, DECK_NOT_FOUND, INTERNAL_ERROR
 // moveFarmPlacement({ placementId, x, y }) → { id, x, y }   x, y = new top tile, 0–15; same footprint, no coins
@@ -563,12 +579,12 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ### `harvestTreeFruit` (progress)
 ```typescript
 // Input (HarvestFruitDto): { deckId: string /* uuid */; timeZone?: string /* browser IANA zone; unknown → UTC */ }
-// data: { coinsEarned: number /* FRUIT_COINS = 2 */; totalCoins: number }
+// data: { fruitEarned: number /* FRUIT_PER_HARVEST = 2 */; totalFruit: number }   // fruit, not coins (migration 20261015000000)
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, DECK_NOT_FOUND (not yours), FRUIT_NOT_READY, INTERNAL_ERROR
 ```
 - "Today" = the server clock in the player's timezone (never sent by the client); `harvest_tree_fruit()` (service role, DATABASE.md "Tree fruit") checks ownership, a practice day for the tree yesterday and today's first harvest, then pays in one transaction
 - A tree bears fruit when the player saved at least one practice answer on it yesterday (their local day; `deck_practice_days`, written by `submitDrillResult`). Any growth stage, including the stage 4+ trees that never wither
-- UI: a 🍎 +2 bubble on the farm tree and "🍎 Harvest fruit" in its popover. Optimistic: the fruit goes and the purse grows at once; a refusal puts both back with a toast. No `revalidatePath`. Wired in `app/_components/FarmWorld.tsx` (garden imports no other feature)
+- UI: a 🍎 bubble on the farm tree and "🍎 Harvest fruit (+2 🍎)" in its popover. Optimistic: the fruit leaves the tree and the header's 🍎 counter (garden `FruitBadge`, `shared/stores/FruitProvider`) grows at once; a refusal puts both back with a toast. No `revalidatePath`. Fruit becomes candy at a powered Candy Factory (10 → 1 box) and candy becomes coins at the Seaport (15 each, by Freight Train) Wired in `app/_components/FarmWorld.tsx` (garden imports no other feature)
 
 ### `getDailyRushStatus` / `startDailyRush` / `answerDailyRush` (rush)
 ```typescript

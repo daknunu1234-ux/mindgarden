@@ -1,14 +1,12 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { cn } from '@/shared/utils/cn'
 import { beachPalms, FARM_WORLD } from '../lib/diorama'
 import { holdMs, pressOutcome, tileAtPoint } from '../lib/dragGesture'
 import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
 import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
 import {
-  checkMove,
-  checkPlacement,
   depthOf,
   fenceLinks,
   footprintCenter,
@@ -24,6 +22,7 @@ import {
   type Placement,
 } from '../lib/farmGrid'
 import { plotSprite } from '../lib/plotSprite'
+import { checkItemPlacement, isPowerSource, poweredMap, powerField, powerFields, requiresPower, seaportSpots } from '../lib/powerGrid'
 import { getTreeSizeTier } from '@/shared/lib/treeSkins'
 import { getTreeStage } from '../hooks/useTreeStage'
 import type { FarmPlotView } from '../types'
@@ -33,6 +32,7 @@ import {
   BuffAura,
   FarmerHouse,
   FenceSprite,
+  ItemDrawing,
   footprintPoints,
   GhostFootprint,
   RockerySprite,
@@ -42,6 +42,9 @@ import {
   type LinkedTile,
 } from './FarmStructures'
 import { LABEL_LAYER, PlotButton, PlotLabels, treeSwayPhase } from './FarmTree'
+import { shoreOf } from './PowerBuildings'
+import { RailNetwork, RunningTrain, type TrackCell } from './RailwaySprites'
+import { railLink } from '../lib/railway'
 
 export { FARM_WORLD }
 
@@ -84,6 +87,9 @@ type FarmIsometricGridProps = {
   dragEnabled?: boolean
   onDragStart?: (placementId: string, pointerId: number) => boolean
   onDragEnd?: (tile: { x: number; y: number } | null) => void
+  // The item whose popover is open: a windmill shows its power field, a building that needs power
+  // shows every field on the farm.
+  inspectedId?: string | null
 }
 
 // Marks the element that stands for a placement, so a press on it can pick it up.
@@ -108,6 +114,7 @@ function FarmIsometricGridImpl({
   onOpenPlot,
   onOpenItem,
   onHarvestPlot,
+  inspectedId = null,
   dragEnabled = false,
   onDragStart,
   onDragEnd,
@@ -196,7 +203,9 @@ function FarmIsometricGridImpl({
   const ghostH = build?.footprint.height ?? 1
   const ghost: Footprint | null = ghostX !== null && ghostY !== null ? { x: ghostX, y: ghostY, width: ghostW, height: ghostH } : null
   const movingId = build?.movingId ?? null
-  const ghostOk = ghost ? (movingId ? checkMove(placements, movingId, ghost) === 'ok' : checkPlacement(placements, ghost) === 'ok') : false
+  // Bounds, overlaps and, for the seaport, the coast (lib/powerGrid checkItemPlacement).
+  const ghostCheck = ghost && build ? checkItemPlacement(placements, build.itemType, ghost, movingId ?? undefined) : null
+  const ghostOk = ghostCheck === 'ok'
   // A stream or Farmer's House being placed or moved to a free spot: preview the buffs it would give.
   const auraKind = build && (build.itemType === 'stream' || build.itemType === 'farmer_house') ? build.itemType : null
 
@@ -212,6 +221,7 @@ function FarmIsometricGridImpl({
       : spot && ghostOk && auraKind
         ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: spot.x, y: spot.y, width: spot.width, height: spot.height, variant: null }]
         : placements
+    const powered = poweredMap(placements)
     const trees = placements.flatMap((p) => {
       const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
       return plot ? [{ placement: p, plot }] : []
@@ -231,17 +241,49 @@ function FarmIsometricGridImpl({
       streams: others.filter((p) => p.itemType === 'stream').map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) })),
       // Streams are painted as one network; each tile still gets its own (invisible) button.
       streamHits: placements.filter((p) => p.itemType === 'stream' && p.id !== movingId),
+      // Railroad Track: drawn flat in the ground layer, joined to the tracks beside it; each tile gets
+      // an invisible button like a stream's.
+      tracks: layout
+        .filter((p) => p.itemType === 'rail_track')
+        .map((p): TrackCell => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'rail_track', p) })),
+      trackHits: placements.filter((p) => p.itemType === 'rail_track' && p.id !== movingId),
+      // A Freight Train on a line linking a Candy Factory to the Seaport runs it (lib/railway railLink).
+      link: railLink(placements),
       trees: trees.map(({ placement, plot }) => {
         const current = treeBuff(placement.x, placement.y, placements)
         const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
         return { placement, plot, animate: animated.has(placement.id), buffs: buffKey(current, next) }
       }),
       items: placements
-        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree')
+        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree' && p.itemType !== 'rail_track')
         .sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
-        .map((p) => ({ placement: p, links: p.itemType === 'fence' ? linksKey(fenceLinks(p.id === movingId ? others : layout, p)) : '' })),
+        .map((p) => ({
+          placement: p,
+          links: p.itemType === 'fence' ? linksKey(fenceLinks(p.id === movingId ? others : layout, p)) : '',
+          // Buildings that need power: on or off (lib/powerGrid); undefined for everything else.
+          powered: powered.get(p.id),
+        })),
     }
   }, [placements, plotsByDeck, movingId, ghostX, ghostY, ghostW, ghostH, ghostOk, auraKind])
+
+  // Power fields to show: while placing (or moving) a power building, every field on the farm plus the
+  // one the ghost would make; while inspecting a windmill, its own; a building that needs power, all.
+  const powerView = useMemo(() => {
+    const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
+    if (build && (isPowerSource(build.itemType) || requiresPower(build.itemType))) {
+      const own = ghost && ghostOk && isPowerSource(build.itemType) ? powerField({ ...ghost, itemType: build.itemType }) : null
+      return { fields: [...powerFields(others), ...(own ? [own] : [])], focus: own }
+    }
+    const inspected = inspectedId ? placements.find((p) => p.id === inspectedId) : undefined
+    if (inspected && isPowerSource(inspected.itemType)) {
+      const own = powerField(inspected)
+      return { fields: own ? [own] : [], focus: own }
+    }
+    if (inspected && requiresPower(inspected.itemType)) return { fields: powerFields(placements), focus: null }
+    return { fields: [], focus: null }
+    // ghost / ghostOk derive from build and the tiles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placements, movingId, build?.itemType, ghostX, ghostY, ghostW, ghostH, ghostOk, inspectedId])
 
   return (
     <div
@@ -275,8 +317,11 @@ function FarmIsometricGridImpl({
         <IslandBase origin={origin} seed={seed} />
         <TreePlots trees={scene.treeBeds} origin={origin} />
         <StreamNetwork streams={scene.streams} origin={origin} />
+        <RailNetwork tracks={scene.tracks} origin={origin} />
         {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
         {build?.highlightFree && <FreeTileMarks placements={placements} origin={origin} />}
+        {build?.itemType === 'seaport' && <CoastMarks placements={placements} movingId={movingId} origin={origin} />}
+        {powerView.fields.length > 0 && <PowerFields fields={powerView.fields} focus={powerView.focus} origin={origin} />}
         {ghost && <GhostFootprint footprint={ghost} origin={origin} valid={ghostOk} />}
       </svg>
 
@@ -287,9 +332,22 @@ function FarmIsometricGridImpl({
         {scene.trees.map(({ placement, plot, animate, buffs }) => (
           <TreeTile key={placement.id} placement={placement} plot={plot} animate={animate} buffs={buffs} lifted={placement.id === movingId} onOpen={onOpenPlot} onHarvest={onHarvestPlot} />
         ))}
-        {scene.items.map(({ placement, links }) => (
-          <FarmItem key={placement.id} placement={placement} links={links} lifted={placement.id === movingId} onOpen={onOpenItem} />
+        {scene.items.map(({ placement, links, powered }) => (
+          <FarmItem
+            key={placement.id}
+            placement={placement}
+            links={links}
+            powered={powered}
+            // The train out on its run: the parked one isn't drawn (its button stays).
+            running={!build && scene.link?.train.id === placement.id}
+            lifted={placement.id === movingId}
+            onOpen={onOpenItem}
+          />
         ))}
+        {scene.trackHits.map((placement) => (
+          <StreamHit key={placement.id} placement={placement} label="Railroad Track" onOpen={onOpenItem} />
+        ))}
+        {!build && scene.link && <TrainRun route={scene.link.route} />}
         {scene.streamHits.map((placement) => (
           <StreamHit key={placement.id} placement={placement} onOpen={onOpenItem} />
         ))}
@@ -326,7 +384,7 @@ function FarmIsometricGridImpl({
           <div className={cn('relative', ghostOk ? 'mg-float' : 'opacity-70')}>{build.preview}</div>
           {!ghostOk && (
             <span className="mg-throb absolute -top-28 left-1/2 -translate-x-1/2 -rotate-6 rounded-xl border-[3px] border-[#5c0011] bg-gradient-to-b from-[#ff6b6b] to-[#d90429] px-2.5 py-1 font-game text-sm font-extrabold whitespace-nowrap text-white shadow-[0_4px_0_#5c0011] [text-shadow:0_2px_0_#5c0011]">
-              ✖ Blocked!
+              {ghostCheck === 'not-coastal' ? '✖ Coast only!' : '✖ Blocked!'}
             </span>
           )}
         </div>
@@ -459,7 +517,7 @@ function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: nu
 // Memoized: `links` is the fence's "nesw" key, so moving something elsewhere doesn't redraw it.
 // A stream tile's click target: the tile's diamond, invisible (the water is drawn by StreamNetwork).
 // Opens the item popover like any Shop item, and a hold picks it up.
-const StreamHit = memo(function StreamHit({ placement, onOpen }: { placement: Placement; onOpen: (placement: Placement) => void }) {
+const StreamHit = memo(function StreamHit({ placement, label = 'Stream', onOpen }: { placement: Placement; label?: string; onOpen: (placement: Placement) => void }) {
   const top = tileToScreen(placement.x, placement.y)
   const origin = FARM_WORLD.origin
   return (
@@ -469,7 +527,7 @@ const StreamHit = memo(function StreamHit({ placement, onOpen }: { placement: Pl
         e.stopPropagation()
         onOpen(placement)
       }}
-      aria-label="Stream"
+      aria-label={label}
       {...{ [PLACEMENT_ATTR]: placement.id }}
       className="absolute transition-colors [clip-path:polygon(50%_0,100%_50%,50%_100%,0_50%)] hover:bg-white/15 focus-visible:bg-yellow-200/40 focus-visible:outline-none"
       style={{ left: origin.x + top.x - TILE_W / 2, top: origin.y + top.y, width: TILE_W, height: TILE_H, zIndex: Math.round(origin.y + top.y + TILE_H / 2) }}
@@ -480,18 +538,36 @@ const StreamHit = memo(function StreamHit({ placement, onOpen }: { placement: Pl
 const FarmItem = memo(function FarmItem({
   placement,
   links,
+  powered,
+  running = false,
   lifted,
   onOpen,
 }: {
   placement: Placement
   links: string
+  // A building that needs power: whether it has it (undefined: needs none).
+  powered?: boolean
+  // The Freight Train out on its route (TrainRun draws it): nothing drawn here, the button stays.
+  running?: boolean
   lifted: boolean
   onOpen: (placement: Placement) => void
 }) {
   const ground = groundOf(placement)
   const entry = catalogFor(placement.itemType, placement.variant)
   const big = placement.width > 1
-  const box = big ? { w: 170, h: 170 } : placement.itemType === 'fence' ? { w: 56, h: 50 } : { w: 70, h: 62 }
+  // The click target follows the footprint: 2 × 2 buildings as before, bigger ones by their diamond.
+  const span = (placement.width + placement.height) / 4
+  const box =
+    // Windmills are 2 × 2 towers: a tall target over the whole tower.
+    placement.itemType === 'windmill_small' || placement.itemType === 'windmill_large'
+      ? { w: 170, h: placement.itemType === 'windmill_large' ? 300 : 240 }
+      : placement.width > 2 || placement.height > 2
+      ? { w: Math.round(span * TILE_W * 1.6), h: Math.round(span * TILE_W * 0.9) }
+      : big
+        ? { w: 170, h: 170 }
+        : placement.itemType === 'fence'
+          ? { w: 56, h: 50 }
+          : { w: 70, h: 62 }
   const z = Math.round(ground.y)
   // Animals start their idle at a point fixed by their id, so neighbours never move in step.
   const delay = [...placement.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 9
@@ -507,7 +583,26 @@ const FarmItem = memo(function FarmItem({
           {placement.itemType === 'woodshop' && <WoodshopSprite />}
           {placement.itemType === 'rockery' && <RockerySprite />}
           {placement.itemType === 'fence' && <FenceSprite links={{ north: bit(links, 0), east: bit(links, 1), south: bit(links, 2), west: bit(links, 3) }} />}
+          {(placement.itemType === 'windmill_small' ||
+            placement.itemType === 'windmill_large' ||
+            placement.itemType === 'furniture_factory' ||
+            placement.itemType === 'candy_factory' ||
+            placement.itemType === 'seaport' ||
+            (placement.itemType === 'freight_train' && !running)) && (
+            <ItemDrawing item={{ itemType: placement.itemType, variant: null }} powered={powered !== false} shore={shoreOf(placement.y)} />
+          )}
         </svg>
+      )}
+      {/* A building without power: a red badge over it (its activity stopped). */}
+      {powered === false && (
+        <span
+          aria-hidden
+          data-no-power=""
+          className="mg-throb pointer-events-none absolute -translate-x-1/2 rounded-full border-2 border-[#5c0011] bg-gradient-to-b from-[#ff6b6b] to-[#d90429] px-2 py-0.5 font-game text-[11px] font-extrabold whitespace-nowrap text-white shadow-[0_3px_0_#5c0011]"
+          style={{ left: ground.x, top: ground.y - box.h * 0.75, zIndex: LABEL_LAYER + z }}
+        >
+          ⚡ No Power
+        </span>
       )}
       <button
         type="button"
@@ -516,7 +611,7 @@ const FarmItem = memo(function FarmItem({
           e.stopPropagation()
           onOpen(placement)
         }}
-        aria-label={entry?.name ?? 'Farm item'}
+        aria-label={powered === false ? `${entry?.name ?? 'Building'}: no power` : (entry?.name ?? 'Farm item')}
         {...{ [PLACEMENT_ATTR]: placement.id }}
         className="absolute rounded-3xl transition-colors hover:bg-white/10 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
         style={{ left: ground.x - box.w / 2, top: ground.y - box.h + (big ? TILE_H / 2 : 8), width: box.w, height: box.h, zIndex: z + 1 }}
@@ -550,3 +645,77 @@ const FreeTileMarks = memo(function FreeTileMarks({ placements, origin }: { plac
     </g>
   )
 })
+
+// Placing a seaport: every spot on the shore where it fits glows green, and the inland rows (where it
+// can never stand) are washed red. Memoized on the farm.
+const CoastMarks = memo(function CoastMarks({ placements, movingId, origin }: { placements: readonly Placement[]; movingId: string | null; origin: { x: number; y: number } }) {
+  const spots = useMemo(() => seaportSpots(placements, movingId ?? undefined), [placements, movingId])
+  return (
+    <g data-coast-marks="" className="pointer-events-none">
+      <polygon points={footprintPoints({ x: 0, y: 2, width: GRID_SIZE, height: GRID_SIZE - 4 }, origin)} fill="rgba(255, 64, 64, 0.12)" stroke="rgba(179, 0, 27, 0.35)" strokeWidth={2} strokeDasharray="10 8" />
+      {spots
+        .filter((s) => s.ok)
+        .map(({ spot }) => (
+          <polygon key={`${spot.x}-${spot.y}`} points={footprintPoints(spot, origin)} fill="rgba(134, 255, 120, 0.1)" stroke="rgba(22, 163, 74, 0.55)" strokeWidth={1.5} strokeLinejoin="round" />
+        ))}
+    </g>
+  )
+})
+
+// Power fields: a soft electric glow with a dashed rim; the one in focus (the ghost's, or the inspected
+// windmill's) brighter. Fields reaching past the island are clipped to the grid.
+function PowerFields({ fields, focus, origin }: { fields: readonly Footprint[]; focus: Footprint | null; origin: { x: number; y: number } }) {
+  const clip = (f: Footprint): Footprint | null => {
+    const x0 = Math.max(0, f.x)
+    const y0 = Math.max(0, f.y)
+    const x1 = Math.min(GRID_SIZE, f.x + f.width)
+    const y1 = Math.min(GRID_SIZE, f.y + f.height)
+    return x1 > x0 && y1 > y0 ? { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } : null
+  }
+  return (
+    <g data-power-fields={fields.length} className="pointer-events-none">
+      {fields.flatMap((f, i) => {
+        const c = clip(f)
+        if (!c) return []
+        const strong = focus !== null && f === focus
+        return [
+          <polygon
+            key={i}
+            points={footprintPoints(c, origin)}
+            fill={strong ? 'rgba(253, 224, 71, 0.2)' : 'rgba(125, 211, 252, 0.1)'}
+            stroke={strong ? '#facc15' : 'rgba(56, 189, 248, 0.7)'}
+            strokeWidth={strong ? 4 : 2.5}
+            strokeDasharray={strong ? '14 8' : '8 8'}
+            strokeLinejoin="round"
+            className={strong ? 'mg-throb' : undefined}
+          />,
+        ]
+      })}
+    </g>
+  )
+}
+
+// Seconds the running train spends on each track tile (one way; it runs there and back).
+const TRAIN_SECONDS_PER_TILE = 1.1
+
+// The Freight Train on its line: a small train moving along the route's track tiles, from the Candy
+// Factory's end to the Seaport's and back (CSS offset-path through the tiles' centres,
+// `.mg-train-run`). Off for reduced motion (it waits at the factory end). No pointer events.
+function TrainRun({ route }: { route: readonly { x: number; y: number }[] }) {
+  const points = route.map((t) => groundOf({ x: t.x, y: t.y, width: 1, height: 1 }))
+  // A route of one tile still needs a path: a tiny hop.
+  const path = points.length > 1 ? points : [points[0], { x: points[0].x + 1, y: points[0].y }]
+  const d = path.map((q, i) => `${i === 0 ? 'M' : 'L'} ${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(' ')
+  const style: CSSProperties & Record<'--mg-dur', string> = {
+    offsetPath: `path('${d}')`,
+    offsetRotate: '0deg',
+    offsetAnchor: '50% 80%',
+    '--mg-dur': `${Math.max(2, route.length * TRAIN_SECONDS_PER_TILE).toFixed(1)}s`,
+    zIndex: LABEL_LAYER - 2,
+  }
+  return (
+    <div aria-hidden data-train-run={route.length} className="mg-train-run pointer-events-none absolute top-0 left-0" style={style}>
+      <RunningTrain />
+    </div>
+  )
+}

@@ -4,15 +4,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GameButton } from '@/shared/components/game'
+import { GameButton, ParticleBurst } from '@/shared/components/game'
 import { useAfterIdle } from '@/shared/hooks/useAfterIdle'
 import { useCamera } from '@/shared/hooks/useCamera'
 import { useDocumentHidden } from '@/shared/hooks/useDocumentHidden'
-import { FRUIT_COINS } from '@/shared/lib/economy'
+import { FRUIT_PER_HARVEST } from '@/shared/lib/economy'
 import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/camera'
 import { defaultTreeName } from '@/shared/lib/treeName'
 import { treeScale, type TreeSpecies } from '@/shared/lib/treeSkins'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
+import { useFruit } from '@/shared/stores/FruitProvider'
 import type { ActionResult } from '@/shared/types/result'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import { useToast } from '@/shared/stores/ToastProvider'
@@ -20,15 +21,20 @@ import { cn } from '@/shared/utils/cn'
 import { moveFarmPlacement } from '../actions/moveFarmPlacement'
 import { placeFarmItem } from '../actions/placeFarmItem'
 import { removeFarmPlacement } from '../actions/removeFarmPlacement'
+import { settleFarmEconomy } from '../actions/settleFarmEconomy'
 import { useDayNight } from '../hooks/useDayNight'
 import { useTreeLabels } from '../hooks/useTreeLabels'
 import { getTreeStage } from '../hooks/useTreeStage'
 import { dropOutcome } from '../lib/dragGesture'
 import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
-import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
+import type { FarmEconomyView } from '../lib/farmEconomy'
+import { firstFreeTile, footprintCenter, overlaps, type Placement } from '../lib/farmGrid'
+import { checkItemPlacement, poweredMap, powerField, requiresPower } from '../lib/powerGrid'
+import { railLink, trackInUse } from '../lib/railway'
 import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 import { lightingModeClass } from '../lib/dayNight'
+import { exportRewards, fruitAfterHarvest, fruitAfterRefusal } from '../lib/inventory'
 import { farmFocus } from '../lib/farmFocus'
 import { boughtTreeView, withLocalTrees, workshopHref, type BoughtTree } from '../lib/purchase'
 import { treeLabelsModeClass } from '../lib/treeLabels'
@@ -100,7 +106,9 @@ const preloadDialogs = () => {
 // The server side of a chop, supplied by the page: resolves with the refund and the purse after it.
 export type ChopRun = () => Promise<ActionResult<{ refund: number; totalCoins: number | null }>>
 // Collects one tree's fruit on the server (progress harvestTreeFruit): the page passes it in.
-export type HarvestRun = (deckId: string, timeZone: string) => Promise<ActionResult<{ coinsEarned: number; totalCoins: number }>>
+// Collects one tree's fruit on the server (progress harvestTreeFruit): FRUIT_PER_HARVEST 🍎 into the
+// island's inventory. The page passes it in.
+export type HarvestRun = (deckId: string, timeZone: string) => Promise<ActionResult<{ fruitEarned: number; totalFruit: number }>>
 
 // What is being placed: one of your trees (free), a shop item (paid when put down), or something
 // already on the farm being moved (free; `tree` set when it's a tree).
@@ -139,6 +147,7 @@ function FarmIslandView({
   const { toast } = useToast()
   const router = useRouter()
   const { setCoins } = useCoins()
+  const { live: liveFruit, setFruit } = useFruit()
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
   const { open: openLogin } = useLoginDialog()
   const isOwner = signedIn && !visitor
@@ -150,6 +159,8 @@ function FarmIslandView({
   const dialogsReady = useAfterIdle(preloadDialogs)
   // A background tab: the island's animations stop (see `paused` below).
   const hidden = useDocumentHidden()
+  // The island's stock (timber, produce, furniture) after the last settlement (owner only).
+  const [economy, setEconomy] = useState<FarmEconomyView | null>(null)
 
   const world = useMemo(() => ({ w: FARM_WORLD.w, h: FARM_WORLD.h }), [])
   const focus = useMemo(() => ({ x: FARM_WORLD.w / 2, y: FARM_WORLD.h / 2 + 40 }), [])
@@ -223,8 +234,14 @@ function FarmIslandView({
         : { width: 1, height: 1 }
   const ghostPreview = useMemo(() => (build ? buildPreview(build.request) : null), [build])
   const buffs = useMemo(() => buffSummary(farm, plotsByDeck), [farm, plotsByDeck])
-  const fits = (tile: { x: number; y: number }) =>
-    build?.request.kind === 'move' ? checkMove(farm, build.request.placement.id, tile) === 'ok' : checkPlacement(farm, { ...tile, ...footprint }) === 'ok'
+  // Bounds, overlaps and, for the seaport, the coast (lib/powerGrid checkItemPlacement; the database
+  // checks the same).
+  const fits = (tile: { x: number; y: number }) => {
+    if (!build) return false
+    const request = build.request
+    const itemType = request.kind === 'tree' ? 'tree' : request.kind === 'item' ? request.item.itemType : request.placement.itemType
+    return checkItemPlacement(farm, itemType, { ...tile, ...footprint }, request.kind === 'move' ? request.placement.id : undefined) === 'ok'
+  }
   const ghostOk = build?.tile ? fits(build.tile) : false
 
   const startBuild = (request: BuildRequest) => {
@@ -377,9 +394,14 @@ function FarmIslandView({
     })
   }
 
-  // Takes a Shop item off the farm at once. Trees can't be picked up: they are moved or chopped.
+  // Takes a Shop item off the farm at once. Trees can't be picked up: they are moved or chopped. A
+  // track a train stands on stays (the database refuses it too).
   const pickUp = (placement: Placement, message: string, icon: string) => {
     if (isPendingId(placement.id)) return
+    if (trackInUse(farm, placement)) {
+      toast({ message: 'A train stands on that track: move the train first', icon: '🚂', tone: 'amber' })
+      return
+    }
     const key = `op${nextKey.current++}`
     editOps((list) => [...list, { key, kind: 'remove', id: placement.id }])
     toast({ message, icon })
@@ -418,23 +440,26 @@ function FarmIslandView({
     })
   }
 
-  // 🍎 Harvest (optimistic): the fruit goes and the purse grows at once; the server checks yesterday's
-  // practice and today's first harvest, and a refusal puts the fruit back with the coins.
+  // 🍎 Harvest (optimistic): the fruit leaves the tree and the header's 🍎 counter grows at once
+  // (fruit for the Candy Factory, no coins); the server checks yesterday's practice and today's first
+  // harvest, and a refusal puts the fruit back on the tree and the counter where it was.
   const harvest = (plot: FarmPlotView) => {
     if (!onHarvest || !plot.fruitReady || harvested.has(plot.id)) return
-    const purseBefore = coins
+    const fruitBefore = liveFruit?.coins ?? (economy ? Math.floor(economy.fruit) : null)
     setHarvested((h) => new Set(h).add(plot.id))
-    if (purseBefore !== null) setCoins(purseBefore + FRUIT_COINS)
+    const shown = fruitAfterHarvest(fruitBefore)
+    if (shown !== null) setFruit(shown)
     setSelectedPlot((open) => (open?.id === plot.id ? null : open))
-    toast({ message: `Picked the fruit of “${plot.title}” · +${FRUIT_COINS} 🪙`, icon: '🍎' })
+    toast({ message: `Picked the fruit of “${plot.title}” · +${FRUIT_PER_HARVEST} 🍎`, icon: '🍎' })
     void onHarvest(plot.id, Intl.DateTimeFormat().resolvedOptions().timeZone).then((res) => {
-      if (res.success) return setCoins(res.data.totalCoins)
+      if (res.success) return setFruit(res.data.totalFruit)
       setHarvested((h) => {
         const next = new Set(h)
         next.delete(plot.id)
         return next
       })
-      if (purseBefore !== null) setCoins(purseBefore)
+      const back = fruitAfterRefusal(fruitBefore)
+      if (back !== null) setFruit(back)
       failed(`Could not harvest “${plot.title}”: ${res.error.message}`)
     })
   }
@@ -517,6 +542,65 @@ function FarmIslandView({
     [build, ghostPreview],
   )
 
+  // Export feedback over the Seaport: floating "+15 🪙" labels and a coin burst, cleared after they play.
+  const [exportFx, setExportFx] = useState<{ key: number; labels: string[] } | null>(null)
+  const showExport = useCallback((shipped: number) => {
+    const key = Date.now()
+    setExportFx({ key, labels: exportRewards(shipped) })
+    puffTimers.current.add(window.setTimeout(() => setExportFx((fx) => (fx?.key === key ? null : fx)), 2600))
+  }, [])
+  const seaportAt = useMemo(() => {
+    const port = farm.find((p) => p.itemType === 'seaport')
+    if (!port) return null
+    const c = footprintCenter(port)
+    return { x: c.x + FARM_WORLD.origin.x, y: c.y + FARM_WORLD.origin.y }
+  }, [farm])
+
+  // The island's production and export loop runs on the server (settle_farm_economy); the farm asks
+  // it to catch up once it is idle after arriving, then every 10 minutes while the tab is visible.
+  // A cargo ship that left pays at once: the purse and a toast say so.
+  useEffect(() => {
+    if (!isOwner || !dialogsReady || hidden) return
+    let live = true
+    const settle = () =>
+      void settleFarmEconomy().then((res) => {
+        if (!live || !res.success) return
+        setEconomy(res.data)
+        // The Candy Factory used fruit: the header follows.
+        setFruit(Math.floor(res.data.fruit))
+        if (res.data.payout > 0 || res.data.candyPayout > 0) {
+          if (res.data.totalCoins !== null) setCoins(res.data.totalCoins)
+        }
+        if (res.data.payout > 0) toast({ message: `Cargo ship departed · Exporting Goods +${res.data.payout} 🪙`, icon: '🚢' })
+        if (res.data.candyPayout > 0) {
+          toast({
+            message: `Freight Train delivered ${res.data.candyShipped} candy ${res.data.candyShipped === 1 ? 'box' : 'boxes'} · +${res.data.candyPayout} 🪙`,
+            icon: '🍬',
+          })
+          showExport(res.data.candyShipped)
+        }
+      })
+    settle()
+    const timer = window.setInterval(settle, 10 * 60 * 1000)
+    return () => {
+      live = false
+      window.clearInterval(timer)
+    }
+  }, [isOwner, dialogsReady, hidden, setCoins, setFruit, showExport, toast])
+
+  // The inspected building's power: on / off, and for a windmill how many buildings it powers.
+  const inspectedPower = useMemo(() => {
+    if (!selectedItem) return { linked: false, powered: undefined, poweredCount: 0 }
+    const current = farm.find((p) => p.id === selectedItem.id) ?? selectedItem
+    const field = powerField(current)
+    return {
+      // The freight line (Candy Factory → track + train → Seaport) is complete.
+      linked: railLink(farm) !== null,
+      powered: poweredMap(farm).get(current.id),
+      poweredCount: field ? farm.filter((b) => b.id !== current.id && requiresPower(b.itemType) && overlaps(field, b)).length : 0,
+    }
+  }, [farm, selectedItem])
+
   // Nothing on the island needs to move while the tab is hidden or a dialog covers it: its CSS
   // animations (tree sway, bobbing icons, smoke, foam, clouds) pause (globals.css `.mg-paused`). A
   // dialog's blurred backdrop would otherwise be re-blurred every frame the trees behind it sway.
@@ -568,11 +652,30 @@ function FarmIslandView({
               dragEnabled={isOwner && !build}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              inspectedId={selectedItem?.id ?? null}
             />
 
             {puffs.map((p) => (
               <ChopPuff key={p.key} x={p.x} y={p.y} />
             ))}
+
+            {/* Candy exported at the Seaport: "+15 🪙" per box floating up, and a shower of coins. */}
+            {exportFx && seaportAt && (
+              <div key={exportFx.key} aria-hidden data-export-fx="" className="pointer-events-none absolute" style={{ left: seaportAt.x, top: seaportAt.y - 60, zIndex: 400_000 }}>
+                <span className="relative block size-0">
+                  <ParticleBurst variant="gold" count={16} radius={120} />
+                </span>
+                {exportFx.labels.map((label, i) => (
+                  <span
+                    key={i}
+                    className="mg-reward absolute -translate-x-1/2 rounded-full border-2 border-[#8a4a0c] bg-gradient-to-b from-[#fffbe0] to-[#ffd76a] px-2.5 py-0.5 font-game text-base font-extrabold whitespace-nowrap text-[#5a2a02] shadow-[0_3px_0_#8a4a0c]"
+                    style={{ left: (i - (exportFx.labels.length - 1) / 2) * 64, animationDelay: `${i * 0.25}s` }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {farm.length === 0 && !build && (
               <div
@@ -729,6 +832,10 @@ function FarmIslandView({
         <FarmItemDialog
           placement={selectedItem}
           isOwner={isOwner}
+          powered={inspectedPower.powered}
+          poweredCount={inspectedPower.poweredCount}
+          linked={inspectedPower.linked}
+          economy={economy}
           onClose={() => setSelectedItem(null)}
           onMove={isOwner ? startMove : undefined}
           onPickUp={

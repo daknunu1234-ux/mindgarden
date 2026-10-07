@@ -30,12 +30,19 @@ type FarmShopModalProps = {
   initialTab?: ShopTab
 }
 
-type PerkTone = 'stream' | 'house' | 'wood' | 'decor' | 'animal'
+type PerkTone = 'stream' | 'house' | 'wood' | 'decor' | 'animal' | 'power' | 'port'
 
 // What each item is good for, as a tag on its card (the numbers are the buffs in lib/farmBuffs.ts).
 const PERKS: Record<CatalogItem['id'], { label: string; tone: PerkTone }> = {
   farmer_house: { label: '+50% 🪙 aura', tone: 'house' },
   woodshop: { label: '25% chop refund', tone: 'wood' },
+  windmill_small: { label: '⚡ Powers 4×4', tone: 'power' },
+  windmill_large: { label: '⚡ Powers 6×6', tone: 'power' },
+  furniture_factory: { label: 'Needs power', tone: 'wood' },
+  seaport: { label: 'Coast · Needs power', tone: 'port' },
+  candy_factory: { label: '10 🍎 → 1 🍬', tone: 'animal' },
+  rail_track: { label: '1 🪙 a tile', tone: 'wood' },
+  freight_train: { label: 'Runs on tracks', tone: 'port' },
   stream: { label: '+20% 🪙 beside', tone: 'stream' },
   fence: { label: 'Auto-joins', tone: 'decor' },
   rockery: { label: 'Decoration', tone: 'decor' },
@@ -49,11 +56,14 @@ const PERK_TONES: Record<PerkTone, string> = {
   wood: 'border-[#5a2a0c] from-[#f0b574] via-[#c9793e] to-[#9a4a17] [--edge:#5a2a0c]',
   decor: 'border-[#6b21a8] from-[#e9d5ff] via-[#c084fc] to-[#9333ea] [--edge:#6b21a8]',
   animal: 'border-[#9f1239] from-[#fecdd3] via-[#fb7185] to-[#e11d48] [--edge:#9f1239]',
+  power: 'border-[#854d0e] from-[#fef9c3] via-[#facc15] to-[#ca8a04] [--edge:#854d0e]',
+  port: 'border-[#1e3a8a] from-[#bfdbfe] via-[#3b82f6] to-[#1d4ed8] [--edge:#1e3a8a]',
 }
 
 // Card header colour per shop tab.
 const HEADERS: Record<Exclude<ShopTab, 'trees'>, string> = {
   structures: 'from-[#fb923c] to-[#c2410c] [--edge:#7c2d12]',
+  railway: 'from-[#94a3b8] to-[#475569] [--edge:#1e293b]',
   landscape: 'from-[#22d3ee] to-[#0e7490] [--edge:#164e63]',
   decorations: 'from-[#a3e635] to-[#4d7c0f] [--edge:#365314]',
   animals: 'from-[#fb7185] to-[#be123c] [--edge:#881337]',

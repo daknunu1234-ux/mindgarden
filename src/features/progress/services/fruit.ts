@@ -7,7 +7,7 @@ import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 
 // Tree fruit (migration 20261003000000_tree_fruit.sql): a tree the owner practised yesterday bears
-// fruit today, harvested once for FRUIT_COINS 🪙. Writes go through the service role (players can't
+// fruit today, harvested once for FRUIT_PER_HARVEST 🪙. Writes go through the service role (players can't
 // write deck_practice_days, tree_harvests or users.coins); reads use the player's own client (RLS).
 
 const MIGRATION = 'supabase/migrations/20261003000000_tree_fruit.sql'
@@ -59,8 +59,9 @@ export function ripeTrees(practisedYesterday: readonly string[], harvestedToday:
 }
 
 // Collects today's fruit of one tree: harvest_tree_fruit() checks the owner, yesterday's practice and
-// that it's today's first harvest, then pays in the same transaction.
-export async function harvestFruit(userId: string, deckId: string, today: string): Promise<ActionResult<{ coinsEarned: number; totalCoins: number }>> {
+// that it's today's first harvest, then adds FRUIT_PER_HARVEST 🍎 to the island's inventory (fruit
+// for its Candy Factory, migration 20261015000000; no coins) in the same transaction.
+export async function harvestFruit(userId: string, deckId: string, today: string): Promise<ActionResult<{ fruitEarned: number; totalFruit: number }>> {
   const admin = createAdminClient()
   if (!admin) {
     console.error('[progress] harvestFruit: SUPABASE_SERVICE_ROLE_KEY is not set')
@@ -75,5 +76,5 @@ export async function harvestFruit(userId: string, deckId: string, today: string
   }
   const row = data?.[0]
   if (!row) return fail('INTERNAL_ERROR', 'Could not harvest this tree')
-  return ok({ coinsEarned: row.coins_earned, totalCoins: row.total_coins })
+  return ok({ fruitEarned: row.fruit_earned, totalFruit: row.total_fruit })
 }

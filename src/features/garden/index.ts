@@ -1,4 +1,7 @@
 export { getFarmPlacements } from './actions/getFarmPlacements'
+export { getFarmInventory } from './actions/getFarmInventory'
+export { settleFarmEconomy } from './actions/settleFarmEconomy'
+export { FruitBadge } from './components/FruitBadge'
 export { moveFarmPlacement } from './actions/moveFarmPlacement'
 export { placeFarmItem } from './actions/placeFarmItem'
 export { removeFarmPlacement } from './actions/removeFarmPlacement'

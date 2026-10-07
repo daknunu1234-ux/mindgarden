@@ -75,6 +75,8 @@ describe('the schema has no per-answer log', () => {
         'garden_placements', 'deck_practice_days', 'tree_harvests', 'streak_rewards',
         // Daily Rush: one row per player per day (today's run), its streak updated in place.
         'daily_rush_runs',
+        // The island's stock: one row per gardener, updated in place (no production log).
+        'farm_economy',
       ].sort(),
     )
     for (const name of tables) expect(name).not.toMatch(/log|attempt|answer|event|history|telemetry/)

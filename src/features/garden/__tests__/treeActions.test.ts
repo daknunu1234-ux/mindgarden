@@ -81,7 +81,8 @@ describe('the icons on the island', () => {
 
   it('makes them compact (26 px beads, 15 px glyphs inside the rim) and tactile: grow and glow on hover', () => {
     expect(html).toMatch(/<a [^>]*href="\/deck\/sinh-hoc\/drill"/)
-    expect(html).toMatch(/<button type="button"[^>]*title="Harvest: \+2 🪙"/)
+    // A harvest gives fruit (🍎), not coins.
+    expect(html).toMatch(/<button type="button"[^>]*title="Harvest: \+2 🍎"/)
     const icons = html.match(/class="pointer-events-auto flex size-\[26px\][^"]*"/g) ?? []
     expect(icons).toHaveLength(2)
     expect(ICON_SIZE).toBe(26)

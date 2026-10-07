@@ -464,11 +464,45 @@ export type Database = {
       }
       // Migration 20260930000000_farm_grid.sql. Players read their farm (+ visitors: items and public
       // trees) and delete their own placements; purchase_and_place_item() is the only writer.
+      // Migration 20261014000000: the island's stock (written only by settle_farm_economy()).
+      farm_economy: {
+        Row: {
+          user_id: string
+          timber: number
+          produce: number
+          furniture: number
+          fruit: number
+          candy: number
+          last_tick_at: string
+          last_export_at: string
+          last_payout: number
+          last_candy_payout: number
+        }
+        Insert: {
+          user_id: string
+          timber?: number
+          produce?: number
+          furniture?: number
+          last_tick_at?: string
+          last_export_at?: string
+          last_payout?: number
+        }
+        Update: {
+          user_id?: string
+          timber?: number
+          produce?: number
+          furniture?: number
+          last_tick_at?: string
+          last_export_at?: string
+          last_payout?: number
+        }
+        Relationships: []
+      }
       garden_placements: {
         Row: {
           id: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id: string | null
           grid_x: number
           grid_y: number
@@ -480,7 +514,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id?: string | null
           grid_x: number
           grid_y: number
@@ -492,7 +526,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
-          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal'
+          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id?: string | null
           grid_x?: number
           grid_y?: number
@@ -593,10 +627,10 @@ export type Database = {
     }
     Functions: {
       // Migration 20260928000300_user_coins.sql. Service role only.
-      // Migration 20261003000000_tree_fruit.sql. Service role only: pays FRUIT_COINS once per tree per day.
+      // Migration 20261003000000_tree_fruit.sql. Service role only: pays FRUIT_PER_HARVEST once per tree per day.
       harvest_tree_fruit: {
         Args: { p_user_id: string; p_deck_id: string; p_today: string }
-        Returns: { coins_earned: number; total_coins: number }[]
+        Returns: { fruit_earned: number; total_fruit: number }[]
       }
       award_mastery_coin: {
         Args: { p_user_id: string; p_item_id: string }
@@ -696,6 +730,36 @@ export type Database = {
       purchase_and_place_item: {
         Args: { p_item_type: string; p_x: number; p_y: number; p_deck_id?: string | null; p_variant?: string | null }
         Returns: { placement_id: string; remaining_coins: number; cost: number }[]
+      }
+      // Migration 20261014000000: bring the caller's island stock up to date and run the cargo ship.
+      settle_farm_economy: {
+        Args: Record<string, never>
+        Returns: {
+          timber: number
+          produce: number
+          furniture: number
+          fruit: number
+          candy: number
+          payout: number
+          candy_shipped: number
+          candy_payout: number
+          total_coins: number
+          last_export_at: string
+        }[]
+      }
+      // Migration 20261014000000: whether a placement works (power), and a power source's reach.
+      farm_building_powered: {
+        Args: { p_placement_id: string }
+        Returns: boolean
+      }
+      // Migration 20261015000000: a powered Candy Factory linked to a powered Seaport by track with a train.
+      farm_candy_linked: {
+        Args: { p_user_id: string }
+        Returns: boolean
+      }
+      farm_power_reach: {
+        Args: { p_item_type: string }
+        Returns: number
       }
       // Migration 20261002000000: move one of your placements (owner, bounds and overlaps checked).
       move_garden_placement: {

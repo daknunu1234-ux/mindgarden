@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import { GameButton, GameDialog, GameDialogContent } from '@/shared/components/game'
+import { cn } from '@/shared/utils/cn'
+import { buildingStatus, type BuildingStatus } from '../lib/buildingStatus'
 import { catalogFor } from '../lib/farmCatalog'
+import type { FarmEconomyView } from '../lib/farmEconomy'
 import type { Placement } from '../lib/farmGrid'
 
 type FarmItemDialogProps = {
@@ -14,17 +17,26 @@ type FarmItemDialogProps = {
   onMove?: (placement: Placement) => void
   // Owner: pick it up. The farm removes it at once and syncs in the background (rolls back on error).
   onPickUp?: (placement: Placement) => void
+  // A building that needs power: whether it has it (undefined: needs none).
+  powered?: boolean
+  // A windmill: how many buildings its field powers.
+  poweredCount?: number
+  // The island's stock (owner; null while unknown or for visitors).
+  economy?: FarmEconomyView | null
+  // The freight line (Candy Factory → track + Freight Train → Seaport) is complete.
+  linked?: boolean
 }
 
 // A bought item on the farm: what it is and what it does. The owner can move it to another tile, or
 // pick it up again (it's gone, no refund), which frees its tiles.
-function FarmItemDialog({ placement, isOwner, onClose, onMove, onPickUp }: FarmItemDialogProps) {
+function FarmItemDialog({ placement, isOwner, onClose, onMove, onPickUp, powered, poweredCount, economy = null, linked = false }: FarmItemDialogProps) {
   const entry = placement ? catalogFor(placement.itemType, placement.variant) : undefined
+  const status = placement ? buildingStatus(placement.itemType, { powered, poweredCount, linked, economy: isOwner ? economy : null }) : null
   return (
     <GameDialog open={placement !== null} onOpenChange={(open) => !open && onClose()}>
       <GameDialogContent title={entry ? `${entry.icon} ${entry.name}` : 'Farm item'} ribbon="wood" tone="parchment">
         {placement && entry && (
-          <ItemBody key={placement.id} placement={placement} description={entry.description} isOwner={isOwner} onMove={onMove} onPickUp={onPickUp} />
+          <ItemBody key={placement.id} placement={placement} description={entry.description} status={status} isOwner={isOwner} onMove={onMove} onPickUp={onPickUp} />
         )}
       </GameDialogContent>
     </GameDialog>
@@ -34,12 +46,14 @@ function FarmItemDialog({ placement, isOwner, onClose, onMove, onPickUp }: FarmI
 function ItemBody({
   placement,
   description,
+  status,
   isOwner,
   onMove,
   onPickUp,
 }: {
   placement: Placement
   description: string
+  status: BuildingStatus | null
   isOwner: boolean
   onMove?: (placement: Placement) => void
   onPickUp?: (placement: Placement) => void
@@ -49,6 +63,7 @@ function ItemBody({
   return (
     <div className="space-y-4 text-center">
       <p className="text-amber-900/85">{description}</p>
+      {status && <StatusPanel status={status} />}
       <p className="text-xs font-semibold text-amber-900/60">
         {placement.width}×{placement.height} at tile ({placement.x}, {placement.y})
       </p>
@@ -82,3 +97,37 @@ function ItemBody({
 }
 
 export { FarmItemDialog }
+
+const TONES = { ok: 'border-emerald-600 bg-emerald-50 text-emerald-900', warn: 'border-amber-500 bg-amber-50 text-amber-900', off: 'border-rose-600 bg-rose-50 text-rose-900' }
+
+// A building's inspector: what it is doing, its power state, its inputs and outputs.
+function StatusPanel({ status }: { status: BuildingStatus }) {
+  return (
+    <div data-building-status={status.tone} className="space-y-2 text-left">
+      <p className={cn('rounded-xl border-2 px-3 py-1.5 text-center font-game text-sm font-extrabold', TONES[status.tone])}>{status.status}</p>
+      {status.power && <p className="text-center text-xs font-semibold text-amber-900/75">{status.power}</p>}
+      {(status.inputs.length > 0 || status.outputs.length > 0) && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            { title: 'Inputs', rows: status.inputs },
+            { title: 'Outputs', rows: status.outputs },
+          ]
+            .filter((g) => g.rows.length > 0)
+            .map((g) => (
+              <div key={g.title} className="rounded-xl border border-[#dcb98c] bg-white/70 px-3 py-2">
+                <h4 className="text-[11px] font-bold tracking-wide text-amber-900/60 uppercase">{g.title}</h4>
+                <ul className="mt-1 space-y-0.5 text-xs text-amber-950">
+                  {g.rows.map((r) => (
+                    <li key={r.label} className="flex justify-between gap-2">
+                      <span>{r.label}</span>
+                      <span className="text-right font-semibold tabular-nums">{r.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  )
+}

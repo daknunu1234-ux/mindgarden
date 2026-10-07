@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { FRUIT_COINS } from '@/shared/lib/economy'
+import { FRUIT_PER_HARVEST } from '@/shared/lib/economy'
 import { getTreeSizeTier, treeScale } from '@/shared/lib/treeSkins'
 import { treeLook } from '@/shared/lib/treeVitality'
 import { usePrefetchOnIntent } from '@/shared/hooks/usePrefetchOnIntent'
@@ -265,7 +265,7 @@ export function PlotLabels({
                     onHarvest(plot)
                   }}
                   tabIndex={-1}
-                  title={`Harvest: +${FRUIT_COINS} 🪙`}
+                  title={`Harvest: +${FRUIT_PER_HARVEST} 🍎`}
                   className={cn(ACTION, 'border-[#b45309] from-[#fff7d6] to-[#ffd36b] shadow-[inset_0_1.5px_0_#fff,0_2px_0_#b45309] hover:shadow-[inset_0_1.5px_0_#fff,0_2px_0_#b45309,0_0_10px_3px_rgba(253,224,71,0.9)]')}
                 >
                   <AppleIcon size={ICON_GLYPH} />

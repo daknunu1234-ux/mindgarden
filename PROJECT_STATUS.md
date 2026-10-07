@@ -161,6 +161,39 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   and growth are in the tree's popover); placing a stream or Farmer's House still previews, dashed, the
   buff it would add.
 
+### Power grid, Furniture Factory and Seaport
+
+- **Retired**: the Farmer's House and Woodshop are no longer sold; those already on islands keep working.
+- **Windmills** power buildings near them: Small (2×2, 60 🪙) a 4×4 area, Large (6×6, 100 🪙) a 12×12
+  area; their sails turn. Buildings that need power show a red "⚡ No Power" badge and stop when out of
+  reach; fields glow while placing or inspecting.
+- **Furniture Factory** (2×2, 120 🪙, needs power) turns timber from the island's trees into furniture.
+- **Seaport** (6×2, 150 🪙, needs power, coast only: valid shore glows green, inland red) is a wharf with
+  cranes and crates; a cargo ship sails in, docks and sails away. Every 4 hours a ship buys the island's
+  furniture, timber and produce for up to 15 🪙. Everything is computed on the server (migration 25).
+- Clicking any building opens its inspector: status, power, inputs and outputs.
+
+### 3D low-poly buildings
+
+- Every island building is redrawn as a faceted 3D low-poly miniature (one light from the upper left,
+  flat planes, no outlines): stucco and stone windmills with balconies, cone and dome roofs and lattice
+  sails; a timber sawmill with a spinning saw and smoking pipes; a pastel candy workshop with a swirl
+  chimney and a moving conveyor of candies; a wharf with a yellow jib crane, containers and a docked
+  freighter; ballasted tracks with curves; a steam locomotive with gold bands and puffing smoke.
+- **Grand Windmill**: the Large Windmill is now a 2×2 stone tower (60 🪙) powering a **6×6** area
+  (migration 27; ones already standing shrink to 2×2).
+
+### Fruit, candy and the railway
+
+- **Harvesting gives fruit**: tapping 🍎 over a ripe tree adds 2 🍎 to the island (no more coins); the
+  header shows `🍎 n  🪙 n`.
+- **New prices**: Small Windmill 30, Large Windmill 60, Furniture Factory 50, Seaport 100 🪙.
+- **Candy Factory** (2×2, 50 🪙, needs power): 10 🍎 → 1 🍬 candy box, one an hour.
+- **Railroad Track** (1×1, **1 🪙 a tile**) joins up with its neighbours; a **Freight Train** (1×3, 30 🪙)
+  stands on three tracks in a row. When track links a powered Candy Factory to a powered Seaport and a
+  train is on it, the train runs the route and every candy box is exported for **15 🪙**: "+15 🪙"
+  floats up over the Seaport with a shower of coins. All on the server (migration 26).
+
 ### The farm opens on your trees
 
 - On arrival the island camera starts on the overview, then glides (about half a second, ease-out)
@@ -800,6 +833,9 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 27 | `20261016000000_grand_windmill.sql` | The Large Windmill becomes the 2×2 Grand Windmill (power reach 2: a 6×6 zone); standing ones shrink. With the deploy |
+| 26 | `20261015000000_rail_logistics.sql` | New prices; Candy Factory, Railroad Track (1 🪙), Freight Train (on tracks only); fruit and candy inventory; harvests give 🍎 instead of 🪙; candy exported by train for 15 🪙 a box. Run **with** the deploy |
+| 25 | `20261014000000_power_grid.sql` | Footprints up to 6; windmills, Furniture Factory, coastal Seaport; Farmer's House / Woodshop retired (ITEM_RETIRED); `farm_economy` + `settle_farm_economy()` (server-side production and cargo-ship payouts). Any time after 12 and 14, before or with the deploy |
 | 24 | `20261013000100_drop_legacy_trees.sql` | Drops `legacy_mindmap_nodes` / `legacy_knowledge_items`. Destructive, optional; only once 23 works |
 | 23 | `20261013000000_content_nodes.sql` | `content_nodes` (roots + statements, ids kept) replaces `mindmap_nodes` + `knowledge_items` (renamed `legacy_*`); shape trigger, RLS, column grants; progress FKs repointed; coin / uproot / clone / tournament functions re-created on it; `indent_content_node()`. Run **with** the deploy, after 22; not re-runnable; never re-run 12, 18, 21 or 22 after it |
 | 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger), `sort_order` (backfilled from `created_at`), their column grants; `clone_deck()` copies both. Run **before or with** the deploy; never re-run 18 after it |
@@ -815,7 +851,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): auto-glide and focus camera on planted trees upon initial load. Also carries: buy a seed in the Shop → place it (open tiles glow) → name it → its Workshop opens on the first root; ✏️ rename trees inline (`renameDeck`); only 💧 / 🍎 icons over trees, resting on each species' crown tip; perf (Workshop rows memoized, farm dialogs lazy after idle, island animations paused when hidden or behind a dialog; happy-dom); a wider Tree Workshop column |
+| (pending) | feat(garden): restyle island buildings into 3D low-poly faceted aesthetic and resize Grand Windmill to 2x2 (migration 27). Also carries: power grid with windmills, Furniture Factory and coastal Seaport, Farmer's House and Woodshop retired (migration 25); fruit harvests, Candy Factory, Railroad Track (1 🪙) and Freight Train, candy exported by train for 15 🪙 a box (migration 26) |
+| `dc04f9e` | feat(garden): auto-glide and focus camera on planted trees upon initial load. Also carries: buy a seed in the Shop → place it (open tiles glow) → name it → its Workshop opens on the first root; ✏️ rename trees inline (`renameDeck`); only 💧 / 🍎 icons over trees, resting on each species' crown tip; perf (Workshop rows memoized, farm dialogs lazy after idle, island animations paused when hidden or behind a dialog; happy-dom); a wider Tree Workshop column |
 | `bf7a8e6` | feat(decks): unified `content_nodes` (roots + statements in one hierarchy, `node_type`), practice = every statement node, Enter / Tab / Shift+Tab / Alt in place on one outline (`lib/contentTree.ts` + `indent_content_node()`), compact "⌨️ Shortcuts" panel; tree connector lines (│ through-lines, ├ / └ elbows, stems) in the Workshop outline; migrations 23–24 |
 | `15ab043` | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
 | `5f85bcd` | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21. The same commit also carries the "Tree & roots" hierarchy canvas row below |
@@ -865,7 +902,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 98 files, 943 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 103 files, 1011 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

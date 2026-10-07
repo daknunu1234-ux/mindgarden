@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FRUIT_COINS } from '@/shared/lib/economy'
+import { FRUIT_PER_HARVEST } from '@/shared/lib/economy'
 import { previousDay } from '@/shared/lib/localDay'
 
 const rpc = vi.fn()
@@ -62,9 +62,9 @@ describe('which trees bear fruit today', () => {
 })
 
 describe('harvestFruit (service role)', () => {
-  it('pays FRUIT_COINS through harvest_tree_fruit with the server-computed day', async () => {
-    rpc.mockResolvedValue({ data: [{ coins_earned: FRUIT_COINS, total_coins: 302 }], error: null })
-    expect(await harvestFruit('me', 'deck-1', '2026-10-05')).toEqual({ success: true, data: { coinsEarned: 2, totalCoins: 302 } })
+  it('gives FRUIT_PER_HARVEST fruit through harvest_tree_fruit with the server-computed day', async () => {
+    rpc.mockResolvedValue({ data: [{ fruit_earned: FRUIT_PER_HARVEST, total_fruit: 12 }], error: null })
+    expect(await harvestFruit('me', 'deck-1', '2026-10-05')).toEqual({ success: true, data: { fruitEarned: 2, totalFruit: 12 } })
     expect(rpc).toHaveBeenCalledWith('harvest_tree_fruit', { p_user_id: 'me', p_deck_id: 'deck-1', p_today: '2026-10-05' })
   })
 
@@ -97,8 +97,17 @@ describe('migration 20261003000000_tree_fruit.sql', () => {
   const sql = readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', '20261003000000_tree_fruit.sql'), 'utf8')
   const body = sql.split('-- Verify')[0]
 
-  it('pays the same amount as the app (FRUIT_COINS)', () => {
-    expect(body).toContain(`v_fruit constant integer := ${FRUIT_COINS};`)
+  it('pays the same amount as the app (FRUIT_PER_HARVEST)', () => {
+    expect(body).toContain(`v_fruit constant integer := ${FRUIT_PER_HARVEST};`)
+  })
+
+  it('since 20261015000000 the harvest gives that many fruit to the inventory, not coins', () => {
+    const now = readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', '20261015000000_rail_logistics.sql'), 'utf8').split('-- Verify')[0]
+    const fn = now.slice(now.indexOf('create function public.harvest_tree_fruit'), now.indexOf('-- 9. Settle'))
+    expect(fn).toContain(`v_fruit constant integer := ${FRUIT_PER_HARVEST};`)
+    expect(fn).toMatch(/insert into public\.farm_economy as e \(user_id, fruit\) values \(p_user_id, v_fruit\)/)
+    expect(fn).toMatch(/returns table \(fruit_earned integer, total_fruit integer\)/)
+    expect(fn).not.toMatch(/coins = u\.coins \+/)
   })
 
   it('pays only for a tree of yours practised the day before, once per tree per day', () => {

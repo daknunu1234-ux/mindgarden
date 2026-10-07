@@ -33,9 +33,10 @@ export const coinBonusLabel = (multiplier: number): string => `${+multiplier.toF
 // The same bonus as a percentage: "+50%".
 export const coinBonusPercent = (multiplier: number): string => `+${Math.round((multiplier - 1) * 100)}%`
 
-// A tree you drilled yesterday bears fruit at your midnight: harvest it once that day for this much
-// (migration 20261003000000 harvest_tree_fruit() pays the same; a test checks).
-export const FRUIT_COINS = 2
+// A tree you drilled yesterday bears fruit at your midnight: harvest it once that day for this many
+// 🍎 (fruit for the island's Candy Factory; until migration 20261015000000 a harvest paid this many
+// coins instead). harvest_tree_fruit() gives the same; a test checks.
+export const FRUIT_PER_HARVEST = 2
 
 // Cloning someone else's shared tree: the seed of its species plus 1 🪙 per statement, at most 50
 // statements' worth. A standard tree: 100–150 (CLONE_COST_CAP); a surreal one: 180–230.

@@ -3,6 +3,7 @@ import { Baloo_2, Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
+import { FruitBadge, getFarmInventory } from "@/features/garden";
 import { CoinsBadge, getFarmHud, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
 import { CoinShopModal, GameButton } from "@/shared/components/game";
 import { LIGHTING_BOOT_SCRIPT } from "@/shared/lib/lightingBoot";
@@ -11,6 +12,7 @@ import { StreakProvider } from "@/shared/stores/StreakProvider";
 import { ToastProvider } from "@/shared/stores/ToastProvider";
 import { CoinShopProvider } from "@/shared/stores/CoinShopProvider";
 import { CoinsProvider } from "@/shared/stores/CoinsProvider";
+import { FruitProvider } from "@/shared/stores/FruitProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -38,7 +40,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Streak and coins for the header (one load per request, shared with the page). Reading them
   // never grows the streak: only watering a tree does.
-  const [res, hudRes] = await Promise.all([getCurrentUser(), getFarmHud()]);
+  const [res, hudRes, inventoryRes] = await Promise.all([getCurrentUser(), getFarmHud(), getFarmInventory()]);
+  // The island's fruit for the header (beside the coins); null when signed out or unreadable.
+  const inventory = inventoryRes.success ? inventoryRes.data : null;
   const user = res.success ? res.data : null;
   const hud = hudRes.success ? hudRes.data : null;
   const streak = hud?.streak ?? null;
@@ -56,9 +60,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <LoginDialogProvider>
           <ToastProvider>
           <CoinsProvider>
+          <FruitProvider>
           <CoinShopProvider>
           <StreakProvider initial={streak && { current: streak.current, best: streak.best, practicedToday: streak.practicedToday }}>
-          {/* Wooden top bar: carved logo, plant button, then the player's stats (🔥 streak, 🪙 coins)
+          {/* Wooden top bar: carved logo, plant button, then the player's stats (🔥 streak, 🍎 fruit, 🪙 coins)
               next to the gardener badge. */}
           <header className="relative z-40 border-b-[3px] border-amber-950/60 bg-gradient-to-b from-amber-700 to-amber-800 shadow-[inset_0_2px_0_rgba(255,255,255,0.15),0_4px_0_rgba(69,26,3,0.35)]">
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-2 sm:gap-3 sm:px-6">
@@ -80,6 +85,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 {user && hud && (
                   <>
                     <StreakBadge />
+                    {inventory && <FruitBadge fruit={inventory.fruit} fruitAsOf={inventory.asOf} />}
                     <CoinsBadge coins={hud.coins} coinsAsOf={hud.coinsAsOf} />
                   </>
                 )}
@@ -97,6 +103,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <CoinShopModal signedIn={user !== null} simulateTopUp={isDevTopUpAllowed() ? simulateCoinTopUp : null} />
           </StreakProvider>
           </CoinShopProvider>
+          </FruitProvider>
           </CoinsProvider>
           </ToastProvider>
         </LoginDialogProvider>

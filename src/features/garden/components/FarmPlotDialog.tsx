@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Network } from 'lucide-react'
 import { CoinBonusTag, GameButton, GameDialog, GameDialogContent, GameSlab, InlineNameEdit } from '@/shared/components/game'
-import { FRUIT_COINS } from '@/shared/lib/economy'
+import { FRUIT_PER_HARVEST } from '@/shared/lib/economy'
 import { getTreeSpecies, speciesCoinMultiplier } from '@/shared/lib/treeSkins'
 import { isImmune } from '@/shared/lib/treeVitality'
 import { cn } from '@/shared/utils/cn'
@@ -121,7 +121,7 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed, onRename }
       {/* Practised yesterday: today's fruit hangs on it (also a 🍎 bubble on the farm). */}
       {plot.isOwner && plot.fruitReady && onHarvest && (
         <GameButton tone="sun" size="lg" className="w-full" onClick={() => onHarvest(plot)}>
-          🍎 Harvest fruit (+{FRUIT_COINS} 🪙)
+          🍎 Harvest fruit (+{FRUIT_PER_HARVEST} 🍎)
         </GameButton>
       )}
 

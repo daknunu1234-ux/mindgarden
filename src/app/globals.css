@@ -208,6 +208,34 @@
   .mg-smoke { display: none; }
 }
 
+/* Power grid buildings (garden PowerBuildings.tsx): windmill sails turn, a factory gear turns while
+   powered, and a cargo ship loops at a powered seaport: it sails in from far out at sea (along
+   --mg-ox/--mg-oy, out to sea, and --mg-ax/--mg-ay, along the shore), docks at the berth for a while,
+   then sails away. Off for reduced motion (the ship waits at its berth); paused with the farm. */
+@keyframes mg-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes mg-ship {
+  0% { transform: translate(calc(var(--mg-ox) * 7 - var(--mg-ax) * 6), calc(var(--mg-oy) * 7 - var(--mg-ay) * 6)); opacity: 0; }
+  8% { opacity: 1; }
+  32%, 62% { transform: translate(0, 0); opacity: 1; }
+  92% { transform: translate(calc(var(--mg-ox) * 7 + var(--mg-ax) * 6), calc(var(--mg-oy) * 7 + var(--mg-ay) * 6)); opacity: 1; }
+  100% { transform: translate(calc(var(--mg-ox) * 7 + var(--mg-ax) * 6), calc(var(--mg-oy) * 7 + var(--mg-ay) * 6)); opacity: 0; }
+}
+/* The Candy Factory's conveyor: candies ride the belt (along --mg-cx/--mg-cy) and loop. */
+@keyframes mg-conveyor {
+  from { transform: translate(calc(var(--mg-cx) * -0.33), calc(var(--mg-cy) * -0.33)); }
+  to { transform: translate(0, 0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-conveyor { animation: mg-conveyor 2.4s linear infinite; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-spin { animation: mg-spin 6s linear infinite; }
+  .mg-spin-slow { animation: mg-spin 9s linear infinite; }
+  .mg-ship { animation: mg-ship 36s ease-in-out infinite; }
+}
+
 /* Farm animals: a cow ambles around its tile, a pig snuffles and wiggles (off for reduced motion). */
 @keyframes mg-wander {
   0%, 100% { transform: translate(0, 0) scaleX(1); }
@@ -265,6 +293,22 @@
   100% { transform: translateY(var(--mg-fall, 90px)) scale(0.7); opacity: 0; }
 }
 /* Particle burst from a center point. */
+/* A reward label floating up from where it was earned (the Seaport's "+15 🪙"), then fading. */
+@keyframes mg-reward {
+  0% { transform: translate(-50%, 8px) scale(0.6); opacity: 0; }
+  15% { transform: translate(-50%, 0) scale(1.1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(-50%, -70px) scale(1); opacity: 0; }
+}
+.mg-reward { animation: mg-reward 2.2s cubic-bezier(.2, .7, .3, 1) both; }
+/* The Freight Train running its route (offset-path set inline from the track tiles), there and back. */
+@keyframes mg-train-run {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mg-train-run { animation: mg-train-run var(--mg-dur, 12s) ease-in-out infinite alternate; }
+}
 @keyframes mg-burst {
   0% { transform: translate(0, 0) scale(0.3) rotate(0deg); opacity: 1; }
   70% { opacity: 1; }

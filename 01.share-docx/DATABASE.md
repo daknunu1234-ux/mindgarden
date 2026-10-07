@@ -169,21 +169,28 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 |--------|------|-------------|-------------|
 | id | UUID | PK, DEFAULT gen_random_uuid() | |
 | user_id | UUID | FK → users, NOT NULL, ON DELETE CASCADE | The farm's owner |
-| item_type | TEXT | NOT NULL, CHECK in (tree, fence, stream, farmer_house, woodshop, rockery, animal) | |
+| item_type | TEXT | NOT NULL, CHECK in (tree, fence, stream, farmer_house, woodshop, rockery, animal, windmill_small, windmill_large, furniture_factory, seaport) (`garden_placements_item_type_check`, migration `20261014000000`) | farmer_house / woodshop: retired (no longer sold; standing ones keep working) |
 | deck_id | UUID | FK → decks, ON DELETE CASCADE; set iff item_type = 'tree' (CHECK); partial UNIQUE | The tree's deck. Chopping (deleting) the deck removes its tile |
 | grid_x, grid_y | INT | NOT NULL, 0–15 | Top tile of the footprint |
-| width, height | INT | NOT NULL, DEFAULT 1, 1–2; CHECK x + width ≤ 16, y + height ≤ 16 | Footprint (2 × 2 for the Farmer's House and Woodshop) |
+| width, height | INT | NOT NULL, DEFAULT 1, 1–6 (1–2 before migration `20261014000000`); CHECK x + width ≤ 16, y + height ≤ 16 | Footprint: 2 × 2 (small windmill, factory, retired house / woodshop), 6 × 6 (large windmill), 6 × 2 (seaport) |
 | variant | TEXT | NULLABLE, ≤ 20 chars | Animals: 'cow' / 'pig' |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
-| *(user_id, grid_x, grid_y)* | — | UNIQUE `unique_farm_tile` | One item per top tile (overlaps of bigger footprints are refused by the function) |
+| *(user_id, grid_x, grid_y)* | — | UNIQUE index `unique_farm_tile` where item_type ≠ freight_train, and `unique_farm_train_tile` among trains (migration `20261015000000`; a UNIQUE constraint before) | One item per top tile; a Freight Train shares its tiles with the track it stands on (overlaps of bigger footprints are refused by the functions) |
 
 **Catalogue and rules** (the same numbers live in `features/garden/lib/farmCatalog.ts` / `farmBuffs.ts`; tests check the SQL):
 
 | Item | Size | Price | Effect |
 |------|------|-------|--------|
 | Tree (own deck) | 1 × 1 | free | Planting from the Shop's Trees tab; one tile per deck |
-| Farmer's House | 2 × 2 | 50 🪙 | Trees in its 4 × 4 area (its footprint + 1 tile all round): ×1.5 coins |
-| Woodshop | 2 × 2 | 50 🪙 | Chopping a tree refunds `least(floor(statements × 0.25), 50)` 🪙 |
+| ~~Farmer's House~~ | 2 × 2 | retired | No longer sold (`ITEM_RETIRED`, migration `20261014000000`). Standing ones still give trees in their 4 × 4 area ×1.5 coins |
+| ~~Woodshop~~ | 2 × 2 | retired | No longer sold. A standing one still refunds `least(floor(statements × 0.25), 50)` 🪙 on a chop |
+| Windmill (Small) | 2 × 2 | 30 🪙 (60 before migration `20261015000000`) | Power field: footprint + 1 tile around (4 × 4) |
+| Grand Windmill (`windmill_large`) | 2 × 2 (6 × 6 before migration `20261016000000`) | 60 🪙 (was 100) | Power field: footprint + 2 tiles around (6 × 6; was + 3, 12 × 12). Standing ones were shrunk to 2 × 2 on their own top tile |
+| Furniture Factory | 2 × 2 | 50 🪙 (was 120) | Needs power. Turns 2 timber into 1 furniture, 1 an hour |
+| Candy Factory | 2 × 2 | 50 🪙 | Needs power. Turns 10 fruit into 1 candy box, 1 an hour (store: 20 boxes) |
+| Railroad Track | 1 × 1 | 1 🪙 | Joins the tracks on its four sides |
+| Freight Train | 1 × 3 | 30 🪙 | Only on three Railroad Track tiles (`NOT_ON_TRACK`); a track under it can't be moved or picked up (`TRACK_IN_USE`, also a delete trigger) |
+| Seaport | 6 × 2 | 100 🪙 (was 150) | Needs power; coast only (`grid_y = 0` or `grid_y + 2 = 16`, else `NOT_COASTAL`, also on a move). A cargo ship every 4 hours buys the stock |
 | Stream | 1 × 1 | 5 🪙 | Trees on a side tile (x ± 1 or y ± 1): ×1.2 coins; stacks with the house to ×1.8 |
 | Fence | 1 × 1 | 1 🪙 | Auto-connects to side fences (drawing only) |
 | Rockery | 1 × 1 | 2 🪙 | Decoration |
@@ -200,6 +207,26 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 | Visitors see only what is shared | RLS "read own or public": your farm in full; someone else's items and their **public** trees only. Delete: own rows |
 
 Existing trees were backfilled onto the grid (every other tile from (1, 1), 7 per row, up to 49); newer trees wait in the Shop's Trees tab until planted.
+
+**farm_economy** — *The island's stock (migration `20261014000000_power_grid.sql`, owned by `garden`)*
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| user_id | UUID | PK, FK → users, ON DELETE CASCADE | One row per gardener (created on the first settlement) |
+| timber, produce, furniture | NUMERIC(10,3) | NOT NULL, DEFAULT 0, ≥ 0 | Stock: caps 60 / 40 / 30 |
+| fruit, candy | NUMERIC(10,3) | NOT NULL, DEFAULT 0, ≥ 0 (migration `20261015000000`) | 🍎 from harvests (`harvest_tree_fruit()` adds 2 per ripe tree); 🍬 candy boxes (cap 20) |
+| last_candy_payout | INT | NOT NULL, DEFAULT 0, ≥ 0 | What the last train delivery paid |
+| last_tick_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Production is counted from here (at most 48 hours at once) |
+| last_export_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | The last cargo ship |
+| last_payout | INT | NOT NULL, DEFAULT 0, ≥ 0 | What it paid |
+
+**Power and the export loop** (the same numbers live in `features/garden/lib/powerGrid.ts` / `farmEconomy.ts`; tests check the SQL):
+
+| Rule | Enforced by |
+|------|-------------|
+| A building that needs power (furniture_factory, seaport) works while its footprint touches a power field | `public.farm_building_powered(placement)` (service role) with `public.farm_power_reach(item_type)` (small windmill 1, large 3) |
+| Production and payouts are the server's | `public.settle_farm_economy()` (`SECURITY DEFINER`, caller = `auth.uid()`, under a lock on the caller's `users` row): since `last_tick_at` (≤ 48 h) trees make 1 timber / hour each, animals 1 produce / hour each, powered factories 1 furniture / hour each from 2 timber; caps 60 / 40 / 30. With a powered seaport and 4 hours since `last_export_at`, a ship pays `least(floor(furniture × 3 + produce × 0.5 + timber × 0.2), 15)` coins and takes the same share of every good (the rest stays). Returns the stock, the payout and the purse |
+| Candy and the freight line (migration `20261015000000`) | `settle_farm_economy()` also runs the powered Candy Factories (`least(factories × hours, fruit / 10, 20 − candy)` boxes, 10 fruit each) and, when `public.farm_candy_linked(user)` (service role: a recursive search over the gardener's track from the tiles beside a powered Candy Factory to the tiles beside a powered Seaport, with a Freight Train on that stretch), exports every whole box for 15 🪙. Its result gains `fruit`, `candy`, `candy_shipped`, `candy_payout` |
+| Players can't write their stock | RLS "read own" (SELECT only); no INSERT / UPDATE grant: the function is the only writer |
 
 ### Progress & Gamification Feature
 
@@ -259,6 +286,8 @@ Written by `recordDrillResult` (service role, `progress/services/fruit.ts`) afte
 | coins | INT | NOT NULL, CHECK > 0 | 🪙 paid (FRUIT_COINS = 2) |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT now() | |
 | *(user_id, deck_id, day)* | — | PK | Makes each tree's fruit claimable once a day |
+
+⚠️ Since migration `20261015000000` a harvest gives **2 fruit** (into `farm_economy.fruit`) instead of 2 coins: `harvest_tree_fruit()` returns `fruit_earned, total_fruit`, and `tree_harvests.coins` records the fruit picked. The rest below is unchanged.
 
 **Tree fruit** (`public.harvest_tree_fruit(user, deck, today)`, `SECURITY DEFINER`, EXECUTE for **service_role only**; the `harvestTreeFruit` action computes `today` from the server clock and the player's timezone, so players can't pick the day): the tree must be the player's, they must have a `deck_practice_days` row for `today - 1`, and today's `tree_harvests` insert must be the first (`ON CONFLICT DO NOTHING` → `FRUIT_NOT_READY`); then `users.coins + 2` in the same transaction under a row lock. Any growth stage bears fruit. **Withering** (grey, still farm trees after 72 h without practice; immune from growth stage 4) is computed in the app from `user_progress.last_practiced_at` (and the deck's `created_at` for never-practised trees): nothing is stored.
 
@@ -412,6 +441,7 @@ RLS is **enabled on all tables**. No policy = no access (except `service_role`).
 | practice_days | Owner | ✗ (service role only) | ✗ | ✗ |
 | tree_visits | Owner | ✗ direct; only via `record_tree_visit()` (public trees of others) | ✗ direct; same function | ✗ (cascades only) |
 | garden_placements | Owner; others: items + public trees | ✗ direct; only via `purchase_and_place_item()` | ✗ | Owner |
+| farm_economy | Owner | ✗ (only `settle_farm_economy()`) | ✗ (same) | ✗ (cascades only) |
 | deck_practice_days | Owner | ✗ (service role: `recordDrillResult`) | ✗ | ✗ (cascades only) |
 | tree_harvests | Owner | ✗ (service role: `harvest_tree_fruit()`) | ✗ | ✗ (cascades only) |
 | streak_rewards | Owner | ✗ (service role: `award_streak_reward()`) | ✗ | ✗ (cascades only) |
@@ -493,6 +523,9 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 27 | `20261016000000_grand_windmill.sql` | `windmill_large` becomes a 2 × 2 tower with power reach 2 (6 × 6 zone): `farm_power_reach()` and `purchase_and_place_item()` re-created, standing ones shrunk to 2 × 2 |
+  | 26 | `20261015000000_rail_logistics.sql` | New prices; `candy_factory`, `rail_track`, `freight_train` (train on tracks: purchase / move rules, `garden_track_in_use` delete trigger, the top-tile unique key as two partial unique indexes); `farm_economy.fruit` / `candy` / `last_candy_payout`; `farm_building_powered()` (+ Candy Factory), `farm_candy_linked()`; `harvest_tree_fruit()` gives fruit; `settle_farm_economy()` with candy and train delivery |
+  | 25 | `20261014000000_power_grid.sql` | Footprints up to 6, the four power-grid item types, `farm_power_reach()` / `farm_building_powered()`, `purchase_and_place_item()` (new catalogue, `ITEM_RETIRED`, `NOT_COASTAL`) and `move_garden_placement()` (coast) re-created, `farm_economy` + RLS, `settle_farm_economy()` |
   | 24 | `20261013000100_drop_legacy_trees.sql` | Drops `legacy_mindmap_nodes` / `legacy_knowledge_items`. Destructive and optional |
   | 23 | `20261013000000_content_nodes.sql` | `content_nodes` (roots + statements, ids kept, one sibling order) replaces `mindmap_nodes` + `knowledge_items` (renamed to `legacy_*`); shape trigger, RLS, column grants; progress FKs repointed; `award_mastery_coin()`, `uproot_deck()`, `clone_deck()`, `record_tournament_answer()` re-created on it; new `indent_content_node()` |
   | 22 | `20261010000000_sub_statements.sql` | `knowledge_items.parent_item_id` (sub-statements: composite FK to a statement of the same root, ON UPDATE / DELETE CASCADE, one level by trigger) and `sort_order` (backfilled from `created_at`); their column grants; `clone_deck()` re-created to copy the hierarchy and order |
@@ -516,6 +549,9 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
 - **File 23** runs **with** the deploy of the content-node code, after file 22 (and 21): the old code reads `mindmap_nodes` / `knowledge_items`, which it renames, and the new code reads `content_nodes`, which it creates. Not re-runnable (it moves data); the rollback block at its end renames the legacy tables back. It re-creates `award_mastery_coin()`, `uproot_deck()`, `clone_deck()` and `record_tournament_answer()`: never re-run files 12, 18, 21 or 22 after it (they would point those functions at the old tables). Two never-shipped drafts (`20261011000000_convert_statements_roots`, `20261012000000_indent_rows`) were folded into it; it drops their functions if one was applied by hand
 - **File 24** only after file 23 has run and the app works on it: it drops the legacy tables (no rollback after that)
+- **File 27** (`20261016000000_grand_windmill.sql`) after file 26, with the deploy of the matching code (the Shop shows the 2 × 2 tower and its 6 × 6 zone). Standing large windmills shrink to 2 × 2 and power a smaller area, so buildings beyond it lose power. Never re-run files 14, 25 or 26 after it (they would bring back the 6 × 6 size or reach 3). Safe to re-run
+- **File 26** (`20261015000000_rail_logistics.sql`) runs **with** the deploy, after file 25: the new code reads fruit and the new settle result, and the old code would show "+2 coins" for a harvest that now gives fruit. It drops and re-creates `harvest_tree_fruit()` and `settle_farm_economy()` (new results). Never re-run files 15, 25 or earlier ones that re-create these functions after it. Safe to re-run
+- **File 25** (`20261014000000_power_grid.sql`) any time after files 12 and 14 (it re-creates their purchase and move functions), before or with the deploy of the power-grid code: older code never sends the new item types, and the new code's Shop sells them. Until it runs, buying a new building answers "Could not place that on the farm" and the island's economy stays empty (the log names the migration). Never re-run file 12 or 14 after it (they would bring back the old catalogue and the inland seaport move). Safe to re-run
 - **File 22** runs any time after file 18, **before or with** the deploy of the sub-statement code: it only adds columns (older code keeps working), while the new code orders statements by `sort_order` and fails to load them without it. It re-creates `clone_deck()`: never re-run file 18 after it (cloned trees would lose their sub-statements' nesting)
 - **File 21** runs any time after file 18 (it uses `seed_price()`), with or after the deploy. Until it runs, the app shows "⭐ 1.5x Coins" on special trees but the database still pays ×1; nothing else is affected. It re-creates `award_mastery_coin()`: never re-run file 12 after it without re-running this one (file 12 would restore the farm-only payout)
 - **File 20** can run any time after file 18 (it does not need file 19), before or with the deploy. Until it runs, the ⚡ button shows as ready but starting a run answers "Could not start the Daily Rush" (the log names the migration); nothing else is affected

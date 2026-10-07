@@ -6,6 +6,8 @@ import { memo, type CSSProperties, type ReactNode } from 'react'
 import type { CatalogItem } from '../lib/farmCatalog'
 import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
 import { streamShapes, type StreamLayer } from '../lib/streamTiles'
+import { FactorySprite, SeaportSprite, WindmillSprite, type Shore } from './PowerBuildings'
+import { TrackTile, TrainSprite } from './RailwaySprites'
 import { Blossom, facetedVolume, rampColor } from './treeKit'
 
 type Pt = { x: number; y: number }
@@ -587,9 +589,35 @@ export function AnimalSprite({ variant, delay }: { variant: string | null; delay
   )
 }
 
-// A standing item's drawing by type (fences show as a lone post outside the grid).
-export function ItemDrawing({ item, links }: { item: Pick<CatalogItem, 'itemType' | 'variant'>; links?: Parameters<typeof FenceSprite>[0]['links'] }) {
+// A standing item's drawing by type (fences show as a lone post outside the grid). Power buildings
+// draw powered unless told otherwise; the seaport faces the front shore unless told otherwise.
+export function ItemDrawing({
+  item,
+  links,
+  powered = true,
+  shore = 'front',
+}: {
+  item: Pick<CatalogItem, 'itemType' | 'variant'>
+  links?: Parameters<typeof FenceSprite>[0]['links']
+  powered?: boolean
+  shore?: Shore
+}) {
   switch (item.itemType) {
+    case 'windmill_small':
+      return <WindmillSprite size="small" />
+    case 'windmill_large':
+      return <WindmillSprite size="large" />
+    case 'furniture_factory':
+      return <FactorySprite powered={powered} />
+    case 'candy_factory':
+      return <FactorySprite powered={powered} kind="candy" />
+    case 'freight_train':
+      return <TrainSprite />
+    case 'rail_track':
+      // Flat: one tile of track, centred on (0, 0).
+      return <TrackTile links={links ?? { north: false, east: true, south: false, west: true }} />
+    case 'seaport':
+      return <SeaportSprite shore={shore} powered={powered} />
     case 'farmer_house':
       return <FarmerHouse />
     case 'woodshop':
@@ -606,9 +634,11 @@ export function ItemDrawing({ item, links }: { item: Pick<CatalogItem, 'itemType
   }
 }
 
-// A catalogue item standing on a little 3D pedestal (the Shop's cards).
+// A catalogue item standing on a little 3D pedestal (the Shop's cards). Footprints wider than 2 tiles
+// are drawn smaller, so the 6 × 6 windmill and the 6 × 2 seaport fit the card.
 export function ItemPreview({ item, className }: { item: CatalogItem; className?: string }): ReactNode {
   const big = item.width > 1
+  const shrink = Math.min(1, 2 / Math.max(item.width, item.height)) * (item.width > 2 ? 1.25 : 1)
   const view = big ? '-120 -175 240 230' : '-64 -80 128 118'
   const pad = big ? { a: 108, b: 54 } : { a: 56, b: 28 }
   return (
@@ -620,7 +650,7 @@ export function ItemPreview({ item, className }: { item: CatalogItem; className?
         <polygon points={p([-pad.a, 0], [0, -pad.b], [pad.a, 0], [0, pad.b])} fill="#82cb52" stroke="#44802c" strokeWidth={2} />
         <polygon points={p([-pad.a * 0.6, -pad.b * 0.25], [0, -pad.b * 0.85], [pad.a * 0.2, -pad.b * 0.62])} fill="#ffffff" opacity={0.18} />
       </g>
-      <g transform={`translate(0 ${big ? 4 : 2})`}>
+      <g transform={`translate(0 ${big ? 4 : 2})${shrink < 1 ? ` scale(${shrink.toFixed(3)})` : ''}`}>
         <ItemDrawing item={item} />
       </g>
     </svg>

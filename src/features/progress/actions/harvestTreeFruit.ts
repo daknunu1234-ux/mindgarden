@@ -7,10 +7,11 @@ import { HarvestFruitDto } from '../dto/HarvestFruitDto'
 import { harvestFruit } from '../services/fruit'
 
 // Auth: Required (the tree's owner). Collects today's fruit of a tree practised yesterday:
-// FRUIT_COINS 🪙, once per tree per day (harvest_tree_fruit(), service role). No revalidatePath: the
-// farm removes the fruit and credits the coins optimistically, then settles on `totalCoins`.
+// FRUIT_PER_HARVEST 🍎 into the island's inventory, once per tree per day (harvest_tree_fruit(),
+// service role; no coins: fruit becomes candy at the Candy Factory). No revalidatePath: the farm
+// removes the fruit and adds it to the 🍎 counter optimistically, then settles on `totalFruit`.
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, DECK_NOT_FOUND (not yours), FRUIT_NOT_READY, INTERNAL_ERROR.
-export async function harvestTreeFruit(input: unknown): Promise<ActionResult<{ coinsEarned: number; totalCoins: number }>> {
+export async function harvestTreeFruit(input: unknown): Promise<ActionResult<{ fruitEarned: number; totalFruit: number }>> {
   const parsed = HarvestFruitDto.safeParse(input)
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)
 
