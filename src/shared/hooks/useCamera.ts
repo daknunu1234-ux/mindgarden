@@ -1,9 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from 'react'
-import { centreOn, clampZoom, fitZoom, ZOOM_STEP, zoomAt, type Scroll, type Size } from '@/shared/lib/camera'
+import { centreOn, clampZoom, easeOutCubic, fitZoom, shotBetween, worldAt, ZOOM_STEP, zoomAt, type CameraShot, type Scroll, type Size } from '@/shared/lib/camera'
 
 const DRAG_THRESHOLD = 6
+// How long the camera takes to fly to a target (ease-out).
+export const FLIGHT_MS = 520
+
+export type CameraOptions = {
+  // Where to look once the viewport is first measured (after the default fit-and-centre): the camera
+  // flies there (FLIGHT_MS, ease-out). null = stay on the default view. Called once, with the
+  // measured viewport.
+  initialShot?: (view: Size) => CameraShot | null
+}
 
 type Pointer = { x: number; y: number }
 
@@ -12,11 +21,14 @@ type Pointer = { x: number; y: number }
 // The container needs `touch-action: none`; a drag longer than 6px swallows the click that ends
 // it, so dragging across a card never opens it. Math lives in shared/lib/camera.ts.
 // `fit` is the size to fit on arrival and on reset (default: the whole world), centred on `focus`.
+// `flyTo` animates to a shot; any touch, drag, pinch, wheel zoom, zoom button or reset by the player
+// cancels a flight at once (the player always wins), and reduced motion jumps straight there.
 export function useCamera(
   scrollRef: RefObject<HTMLDivElement | null>,
   world: Size,
   focus: { x: number; y: number },
   fit: Size = world,
+  options: CameraOptions = {},
 ) {
   const [view, setView] = useState<Size>({ w: 0, h: 0 })
   const [zoom, setZoom] = useState(1)
@@ -26,6 +38,9 @@ export function useCamera(
   const pinch = useRef<{ dist: number; zoom: number } | null>(null)
   const suppressClick = useRef(false)
   const initialised = useRef(false)
+  // The running flight's animation frame (0 = none).
+  const flight = useRef(0)
+  const initialShot = useRef(options.initialShot)
   // Latest values for native listeners (wheel) without re-subscribing.
   const live = useRef({ zoom, view, world })
   useEffect(() => {
@@ -52,8 +67,63 @@ export function useCamera(
     }
   })
 
+  const cancelFlight = useCallback(() => {
+    if (flight.current) cancelAnimationFrame(flight.current)
+    flight.current = 0
+  }, [])
+  useEffect(() => cancelFlight, [cancelFlight])
+
+  // Puts the camera on a shot right away (one frame of a flight, or a jump).
+  const showShot = useCallback(
+    (shot: CameraShot) => {
+      const el = scrollRef.current
+      const { zoom: from, view: v, world: w } = live.current
+      if (!el || v.w === 0) return
+      const to = clampZoom(shot.zoom)
+      const scroll = centreOn(shot.center, v, w, to)
+      live.current = { ...live.current, zoom: to }
+      if (to === from) {
+        el.scrollTo(scroll.left, scroll.top)
+        return
+      }
+      // The canvas resizes on the next render; the scroll follows it (layout effect above).
+      pendingScroll.current = scroll
+      setZoom(to)
+    },
+    [scrollRef],
+  )
+
+  // Animates from wherever the camera is to `shot` (ease-out over `ms`). Starts on the next frame, so
+  // a view set just before (the first fit) is in place to start from.
+  const flyTo = useCallback(
+    (shot: CameraShot, ms = FLIGHT_MS) => {
+      cancelFlight()
+      const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+      let from: CameraShot | null = null
+      let started = 0
+      const step = (now: number) => {
+        const el = scrollRef.current
+        const { zoom: z, view: v, world: w } = live.current
+        if (!el || v.w === 0) {
+          flight.current = 0
+          return
+        }
+        if (!from) {
+          from = { center: worldAt({ left: el.scrollLeft, top: el.scrollTop }, { x: v.w / 2, y: v.h / 2 }, v, w, z), zoom: z }
+          started = now
+        }
+        const t = reduced || ms <= 0 ? 1 : (now - started) / ms
+        showShot(shotBetween(from, shot, easeOutCubic(t)))
+        flight.current = t < 1 ? requestAnimationFrame(step) : 0
+      }
+      flight.current = requestAnimationFrame(step)
+    },
+    [cancelFlight, scrollRef, showShot],
+  )
+
   const zoomTo = useCallback(
     (next: number, anchor?: Pointer) => {
+      cancelFlight()
       const el = scrollRef.current
       const { zoom: from, view: v, world: w } = live.current
       const to = clampZoom(next)
@@ -63,10 +133,11 @@ export function useCamera(
       live.current = { ...live.current, zoom: to }
       setZoom(to)
     },
-    [scrollRef],
+    [cancelFlight, scrollRef],
   )
 
   const resetView = useCallback(() => {
+    cancelFlight()
     const { view: v, world: w } = live.current
     if (v.w === 0) return
     const z = fitZoom(v, fit)
@@ -78,21 +149,25 @@ export function useCamera(
       scrollRef.current?.scrollTo(pendingScroll.current.left, pendingScroll.current.top)
       pendingScroll.current = null
     }
-  }, [fit, focus, scrollRef, zoom])
+  }, [cancelFlight, fit, focus, scrollRef, zoom])
 
-  // First measurement: fit the whole farm and centre it.
+  // First measurement: fit the whole world and centre it, then fly to the initial shot if there is one.
   useEffect(() => {
     if (!initialised.current && view.w > 0) {
       initialised.current = true
       resetView()
+      const shot = initialShot.current?.(view)
+      if (shot) flyTo(shot)
     }
-  }, [view.w, resetView])
+  }, [view, resetView, flyTo])
 
   // Ctrl/⌘ + wheel (and trackpad pinch) zooms at the cursor; a plain wheel keeps scrolling.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
+      // Any wheel (scrolling too) is the player taking over: stop a flight.
+      cancelFlight()
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const rect = el.getBoundingClientRect()
@@ -100,7 +175,7 @@ export function useCamera(
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [scrollRef, zoomTo])
+  }, [cancelFlight, scrollRef, zoomTo])
 
   const local = (e: PointerEvent<HTMLElement>): Pointer => {
     const rect = scrollRef.current!.getBoundingClientRect()
@@ -109,6 +184,8 @@ export function useCamera(
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current
+    // A touch or click is the player taking over: stop a flight.
+    cancelFlight()
     if (!el || (e.pointerType === 'mouse' && e.button !== 0)) return
     pointers.current.set(e.pointerId, local(e))
     if (pointers.current.size === 1) {
@@ -177,6 +254,8 @@ export function useCamera(
     zoom,
     view,
     release,
+    flyTo,
+    cancelFlight,
     zoomIn: () => zoomTo(live.current.zoom * ZOOM_STEP),
     zoomOut: () => zoomTo(live.current.zoom / ZOOM_STEP),
     resetView,

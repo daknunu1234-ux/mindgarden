@@ -115,14 +115,16 @@ describe('label visibility on the farm', () => {
     expect(TREE_LABELS_HOVER_CLASS).toBe('mg-labels-hover')
   })
 
-  it('merges the name and the progress into one compact capsule, the only label', () => {
+  it('shows one compact capsule with the name only: no percentage, level chip or buff', () => {
     expect(TREE_LABEL).toBe('mg-tree-label')
     expect((labels.match(/mg-tree-label/g) ?? []).length).toBe(1)
     const capsule = /<span class="(mg-tree-label [^"]*)" style="([^"]*)">([\s\S]*)<\/span><\/div>$/.exec(labels)
     expect(capsule).not.toBeNull()
     const [, classes, style, inner] = capsule!
-    // One line: [ emoji  name • 42% ].
-    expect(inner.replace(/<[^>]+>/g, '')).toBe('🪴Sinh học Tế bào•42%')
+    // One line: [ name ].
+    expect(inner.replace(/<[^>]+>/g, '')).toBe('Sinh học Tế bào')
+    expect(labels).not.toMatch(/\d+%/)
+    expect(labels).not.toContain('data-icon="mastered"')
     // A single row, 18 px tall, small type, a dark see-through pill; no backdrop blur (it repeats per tile).
     for (const cls of ['flex', 'items-center', 'h-[18px]', 'text-[11px]', 'whitespace-nowrap', 'rounded-full', 'bg-black/55', 'border-white/10', 'text-white']) expect(classes.split(' '), cls).toContain(cls)
     expect(classes).not.toMatch(/flex-col|backdrop-blur/)
@@ -133,7 +135,7 @@ describe('label visibility on the farm', () => {
     const at = plotSprite(300, 300, 1).label
     expect(style).toBe(`left:${at.x}px;top:${at.y}px`)
     expect(classes).toContain('-translate-x-1/2')
-    // The 💧 and 🍎 bubbles are prompts: never hidden by the toggle.
+    // The 💧 and 🍎 icons are actions: never hidden by the toggle.
     expect(labels).toContain('data-icon="water"')
     expect(labels).toContain('data-icon="fruit"')
     expect(labels).not.toMatch(/mg-tree-label[^"]*mg-bob/)
@@ -141,27 +143,25 @@ describe('label visibility on the farm', () => {
     expect(labels).toMatch(/^<div aria-hidden="true" class="mg-plot-labels /)
   })
 
-  it('sits at the base of the tree for every size, under the crown and clear of its bubbles', () => {
+  it('sits at the base of the tree for every size, under the crown and clear of its icons', () => {
     for (const scale of [0.85, 1, 1.18, 1.35, 1.35 * 1.18]) {
-      const { label, thirsty, mighty, treeTop } = plotSprite(300, 300, scale)
+      const { label, actions, treeTop } = plotSprite(300, 300, scale)
       // Centred on the trunk, just below the ground point, inside the tile's front half.
       expect(label.x).toBe(300)
       expect(label.y).toBeGreaterThan(300)
       expect(label.y - 300).toBeLessThan(PLOT_HALF_H)
-      // The 💧 / 🍎 / ✨ bubbles ride above the crown: far above the capsule (18 px tall).
-      expect(label.y - thirsty.y).toBeGreaterThan(60)
-      expect(label.y - mighty.y).toBeGreaterThan(60)
+      // The 💧 / 🍎 icons ride above the crown: far above the capsule (18 px tall).
+      expect(label.y - actions.y).toBeGreaterThan(60)
       expect(label.y).toBeGreaterThan(treeTop)
     }
     // The same spot whatever the tree's size: it hugs the tile, not the crown.
     expect(plotSprite(300, 300, 0.85).label).toEqual(plotSprite(300, 300, 1.6).label)
   })
 
-  it('turns the percentage gold from the golden-bloom threshold', () => {
-    const golden = renderToStaticMarkup(createElement(PlotLabels, { geometry: { x: 0, y: 0 }, plot: { ...plot, masteryPercent: 95, needsWater: false, fruitReady: false }, onOpen: () => undefined }))
-    expect(golden).toMatch(/text-yellow-300[^>]*>95%/)
-    expect(golden).toContain('border-yellow-300/60')
-    expect(labels).toMatch(/text-emerald-300[^>]*>42%/)
+  it('shows a 🥀 in the capsule of a withered tree, nothing else', () => {
+    const withered = renderToStaticMarkup(createElement(PlotLabels, { geometry: { x: 0, y: 0 }, plot: { ...plot, withered: true }, onOpen: () => undefined }))
+    expect(withered).toMatch(/mg-tree-label[\s\S]*🥀[\s\S]*Sinh học Tế bào/)
+    expect(labels).not.toContain('🥀')
   })
 
   it('hides labels only in hover mode: with all labels on, no rule hides them', () => {

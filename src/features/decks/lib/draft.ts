@@ -10,6 +10,8 @@ import type { ContentRow, DeckDetail, DeckEditor, NodeType } from '../types'
 
 export type DeckOp =
   | { key: string; kind: 'species'; treeType: string; settled?: boolean }
+  // The tree's name (renameDeck).
+  | { key: string; kind: 'title'; title: string; settled?: boolean }
   // One new node: under `parentId` (null = a top-level root), right after sibling `afterId` (else
   // last). `confirmedId` = the server's id. parentId / afterId may be temp ids (confirmAdd retargets).
   | { key: string; kind: 'add'; tempId: string; parentId: string | null; afterId: string | null; type: NodeType; content: string; confirmedId?: string }
@@ -46,14 +48,20 @@ const keep = (rows: ContentRow[], next: ContentRow[] | string): ContentRow[] => 
 // The page as the owner sees it: the server's data with every op applied, in order.
 export function applyDeckOps(detail: DeckDetail, editor: DeckEditor | null, ops: readonly DeckOp[]): DeckDraftView {
   let treeType = detail.deck.treeType
-  for (const op of ops) if (op.kind === 'species') treeType = op.treeType
+  let title = detail.deck.title
+  for (const op of ops) {
+    if (op.kind === 'species') treeType = op.treeType
+    if (op.kind === 'title') title = op.title
+  }
+  const deck = { ...detail.deck, treeType, title }
   const pendingIds = new Set<string>()
-  if (!editor) return { detail: { ...detail, deck: { ...detail.deck, treeType } }, editor, treeType, pendingIds }
+  if (!editor) return { detail: { ...detail, deck }, editor, treeType, pendingIds }
 
   let rows = editor.rows
   for (const op of ops) {
     switch (op.kind) {
       case 'species':
+      case 'title':
         break
       case 'add': {
         const id = op.confirmedId ?? op.tempId
@@ -87,7 +95,7 @@ export function applyDeckOps(detail: DeckDetail, editor: DeckEditor | null, ops:
     }
   }
   return {
-    detail: { deck: { ...detail.deck, treeType }, tree: toDeckTree(rows) },
+    detail: { deck, tree: toDeckTree(rows) },
     editor: { ...editor, treeType, rows, nodes: toEditorNodes(rows) },
     treeType,
     pendingIds,

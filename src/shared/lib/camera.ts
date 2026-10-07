@@ -74,3 +74,34 @@ export function centreOn(point: { x: number; y: number }, view: Size, world: Siz
     zoom,
   )
 }
+
+
+// ── Flying the camera (an animated move to a target) ─────────────────────────
+
+// Where the camera looks: the world point at the viewport's centre, and the zoom.
+export type CameraShot = { center: { x: number; y: number }; zoom: number }
+export type Box = { left: number; top: number; right: number; bottom: number }
+
+// The shot that shows `box` (world coordinates) with `margin` of the viewport free on every side
+// (0.175 = 17.5%), never closer than `maxZoom` (a lone tree doesn't fill the screen) and within the
+// camera's zoom range.
+export function fitBox(box: Box, view: Size, margin = 0.175, maxZoom = MAX_ZOOM): CameraShot {
+  const w = Math.max(1, box.right - box.left)
+  const h = Math.max(1, box.bottom - box.top)
+  const usable = Math.max(0.1, 1 - 2 * margin)
+  const zoom = view.w > 0 && view.h > 0 ? clampZoom(Math.min(maxZoom, (view.w * usable) / w, (view.h * usable) / h)) : 1
+  return { center: { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 }, zoom }
+}
+
+// Ease-out (cubic): quick to start, gentle to land.
+export const easeOutCubic = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3)
+
+// The camera part-way (`t` = 0..1, already eased) from one shot to another. The zoom moves
+// geometrically, so zooming in feels as even as zooming out.
+export function shotBetween(from: CameraShot, to: CameraShot, t: number): CameraShot {
+  const k = Math.min(1, Math.max(0, t))
+  return {
+    center: { x: from.center.x + (to.center.x - from.center.x) * k, y: from.center.y + (to.center.y - from.center.y) * k },
+    zoom: from.zoom * Math.pow(to.zoom / from.zoom, k),
+  }
+}

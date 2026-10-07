@@ -3,9 +3,10 @@
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { GameButton, GamePanel, GameSlab, Ribbon } from '@/shared/components/game'
+import { GameButton, GamePanel, GameSlab, InlineNameEdit, Ribbon } from '@/shared/components/game'
 import { isMastered } from '@/shared/lib/mastery'
 import { getTreeSizeTier, getTreeSpecies } from '@/shared/lib/treeSkins'
+import { cn } from '@/shared/utils/cn'
 import { DisplayNameEditor } from '@/features/auth'
 import { launchPool, SessionLaunchButton, SessionLaunchProvider, type LaunchContext } from '@/features/drill'
 import {
@@ -52,6 +53,8 @@ type DeckSceneProps = {
   editor: DeckEditorData | null
   visitor: DeckVisitor | null
   tournament: DeckTournament
+  // Just bought and placed on the farm (`?start=1`): the Workshop opens on the first root's input.
+  startWorkshop?: boolean
 }
 
 // Route-level composition for /deck/[slug]: one scene where the garden tree stands on the
@@ -59,7 +62,7 @@ type DeckSceneProps = {
 // owner's edits are optimistic (decks' deck draft): a new species or new statements show across the
 // whole scene at once (sprite, ribbon, counts, size tier, mindmap, Workshop list) and sync in the
 // background, with no page refresh.
-function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEditor, visitor, tournament }: DeckSceneProps) {
+function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEditor, visitor, tournament, startWorkshop = false }: DeckSceneProps) {
   const { view, actions } = useDeckDraft(serverDetail, serverEditor)
   const { detail, editor } = view
   const { deck, tree } = detail
@@ -130,7 +133,7 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
           </div>
         </div>
       )}
-      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+      <div className={cn('mx-auto w-full max-w-5xl px-4 pt-8 sm:px-6 sm:pt-10', !editor && 'pb-8 sm:pb-10')}>
         <div className="flex flex-wrap items-center gap-3">
           <GameButton asChild tone="cream" size="sm">
             <Link href="/">
@@ -148,7 +151,19 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
         <GamePanel tone="parchment" className="mt-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <h1 className="font-game text-3xl leading-tight font-extrabold text-amber-950 sm:text-4xl">{deck.title}</h1>
+              {editor ? (
+                // The owner renames the tree in place (✏️ or double-click; Enter / click away saves, Esc reverts).
+                <InlineNameEdit
+                  value={deck.title}
+                  onSave={actions.renameTree}
+                  label="Rename tree"
+                  className="max-w-full"
+                  inputClassName="font-game text-2xl font-extrabold sm:text-3xl"
+                  renderName={(name) => <h1 className="min-w-0 font-game text-3xl leading-tight font-extrabold break-words text-amber-950 sm:text-4xl">{name}</h1>}
+                />
+              ) : (
+                <h1 className="font-game text-3xl leading-tight font-extrabold text-amber-950 sm:text-4xl">{deck.title}</h1>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3 pl-3">
                 <Ribbon tone={stage === 5 ? 'gold' : 'leaf'}>
                   {emoji} {name}
@@ -294,8 +309,15 @@ function DeckScene({ detail: serverDetail, ownerName, progress, editor: serverEd
           </section>
         )}
 
-        {editor && <DeckWorkshop deck={deck} editor={editor} />}
       </div>
+
+      {/* The owner's Tree Workshop gets a wider column than the page (up to 88rem, slim side gutters):
+          writing is its job, and long statements need the room. */}
+      {editor && (
+        <div className="mx-auto w-full max-w-[88rem] px-3 pb-8 sm:px-4 sm:pb-10">
+          <DeckWorkshop deck={deck} editor={editor} onRename={actions.renameTree} start={startWorkshop} />
+        </div>
+      )}
     </main>
   )
 

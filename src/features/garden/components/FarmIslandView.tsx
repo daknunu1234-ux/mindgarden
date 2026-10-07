@@ -1,11 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { GameButton } from '@/shared/components/game'
+import { useAfterIdle } from '@/shared/hooks/useAfterIdle'
 import { useCamera } from '@/shared/hooks/useCamera'
+import { useDocumentHidden } from '@/shared/hooks/useDocumentHidden'
 import { FRUIT_COINS } from '@/shared/lib/economy'
 import { centreOffset, contentSize, MAX_ZOOM, MIN_ZOOM } from '@/shared/lib/camera'
+import { defaultTreeName } from '@/shared/lib/treeName'
+import { treeScale, type TreeSpecies } from '@/shared/lib/treeSkins'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
 import type { ActionResult } from '@/shared/types/result'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
@@ -23,15 +29,13 @@ import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
 import { checkMove, checkPlacement, firstFreeTile, footprintCenter, type Placement } from '../lib/farmGrid'
 import { applyOps, choppedDecks, confirmAdd, isPendingId, PENDING_PREFIX, rollback, splitTrees, type FarmOp } from '../lib/optimistic'
 import { lightingModeClass } from '../lib/dayNight'
+import { farmFocus } from '../lib/farmFocus'
+import { boughtTreeView, withLocalTrees, workshopHref, type BoughtTree } from '../lib/purchase'
 import { treeLabelsModeClass } from '../lib/treeLabels'
 import type { FarmHudView, FarmPlotView } from '../types'
-import { DailyDeliveryDialog } from './DailyDeliveryDialog'
 import { SkyClouds } from './FarmDiorama'
 import { BuffPills, FarmDock, GardenBanner, LightingToggle, SignInInvite, TreeLabelsToggle, ZoomControls, type FarmBuffSummary } from './FarmHud'
 import { FARM_WORLD, FarmIsometricGrid } from './FarmIsometricGrid'
-import { FarmItemDialog } from './FarmItemDialog'
-import { FarmPlotDialog } from './FarmPlotDialog'
-import { FarmShopModal } from './FarmShopModal'
 import { ChopPuff } from './FarmTree'
 import { ItemDrawing } from './FarmStructures'
 import { TreeStageSvg } from './TreeStageSvg'
@@ -65,6 +69,32 @@ type FarmIslandViewProps = {
   // Owner: whether today's Daily Rush is already used (the page reads the rush feature's status;
   // garden imports no other feature). Greys the ⚡ button in every tree's popover. Null: no button.
   rushPlayed?: boolean | null
+  // Owner: buy a seed from the Shop (decks' createDeck, wired by the page): plants a tree with the
+  // suggested name and resolves with it and the purse after paying. The farm then asks where it goes.
+  onBuySeed?: BuySeedRun
+  // Owner: rename a tree (decks' renameDeck, wired by the page). The farm shows the name at once.
+  onRenameTree?: RenameRun
+}
+
+// Plants a tree of this species, named `title`, on the server: the page passes it in.
+export type BuySeedRun = (treeType: string, title: string) => Promise<ActionResult<{ tree: BoughtTree; remainingCoins: number }>>
+// Saves a tree's new name on the server: the page passes it in.
+export type RenameRun = (deckId: string, title: string) => Promise<ActionResult<{ title: string }>>
+
+// The farm's dialogs are their own chunks, loaded after the island first paints (when the browser
+// is idle, or the moment one is opened): their code never weighs on the route transition to the farm.
+const loadShop = () => import('./FarmShopModal')
+const loadPlot = () => import('./FarmPlotDialog')
+const loadItem = () => import('./FarmItemDialog')
+const loadDelivery = () => import('./DailyDeliveryDialog')
+const loadNaming = () => import('./TreeNamingDialog')
+const FarmShopModal = dynamic(() => loadShop().then((m) => m.FarmShopModal))
+const FarmPlotDialog = dynamic(() => loadPlot().then((m) => m.FarmPlotDialog))
+const FarmItemDialog = dynamic(() => loadItem().then((m) => m.FarmItemDialog))
+const DailyDeliveryDialog = dynamic(() => loadDelivery().then((m) => m.DailyDeliveryDialog))
+const TreeNamingDialog = dynamic(() => loadNaming().then((m) => m.TreeNamingDialog))
+const preloadDialogs = () => {
+  void Promise.all([loadShop(), loadPlot(), loadItem(), loadDelivery(), loadNaming()])
 }
 
 // The server side of a chop, supplied by the page: resolves with the refund and the purse after it.
@@ -75,7 +105,8 @@ export type HarvestRun = (deckId: string, timeZone: string) => Promise<ActionRes
 // What is being placed: one of your trees (free), a shop item (paid when put down), or something
 // already on the farm being moved (free; `tree` set when it's a tree).
 type BuildRequest =
-  | { kind: 'tree'; tree: FarmPlotView }
+  // `onboarding`: the tree was just bought; once placed, the farm asks for its name and opens its Workshop.
+  | { kind: 'tree'; tree: FarmPlotView; onboarding?: boolean }
   | { kind: 'item'; item: CatalogItem }
   | { kind: 'move'; placement: Placement; name: string; tree: FarmPlotView | null }
 
@@ -88,8 +119,25 @@ type BuildRequest =
 // go, and putting it down moves it (Esc / Cancel leaves it where it was).
 // Every edit is optimistic (lib/optimistic.ts): planting, buying, moving and picking up show at once
 // and sync in the background (no page refresh); a refusal rolls the farm back with a toast.
-function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName, signedIn, gridHref, topCenter, leftEdge, visitor = null, onUproot, onHarvest, rushPlayed = null }: FarmIslandViewProps) {
+function FarmIslandView({
+  plots,
+  placements,
+  unplacedTrees = [],
+  hud,
+  gardenName,
+  signedIn,
+  gridHref,
+  topCenter,
+  leftEdge,
+  visitor = null,
+  onUproot,
+  onHarvest,
+  rushPlayed = null,
+  onBuySeed,
+  onRenameTree,
+}: FarmIslandViewProps) {
   const { toast } = useToast()
+  const router = useRouter()
   const { setCoins } = useCoins()
   const coins = useDisplayedCoins(hud.coins, hud.coinsAsOf)
   const { open: openLogin } = useLoginDialog()
@@ -98,11 +146,23 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const labels = useTreeLabels()
   // Day or night light, from the player's clock unless they pinned one (remembered per browser).
   const lighting = useDayNight()
+  // The dialogs mount once the browser is idle after the first paint (their code preloaded then).
+  const dialogsReady = useAfterIdle(preloadDialogs)
+  // A background tab: the island's animations stop (see `paused` below).
+  const hidden = useDocumentHidden()
 
   const world = useMemo(() => ({ w: FARM_WORLD.w, h: FARM_WORLD.h }), [])
   const focus = useMemo(() => ({ x: FARM_WORLD.w / 2, y: FARM_WORLD.h / 2 + 40 }), [])
   const scrollRef = useRef<HTMLDivElement>(null)
-  const camera = useCamera(scrollRef, world, focus)
+  // On arrival the camera settles on the trees (lib/farmFocus: one tree close up, several framed
+  // together), flying there from the island overview; no trees: the overview stays. Touching the farm
+  // stops the flight.
+  const camera = useCamera(scrollRef, world, focus, world, {
+    initialShot: (measured) => {
+      const scales = new Map(plots.map((p) => [p.id, treeScale(p.treeType, p.itemCount)]))
+      return farmFocus(placements, measured, (deckId) => scales.get(deckId))
+    },
+  })
   const { zoom, view } = camera
   const content = contentSize(view, world, zoom)
   const offset = { x: centreOffset(view.w, world.w, zoom), y: centreOffset(view.h, world.h, zoom) }
@@ -123,12 +183,20 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
 
   // Fruit picked on this visit: off the tree at once (the server's next render agrees).
   const [harvested, setHarvested] = useState<ReadonlySet<string>>(() => new Set())
+  // Trees bought and names changed on this visit (lib/purchase withLocalTrees), until the server's
+  // data has them.
+  const [bought, setBought] = useState<FarmPlotView[]>([])
+  const [names, setNames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  // The new-tree flow: the seed being bought (step 1), then the tree waiting for its name (step 3;
+  // `placed` = whether its placement was saved).
+  const [buyingSeed, setBuyingSeed] = useState<string | null>(null)
+  const [naming, setNaming] = useState<{ tree: FarmPlotView; placed: Promise<boolean> } | null>(null)
+  const [namingBusy, setNamingBusy] = useState(false)
   // Trees as the farm shows them: planted ones carry their tile and buff; the rest wait in the Shop.
-  const allTrees = useMemo(() => {
-    const byId = new Map<string, FarmPlotView>()
-    for (const tree of [...plots, ...unplacedTrees]) byId.set(tree.id, tree.fruitReady && harvested.has(tree.id) ? { ...tree, fruitReady: false } : tree)
-    return [...byId.values()]
-  }, [plots, unplacedTrees, harvested])
+  const allTrees = useMemo(
+    () => withLocalTrees([...plots, ...unplacedTrees], bought, names).map((tree) => (tree.fruitReady && harvested.has(tree.id) ? { ...tree, fruitReady: false } : tree)),
+    [plots, unplacedTrees, bought, names, harvested],
+  )
   const { planted, unplanted } = useMemo(() => {
     const gone = choppedDecks(opList)
     return splitTrees(
@@ -138,6 +206,12 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   }, [allTrees, farm, opList])
   // Chop effects (a puff of leaves and wood chips where a tree stood), cleared after they play.
   const [puffs, setPuffs] = useState<{ key: string; x: number; y: number }[]>([])
+  // Their timers, cleared if the farm unmounts first (navigating away right after a chop).
+  const puffTimers = useRef(new Set<number>())
+  useEffect(() => {
+    const timers = puffTimers.current
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [])
   const plotsByDeck = useMemo(() => new Map(planted.map((p) => [p.id, p])), [planted])
   const thirsty = planted.filter((p) => p.needsWater === true && p.itemCount > 0).length
 
@@ -152,16 +226,6 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
   const fits = (tile: { x: number; y: number }) =>
     build?.request.kind === 'move' ? checkMove(farm, build.request.placement.id, tile) === 'ok' : checkPlacement(farm, { ...tile, ...footprint }) === 'ok'
   const ghostOk = build?.tile ? fits(build.tile) : false
-
-  // Esc leaves placement mode (nothing is spent before the item is put down).
-  useEffect(() => {
-    if (!build) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setBuild(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [build])
 
   const startBuild = (request: BuildRequest) => {
     setShopOpen(false)
@@ -229,17 +293,87 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
       message: request.kind === 'tree' ? `“${request.tree.title}” is planted on your farm` : `${request.item.name} placed · −${price} 🪙`,
       icon: request.kind === 'tree' ? '🌳' : request.item.icon,
     })
-    void placeFarmItem(
+    const saved = placeFarmItem(
       request.kind === 'tree' ? { item: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y } : { item: request.item.id, x: tile.x, y: tile.y },
     ).then((res) => {
       if (!res.success) {
         editOps((list) => rollback(list, key))
         if (price > 0 && purseBefore !== null) setCoins(purseBefore)
         failed(res.error.message)
-        return
+        return false
       }
       editOps((list) => confirmAdd(list, key, res.data.placementId))
       setCoins(res.data.remainingCoins)
+      return true
+    })
+    // A tree just bought: step 3, its name (the placement saves meanwhile).
+    if (request.kind === 'tree' && request.onboarding) setNaming({ tree: request.tree, placed: saved })
+  }
+
+  // Leaves placement mode without placing anything. A tree just bought stays in the Shop's Trees tab.
+  const cancelBuild = () => {
+    const current = build
+    setBuild(null)
+    if (current?.request.kind === 'tree' && current.request.onboarding) {
+      toast({ message: `“${current.request.tree.title}” waits in the 🏪 Shop's Trees tab: plant it whenever you like`, icon: '🌱' })
+    }
+  }
+
+  // Step 1 → 2 of a new tree: the seed is bought (the purse drops at once), then the shop closes and
+  // placement mode starts with that tree. A refusal puts the coins back and says why.
+  const buySeed = (species: TreeSpecies) => {
+    if (!onBuySeed || buyingSeed || coins === null || coins < species.price) return
+    const title = defaultTreeName(species.label, allTrees.map((t) => t.title))
+    const purseBefore = coins
+    setBuyingSeed(species.id)
+    setCoins(purseBefore - species.price)
+    void onBuySeed(species.id, title).then((res) => {
+      setBuyingSeed(null)
+      if (!res.success) {
+        setCoins(purseBefore)
+        toast({ message: `Could not buy the ${species.label} seed: ${res.error.message}`, icon: '⚠️', tone: 'farewell' })
+        return
+      }
+      setCoins(res.data.remainingCoins)
+      const tree = boughtTreeView(res.data.tree)
+      setBought((list) => [...list, tree])
+      toast({ message: `${species.icon} ${species.label} seed bought! Pick a sunny spot for it`, icon: '🌱' })
+      startBuild({ kind: 'tree', tree, onboarding: true })
+    })
+  }
+
+  // ✏️ Rename (optimistic): the new name shows on the farm at once; a refusal puts the old one back.
+  const rename = (plot: FarmPlotView, title: string): Promise<boolean> => {
+    if (!onRenameTree) return Promise.resolve(false)
+    const before = names.get(plot.id)
+    setNames((m) => new Map(m).set(plot.id, title))
+    setSelectedPlot((open) => (open?.id === plot.id ? { ...open, title } : open))
+    return onRenameTree(plot.id, title).then((res) => {
+      if (res.success) return true
+      setNames((m) => {
+        const next = new Map(m)
+        if (before === undefined) next.delete(plot.id)
+        else next.set(plot.id, before)
+        return next
+      })
+      setSelectedPlot((open) => (open?.id === plot.id ? { ...open, title: plot.title } : open))
+      failed(`Could not rename “${plot.title}”: ${res.error.message}`)
+      return false
+    })
+  }
+
+  // Step 3 → the Workshop: save the name (when it changed), make sure the placement was saved, then
+  // open the tree's page on its first root. "Later" leaves the tree where it stands, as it is named.
+  const startGrowing = (name: string) => {
+    if (!naming) return
+    const { tree, placed } = naming
+    setNamingBusy(true)
+    void Promise.all([placed, name === tree.title ? Promise.resolve(true) : rename(tree, name)]).then(([wasPlaced]) => {
+      setNamingBusy(false)
+      setNaming(null)
+      // A refused placement already said why (and the tree is back in the Shop); its Workshop still opens.
+      if (!wasPlaced) toast({ message: `“${name}” is waiting in the 🏪 Shop to be planted`, icon: '🌱' })
+      router.push(workshopHref(tree.slug))
     })
   }
 
@@ -270,7 +404,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
       const c = footprintCenter(tile)
       const puff = { key, x: c.x + FARM_WORLD.origin.x, y: c.y + FARM_WORLD.origin.y }
       setPuffs((list) => [...list, puff])
-      window.setTimeout(() => setPuffs((list) => list.filter((p) => p.key !== key)), 900)
+      puffTimers.current.add(window.setTimeout(() => setPuffs((list) => list.filter((p) => p.key !== key)), 900))
     }
     toast({ message: `“${plot.title}” was chopped${refund > 0 ? ` · 🪚 Woodshop refund +${refund} 🪙` : ''}`, icon: '🪓', tone: 'farewell' })
     void run().then((res) => {
@@ -307,13 +441,23 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
 
   // Stable handlers for the (memoized) grid: they read the latest state through a ref, so camera
   // drags and zooms never re-render the grid's 256 tiles.
-  const latest = useRef({ build, place, chop, farm, startMove, plotsByDeck, harvest })
+  const latest = useRef({ build, place, chop, farm, startMove, plotsByDeck, harvest, cancelBuild })
   useLayoutEffect(() => {
-    latest.current = { build, place, chop, farm, startMove, plotsByDeck, harvest }
+    latest.current = { build, place, chop, farm, startMove, plotsByDeck, harvest, cancelBuild }
   })
+  // Esc leaves placement mode (nothing is spent before the item is put down).
+  useEffect(() => {
+    if (!build) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') latest.current.cancelBuild()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [build])
+
   const onHarvestPlot = useCallback((plot: FarmPlotView) => latest.current.harvest(plot), [])
   const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
-  const onBuildCancel = useCallback(() => setBuild(null), [])
+  const onBuildCancel = useCallback(() => latest.current.cancelBuild(), [])
   const onBuildTap = useCallback((tile: { x: number; y: number }, pointerType: string) => {
     const { build: current, place: put } = latest.current
     // Mouse: click places. Touch / pen: the first tap moves the ghost, the second places.
@@ -364,12 +508,19 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
             movingId: build.request.kind === 'move' ? build.request.placement.id : null,
             preview: ghostPreview,
             tile: build.tile,
+            // Planting or moving a tree: the open tiles glow.
+            highlightFree: build.request.kind === 'tree' || (build.request.kind === 'move' && build.request.tree !== null),
           }
         : null,
     // footprint is derived from build.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [build, ghostPreview],
   )
+
+  // Nothing on the island needs to move while the tab is hidden or a dialog covers it: its CSS
+  // animations (tree sway, bobbing icons, smoke, foam, clouds) pause (globals.css `.mg-paused`). A
+  // dialog's blurred backdrop would otherwise be re-blurred every frame the trees behind it sway.
+  const paused = hidden || shopOpen || selectedPlot !== null || selectedItem !== null || deliveryOpen || naming !== null
 
   return (
     // The labels mode is one class here (hover mode hides tree labels in CSS), so flipping the toggle
@@ -382,6 +533,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         'mg-farm relative min-h-[480px] flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_50%_45%,#46e3e8_0%,#18bfdc_38%,#0b93c9_75%,#0a74ab_100%)]',
         treeLabelsModeClass(labels.showAll),
         lightingModeClass(lighting.mode),
+        paused && 'mg-paused',
       )}
       data-tree-labels={labels.showAll ? 'all' : 'hover'}
       data-lighting={lighting.live ? lighting.mode : undefined}
@@ -398,7 +550,9 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         <div className="relative" style={{ width: content.w, height: content.h }}>
           <div
             className="absolute origin-top-left"
-            style={{ left: offset.x, top: offset.y, width: world.w, height: world.h, transform: `scale(${zoom})` }}
+            // --mg-inv-zoom: the action icons over the trees counter-scale with it (CSS only, no re-render),
+            // so they stay tappable when the island is zoomed out on a phone.
+            style={{ left: offset.x, top: offset.y, width: world.w, height: world.h, transform: `scale(${zoom})`, ['--mg-inv-zoom' as string]: 1 / zoom }}
           >
             <FarmIsometricGrid
               placements={farm}
@@ -496,12 +650,17 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           >
             <span>
               {build.request.kind === 'tree'
-                ? `🌳 Planting “${build.request.tree.title}” · free`
+                ? build.request.onboarding
+                  ? `🌳 Where should “${build.request.tree.title}” grow?`
+                  : `🌳 Planting “${build.request.tree.title}” · free`
                 : build.request.kind === 'move'
                   ? `↔️ Moving ${build.request.name} · free`
                   : `${build.request.item.icon} Placing ${build.request.item.name} · ${build.request.item.price} 🪙`}
               <span className="block font-sans text-xs font-semibold text-amber-900/70">
-                {buildError ?? 'Click a green tile (tap twice on touch). Esc or right-click cancels.'}
+                {buildError ??
+                  (build.request.kind === 'tree' && build.request.onboarding
+                    ? 'Glowing tiles are free: click one (tap twice on touch). Esc keeps the tree in the Shop for later.'
+                    : 'Click a green tile (tap twice on touch). Esc or right-click cancels.')}
               </span>
             </span>
             {build.tile && (
@@ -509,7 +668,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
                 {build.request.kind === 'move' ? 'Move here' : 'Place here'}
               </GameButton>
             )}
-            <GameButton tone="cream" size="sm" onClick={() => setBuild(null)}>
+            <GameButton tone="cream" size="sm" onClick={cancelBuild}>
               Cancel
             </GameButton>
           </div>
@@ -528,7 +687,7 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
         )
       )}
 
-      {isOwner && (
+      {isOwner && (dialogsReady || shopOpen) && (
         <FarmShopModal
           open={shopOpen}
           onOpenChange={setShopOpen}
@@ -536,45 +695,53 @@ function FarmIslandView({ plots, placements, unplacedTrees = [], hud, gardenName
           unplacedTrees={unplanted}
           onPlantTree={(tree) => startBuild({ kind: 'tree', tree })}
           onBuy={(item) => startBuild({ kind: 'item', item })}
+          onBuySeed={onBuySeed ? buySeed : undefined}
+          buyingSeed={buyingSeed}
         />
       )}
-      <FarmPlotDialog
-        plot={selectedPlot}
-        onOpenChange={(open) => !open && setSelectedPlot(null)}
-        onHarvest={isOwner && onHarvest ? harvest : undefined}
-        rushPlayed={isOwner ? rushPlayed : null}
-        onMove={
-          isOwner
-            ? (plot) => {
-                const placement = farm.find((p) => p.id === plot.placementId)
-                if (placement) startMove(placement)
-              }
-            : undefined
-        }
-        onUproot={
-          onUproot &&
-          ((plot) => {
-            // One popup at a time: close the tree card, then hand over to the chop dialog.
-            setSelectedPlot(null)
-            onUproot(plot, (run) => latest.current.chop(plot, run))
-          })
-        }
-      />
-      <FarmItemDialog
-        placement={selectedItem}
-        isOwner={isOwner}
-        onClose={() => setSelectedItem(null)}
-        onMove={isOwner ? startMove : undefined}
-        onPickUp={
-          isOwner
-            ? (placement) => {
-                setSelectedItem(null)
-                pickUp(placement, `${catalogFor(placement.itemType, placement.variant)?.name ?? 'Item'} picked up`, '📦')
-              }
-            : undefined
-        }
-      />
-      <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={planted} signedIn={signedIn} />
+      {(dialogsReady || naming !== null) && <TreeNamingDialog tree={naming?.tree ?? null} busy={namingBusy} onStart={startGrowing} onLater={() => setNaming(null)} />}
+      {(dialogsReady || selectedPlot !== null) && (
+        <FarmPlotDialog
+          plot={selectedPlot}
+          onOpenChange={(open) => !open && setSelectedPlot(null)}
+          onHarvest={isOwner && onHarvest ? harvest : undefined}
+          rushPlayed={isOwner ? rushPlayed : null}
+          onRename={isOwner && onRenameTree ? (plot, title) => void rename(plot, title) : undefined}
+          onMove={
+            isOwner
+              ? (plot) => {
+                  const placement = farm.find((p) => p.id === plot.placementId)
+                  if (placement) startMove(placement)
+                }
+              : undefined
+          }
+          onUproot={
+            onUproot &&
+            ((plot) => {
+              // One popup at a time: close the tree card, then hand over to the chop dialog.
+              setSelectedPlot(null)
+              onUproot(plot, (run) => latest.current.chop(plot, run))
+            })
+          }
+        />
+      )}
+      {(dialogsReady || selectedItem !== null) && (
+        <FarmItemDialog
+          placement={selectedItem}
+          isOwner={isOwner}
+          onClose={() => setSelectedItem(null)}
+          onMove={isOwner ? startMove : undefined}
+          onPickUp={
+            isOwner
+              ? (placement) => {
+                  setSelectedItem(null)
+                  pickUp(placement, `${catalogFor(placement.itemType, placement.variant)?.name ?? 'Item'} picked up`, '📦')
+                }
+              : undefined
+          }
+        />
+      )}
+      {(dialogsReady || deliveryOpen) && <DailyDeliveryDialog open={deliveryOpen} onOpenChange={setDeliveryOpen} plots={planted} signedIn={signedIn} />}
     </div>
   )
 }

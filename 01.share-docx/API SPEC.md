@@ -104,6 +104,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
 | Decks | `getDeckReader` | Action | Read-only roots + true statements of a public tree (or your own), for visitors | Optional |
 | Decks | `updateDeck` | Action/POST | Owner edits title, description, species, visibility | Required |
+| Decks | `renameDeck` | Action/POST | Owner renames a tree (1–100 characters) | Required |
 | Decks | `updateMindmapNode` | Action/POST | Owner renames a root | Required |
 | Decks | `deleteMindmapNode` | Action/POST | Owner deletes an empty root (the UI now uses `deleteRootBranch`) | Required |
 | Decks | `deleteRootBranch` | Action/POST | Owner deletes a root with its sub-roots, statements and their progress | Required |
@@ -470,6 +471,24 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```
 - The slug never changes, so links stay stable
 - **Species change**: to a species with a higher seed price (a standard tree → a surreal one) it costs the difference (`speciesUpgradeCost`, 80 🪙), charged in the database by the `decks_charge_species_upgrade` trigger in the same UPDATE; a short purse refuses the change. To a cheaper or equal species it is free and refunds nothing. The Tree Workshop shows "+80" on such species and asks before paying; the deck draft rolls the species back with a toast on `INSUFFICIENT_COINS` and pushes `remainingCoins` into `CoinsProvider`
+
+### `renameDeck` (decks)
+```typescript
+// Input (RenameDeckDto): { deckId: string; title: string }
+//   title cleaned (NFC, invisible characters removed, whitespace collapsed, trimmed: shared/lib/treeName cleanTreeName),
+//   then 1–100 characters (TREE_NAME_MAX; counted in code points)
+// data: { id: string; title: string /* the cleaned name */ }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- The slug never changes. No `revalidatePath`: every caller shows the name at once and rolls back with a toast on error
+- UI: `shared/components/game` `InlineNameEdit` (✏️ or double-click → a field in place; **Enter** or clicking away saves, **Esc** reverts; an empty or too-long name stays in the field with the reason, or is dropped on click-away). Used by the deck page header (owner), the top of the Tree Workshop (deck draft `renameTree`, op `title`), the farm's tree popover (`FarmPlotDialog` `onRename`) and the naming prompt after a purchase (`TreeNamingDialog`)
+- `updateDeck({ title })` still accepts up to 150 characters (older names); new names go through `renameDeck`
+
+### New tree from the Shop (farm flow; no new action)
+1. **Buy**: the Shop's seed gallery (`SeedGallery` with `onBuy`) asks to confirm (`SeedConfirm`: price, purse before → after; disabled when short). Confirming calls `createDeck({ title: defaultTreeName(species, your titles), treeType })` (shared/lib/treeName: "Oak Tree", "Oak Tree 2", …); the purse drops at once and settles on `remainingCoins`
+2. **Place**: the farm enters placement mode for the new tree; every open tile glows (`farmGrid` `freeTiles`), the hovered one is the bright ghost; clicking one saves it through `placeFarmItem({ item: 'tree', deckId, x, y })`. Esc / Cancel leaves it in the Shop's Trees tab (planted later, any time)
+3. **Name → Workshop**: `TreeNamingDialog` (the suggestion filled in and selected) → `renameDeck` when changed, wait for the placement, then `/deck/<slug>?start=1`: the Workshop scrolls into view with a new top-level root line focused (`DeckEditor` / `ContentOutline` `start`), and `?start=1` is dropped from the address. "Later" keeps the tree where it stands with its suggested name
+- A refresh at any point loses nothing: a bought tree is a deck (in the Shop's Trees tab until placed); a placed tree keeps its tile; the name can be changed later with ✏️
 
 ### `updateMindmapNode` / `updateKnowledgeItem` / `deleteMindmapNode` / `deleteKnowledgeItem` / `deleteRootBranch` (decks)
 ```typescript

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Network } from 'lucide-react'
-import { CoinBonusTag, GameButton, GameDialog, GameDialogContent, GameSlab } from '@/shared/components/game'
+import { CoinBonusTag, GameButton, GameDialog, GameDialogContent, GameSlab, InlineNameEdit } from '@/shared/components/game'
 import { FRUIT_COINS } from '@/shared/lib/economy'
 import { getTreeSpecies, speciesCoinMultiplier } from '@/shared/lib/treeSkins'
 import { isImmune } from '@/shared/lib/treeVitality'
@@ -26,6 +26,9 @@ type FarmPlotDialogProps = {
   // Owners only: whether today's Daily Rush is already used (it is one run a day for the whole
   // island, so every tree's ⚡ button greys out together). Undefined / null: no button.
   rushPlayed?: boolean | null
+  // Owners only: rename the tree (the name is already cleaned and checked: shared/lib/treeName). The
+  // farm shows it at once and saves it in the background.
+  onRename?: (plot: FarmPlotView, title: string) => void
 }
 
 // The ⚡ Daily Rush button beside Water Tree (ready: fiery gradient; played: muted grey).
@@ -39,20 +42,20 @@ const TOOL =
 // Tree popover: 💧 water (practise), then one compact row for the owner: roots (the tree's page:
 // mindmap + Workshop), ↔️ move and 🪓 chop (a planted tree can't go back to the Shop). Visitors (strict read-only
 // mode) explore the roots, clone to practise, and ⚔️ compete while the owner hosts a Mind Tournament.
-function FarmPlotDialog({ plot, onOpenChange, onUproot, onMove, onHarvest, rushPlayed }: FarmPlotDialogProps) {
+function FarmPlotDialog({ plot, onOpenChange, onUproot, onMove, onHarvest, rushPlayed, onRename }: FarmPlotDialogProps) {
   return (
     <GameDialog open={plot !== null} onOpenChange={onOpenChange}>
       <GameDialogContent title={plot?.title ?? 'Tree'} ribbon="leaf" tone="parchment">
         {/* key: the review switch starts off for every plot. */}
-        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onMove={onMove} onHarvest={onHarvest} rushPlayed={rushPlayed} />}
+        {plot && <PlotDetails key={plot.id} plot={plot} onUproot={onUproot} onMove={onMove} onHarvest={onHarvest} rushPlayed={rushPlayed} onRename={onRename} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onMove' | 'onHarvest' | 'rushPlayed'> & { plot: FarmPlotView }
+type PlotDetailsProps = Pick<FarmPlotDialogProps, 'onUproot' | 'onMove' | 'onHarvest' | 'rushPlayed' | 'onRename'> & { plot: FarmPlotView }
 
-function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDetailsProps) {
+function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed, onRename }: PlotDetailsProps) {
   const { stage, name, emoji } = useTreeStage(plot.masteryPercent)
   const species = getTreeSpecies(plot.treeType)
   const canWater = plot.itemCount > 0
@@ -67,6 +70,19 @@ function PlotDetails({ plot, onUproot, onMove, onHarvest, rushPlayed }: PlotDeta
 
   return (
     <div className="space-y-4">
+      {/* The owner renames the tree right here (✏️ or double-click; Enter / click away saves, Esc reverts). */}
+      {plot.isOwner && onRename && (
+        <div className="flex justify-center">
+          <InlineNameEdit
+            value={plot.title}
+            onSave={(title) => onRename(plot, title)}
+            label="Rename tree"
+            className="max-w-full"
+            textClassName="min-w-0 truncate font-game text-base font-extrabold text-amber-950"
+            inputClassName="font-game text-base font-extrabold"
+          />
+        </div>
+      )}
       <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center font-game text-sm font-semibold text-amber-900/80">
         <span>
           {species.icon} {species.label} · {emoji} {name}

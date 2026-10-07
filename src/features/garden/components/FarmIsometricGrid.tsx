@@ -12,6 +12,7 @@ import {
   depthOf,
   fenceLinks,
   footprintCenter,
+  freeTiles,
   GRID_SIZE,
   neighbourLinks,
   streamLinks,
@@ -32,6 +33,7 @@ import {
   BuffAura,
   FarmerHouse,
   FenceSprite,
+  footprintPoints,
   GhostFootprint,
   RockerySprite,
   StreamNetwork,
@@ -56,6 +58,9 @@ export type BuildGhost = {
   preview: ReactNode
   // The tile under the pointer (or the last tapped one); null before the first move.
   tile: { x: number; y: number } | null
+  // Planting a tree: every open tile glows softly, so the free spots read at a glance (the one under
+  // the pointer is the ghost's bright green).
+  highlightFree?: boolean
 }
 
 type FarmIsometricGridProps = {
@@ -271,6 +276,7 @@ function FarmIsometricGridImpl({
         <TreePlots trees={scene.treeBeds} origin={origin} />
         <StreamNetwork streams={scene.streams} origin={origin} />
         {ghost && auraKind && ghostOk && <BuffAura kind={auraKind} tile={ghost} origin={origin} />}
+        {build?.highlightFree && <FreeTileMarks placements={placements} origin={origin} />}
         {ghost && <GhostFootprint footprint={ghost} origin={origin} valid={ghostOk} />}
       </svg>
 
@@ -414,13 +420,14 @@ function Lifted({ z, children }: { z: number; children: ReactNode }) {
   )
 }
 
-// Floating cartoon badges over a buffed tree: "+20% 🪙" for a stream beside it, "+50% 🪙" inside a
-// Farmer's House aura. While a stream / house is being placed, the badges it would add pulse in.
+// Placement preview only: while a stream / Farmer's House is being placed (or moved), the buff it
+// would add to a tree pulses in over that tree ("+20%?" beside a stream, "+50%?" in a house's aura).
+// Nothing shows over a tree otherwise: its buffs are in its popover, so the island stays clean.
 function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: number }; scale: number; current: TreeBuff; next: TreeBuff }) {
   const tags = [
-    { key: 'stream', label: '+20%', on: current.stream, soon: !current.stream && next.stream, tone: 'stream' as const },
-    { key: 'house', label: '+50%', on: current.house, soon: !current.house && next.house, tone: 'house' as const },
-  ].filter((t) => t.on || t.soon)
+    { key: 'stream', label: '+20%', soon: !current.stream && next.stream, tone: 'stream' as const },
+    { key: 'house', label: '+50%', soon: !current.house && next.house, tone: 'house' as const },
+  ].filter((t) => t.soon)
   if (tags.length === 0) return null
   const anchor = plotSprite(ground.x, ground.y, scale).badge
   return (
@@ -435,11 +442,11 @@ function BuffTags({ ground, scale, current, next }: { ground: { x: number; y: nu
               t.tone === 'stream'
                 ? 'border-[#075e73] bg-gradient-to-b from-[#7ff5f0] via-[#22c9e0] to-[#0891b2] [--tag-edge:#075e73]'
                 : 'border-[#8a4a0c] bg-gradient-to-b from-[#fff3a3] via-[#fbbf24] to-[#f97316] [--tag-edge:#8a4a0c]',
-              t.soon && 'mg-throb border-dashed',
+              'mg-throb border-dashed',
             )}
           >
             <span aria-hidden className="pointer-events-none absolute inset-x-1 top-0.5 h-[40%] rounded-full bg-white/40" />
-            <span className="relative">{t.soon ? `${t.label}?` : t.label}</span>
+            <span className="relative">{`${t.label}?`}</span>
             <span className="relative text-[11px]">🪙</span>
           </span>
         ))}
@@ -522,3 +529,24 @@ const FarmItem = memo(function FarmItem({
 const FarmIsometricGrid = memo(FarmIsometricGridImpl)
 
 export { FarmIsometricGrid }
+
+// The open tiles while a tree is being placed: a faint green wash with a dashed rim on each (memoized:
+// redrawn only when the farm changes, never as the ghost moves). No pointer events.
+const FreeTileMarks = memo(function FreeTileMarks({ placements, origin }: { placements: readonly Placement[]; origin: { x: number; y: number } }) {
+  const tiles = useMemo(() => freeTiles(placements), [placements])
+  return (
+    <g data-free-tiles={tiles.length} className="pointer-events-none">
+      {tiles.map((t) => (
+        <polygon
+          key={`${t.x}-${t.y}`}
+          points={footprintPoints({ ...t, width: 1, height: 1 }, origin)}
+          fill="rgba(190, 255, 150, 0.16)"
+          stroke="rgba(240, 255, 220, 0.55)"
+          strokeWidth={1.5}
+          strokeDasharray="5 5"
+          strokeLinejoin="round"
+        />
+      ))}
+    </g>
+  )
+})

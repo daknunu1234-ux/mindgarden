@@ -26,8 +26,8 @@ export async function generateMetadata({ params }: PageProps<'/deck/[slug]'>): P
 // alongside the viewer; (2) everything that needs both (progress, editor or reader, purse, boards,
 // the owner's public name) at once. The verified user is fetched once per request
 // (shared/lib/supabase/requestUser) however many of these actions ask for it.
-export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
-  const { slug } = await params
+export default async function DeckPage({ params, searchParams }: PageProps<'/deck/[slug]'>) {
+  const [{ slug }, query] = await Promise.all([params, searchParams])
   const [res, userRes] = await Promise.all([loadDeck(slug), getCurrentUser()])
 
   if (!res.success) {
@@ -77,6 +77,7 @@ export default async function DeckPage({ params }: PageProps<'/deck/[slug]'>) {
         ownerName={ownerName}
         progress={progress.success ? (progress.data[0] ?? null) : null}
         editor={editor?.success ? editor.data : null}
+        startWorkshop={isOwner && query.start === '1'}
         tournament={{
           isOpen: res.data.deck.isPublic && res.data.deck.isTournamentOpen,
           boards: boards?.success ? boards.data : null,

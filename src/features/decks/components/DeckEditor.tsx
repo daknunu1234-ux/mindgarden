@@ -9,16 +9,17 @@ import { TreeSpeciesPicker } from './TreeSpeciesPicker'
 import type { DeckEditor as DeckEditorData } from '../types'
 
 // `settings`: the page's other tree switches (share, tournament), shown in the bar after the species.
-type DeckEditorProps = { editor: DeckEditorData; settings?: ReactNode }
+// `start`: open on a new root line, focused (a tree just bought and placed).
+type DeckEditorProps = { editor: DeckEditorData; settings?: ReactNode; start?: boolean }
 
 // Owner-only Tree Workshop: the tree's outline first (writing is the main job: ContentOutline, one
 // multi-level list of roots and statements), then one slim settings bar (species, plus the page's
 // share / tournament switches). Every change goes through the deck draft, so it shows at 0 ms and
 // saves in the background. Trap rules are never shown; statements get { negate: true } on the server.
-function DeckEditor({ editor, settings }: DeckEditorProps) {
+function DeckEditor({ editor, settings, start = false }: DeckEditorProps) {
   return (
     <div className="space-y-3">
-      <ContentOutline editor={editor} />
+      <ContentOutline editor={editor} start={start} />
       <TreeSettingsBar treeType={editor.treeType}>{settings}</TreeSettingsBar>
     </div>
   )

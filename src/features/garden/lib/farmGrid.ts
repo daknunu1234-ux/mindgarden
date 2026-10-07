@@ -112,6 +112,14 @@ export function streamVariant(links: Links): 'pond' | Shape {
   return shape === 'none' ? 'pond' : shape
 }
 
+// Every tile a 1 × 1 tree could go on right now (inside the grid, nothing on it), row by row: the
+// soft highlights shown while placing a tree.
+export function freeTiles(placements: readonly Placement[]): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = []
+  for (let y = 0; y < GRID_SIZE; y++) for (let x = 0; x < GRID_SIZE; x++) if (checkPlacement(placements, { x, y, width: 1, height: 1 }) === 'ok') out.push({ x, y })
+  return out
+}
+
 // First free tile for a 1 × 1 item, scanning from the middle outwards (the ghost's starting spot).
 export function firstFreeTile(placements: readonly Placement[], width = 1, height = 1): { x: number; y: number } | null {
   const mid = (GRID_SIZE - 1) / 2

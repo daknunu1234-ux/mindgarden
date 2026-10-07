@@ -171,6 +171,15 @@
   .mg-fall, .mg-bee, .mg-splash, .mg-ripple { display: none; }
 }
 
+/* The farm pauses while nobody can see it move: a background tab, or a dialog over it (FarmIslandView
+   `paused`). Every animation on the island freezes where it is (no jump when it resumes), so the
+   dialog's blurred backdrop is not recomputed every frame. Dialogs are portalled outside the farm. */
+.mg-paused *,
+.mg-paused *::before,
+.mg-paused *::after {
+  animation-play-state: paused !important;
+}
+
 /* Farm miniatures: chimney / exhaust smoke, idling tractor, water glints, shore foam. */
 @keyframes mg-smoke {
   0% { transform: translate(0, 0) scale(0.45); opacity: 0; }

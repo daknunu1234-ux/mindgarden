@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { HoverActionButton, HoverActions } from '@/shared/components/game'
 import { useToast } from '@/shared/stores/ToastProvider'
@@ -34,12 +34,15 @@ const STEP = 18
 // The same keys work on a new, unsaved line (it moves or switches type; nothing is saved until Enter).
 // Every change goes through the deck draft (lib/contentTree.ts, the database's own rules): 0 ms on
 // screen, saved in the background. Only deletes confirm.
-export function ContentOutline({ editor }: { editor: DeckEditor }) {
+// `start`: the tree was just bought and placed: open on a new top-level root line, focused.
+export function ContentOutline({ editor, start = false }: { editor: DeckEditor; start?: boolean }) {
   const { addNode, editNode, indentNode, toggleType, isPending, resolveId } = useDeckDraftActions()
   const { toast } = useToast()
   const rows = editor.rows
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [rawSlot, setRawSlot] = useState<ContentSlot | null>(null)
+  const [rawSlot, setRawSlot] = useState<ContentSlot | null>(() =>
+    start ? { parentId: null, afterId: editor.rows.filter((r) => r.depth === 0).at(-1)?.id ?? null, type: 'root' } : null,
+  )
   // Text carried into a line that moved (Tab / Shift+Tab) or switched type (Alt).
   const [slotDraft, setSlotDraft] = useState('')
   // Caret for a field that remounted while being typed in.
@@ -217,6 +220,51 @@ export function ContentOutline({ editor }: { editor: DeckEditor }) {
     })
   }
 
+  // What a row's own controls do, by row id. One stable object for every row (it reads the latest
+  // state through a ref), so rows are memoized: typing in one row, or opening a line, never re-renders
+  // the others.
+  const toggleCollapse = (id: string) =>
+    setCollapsed((c) => {
+      const next = new Set([...c].map(resolveId))
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const handlers = {
+    toggleCollapse,
+    edit: (id: string) => startEditing(id),
+    addChild: (id: string, type: ContentRow['type']) => showSlot({ parentId: id, afterId: null, type }),
+    bulk: (id: string) => (bulkFor === id ? setBulkFor(null) : openBulk(id)),
+    toggleType: (id: string) => {
+      const row = byId(id)
+      if (row) toggleFromTool(row)
+    },
+    move: (id: string) => {
+      const row = byId(id)
+      if (row) moveFromTool(row)
+    },
+    remove: (id: string) => {
+      const row = byId(id)
+      if (row) setDeleting({ id: row.id, text: row.content, type: row.type, ...branchCounts(rows, row.id) })
+    },
+  }
+  const latestHandlers = useRef(handlers)
+  useLayoutEffect(() => {
+    latestHandlers.current = handlers
+  })
+  const rowActions = useMemo<RowActions>(
+    () => ({
+      toggleCollapse: (id) => latestHandlers.current.toggleCollapse(id),
+      edit: (id) => latestHandlers.current.edit(id),
+      addChild: (id, type) => latestHandlers.current.addChild(id, type),
+      bulk: (id) => latestHandlers.current.bulk(id),
+      toggleType: (id) => latestHandlers.current.toggleType(id),
+      move: (id) => latestHandlers.current.move(id),
+      remove: (id) => latestHandlers.current.remove(id),
+    }),
+    [],
+  )
+
   // The selected top-level root's rows, minus what collapsed nodes hide, with the new line and the
   // bulk importer placed where they go. Collected first, so each line's connectors can be worked out
   // from the lines around it (treeGuides).
@@ -275,29 +323,20 @@ export function ContentOutline({ editor }: { editor: DeckEditor }) {
       const hasChildren = i + 1 < rows.length && rows[i + 1].depth > row.depth
       const isCollapsed = hasChildren && collapsed.has(row.id)
       if (isCollapsed) hideBelow = row.depth
+      const editing = editingId === row.id
+      const hidden = isCollapsed ? branchCounts(rows, row.id) : null
       lines.push({
         key: row.id,
         level: row.depth - selected.depth,
-        // A row without children has an empty spacer where ▾ would be: the elbow runs through it to the bullet.
-        reach: hasChildren ? 0 : LEAF_REACH,
-        node: (
-          <OutlineRow
-            row={row}
-            top={row.depth === 0}
-            pending={isPending(row.id)}
-            hasChildren={hasChildren}
-            collapsed={isCollapsed}
-            hidden={isCollapsed ? branchCounts(rows, row.id) : null}
-            onToggleCollapse={() =>
-              setCollapsed((c) => {
-                const next = new Set([...c].map(resolveId))
-                if (next.has(row.id)) next.delete(row.id)
-                else next.add(row.id)
-                return next
-              })
-            }
-            editing={editingId === row.id}
-            editor={
+        row: {
+          row,
+          top: row.depth === 0,
+          pending: isPending(row.id),
+          hasChildren,
+          collapsed: isCollapsed,
+          hiddenCount: hidden ? hidden.statements + hidden.roots : null,
+          // Only the row being edited gets its field (every other row stays memoized).
+          editor: editing ? (
               <InlineInput
                 initial={editDraft ?? row.content}
                 selectInitial={editSelect && editDraft === null}
@@ -312,26 +351,29 @@ export function ContentOutline({ editor }: { editor: DeckEditor }) {
                 onCancel={(text) => onEditKey('cancel', text)}
                 onBlurSave={(text) => onEditKey('blur', text)}
               />
-            }
-            onEdit={() => startEditing(row.id)}
-            onAddChild={(type) => showSlot({ parentId: row.id, afterId: null, type })}
-            onBulk={() => (bulkFor === row.id ? setBulkFor(null) : openBulk(row.id))}
-            onToggleType={() => toggleFromTool(row)}
-            onMove={() => moveFromTool(row)}
-            onDelete={() => setDeleting({ id: row.id, text: row.content, type: row.type, ...branchCounts(rows, row.id) })}
-          />
-        ),
+          ) : null,
+        },
       })
     }
   }
-  const guides = treeGuides(lines.map((l) => l.level))
-  const body = lines.map((l, i) => (
-    <OutlineLine key={l.key} level={l.level} guide={guides[i]} anchor={l.anchor} reach={l.reach}>
-      {l.node}
-    </OutlineLine>
-  ))
+  // Connectors depend only on the visible levels: recomputed when the shape changes (a row added,
+  // moved, collapsed, a line opened), never on a keystroke. Same levels → the same guide objects, so
+  // the memoized rows don't re-render.
+  const levelsKey = lines.map((l) => l.level).join(',')
+  const guides = useMemo(() => treeGuides(levelsKey ? levelsKey.split(',').map(Number) : []), [levelsKey])
+  const body = lines.map((l, i) =>
+    l.row ? (
+      <OutlineRowLine key={l.key} level={l.level} guide={guides[i]} actions={rowActions} {...l.row} />
+    ) : (
+      <OutlineLine key={l.key} level={l.level} guide={guides[i]} anchor={l.anchor}>
+        {l.node}
+      </OutlineLine>
+    ),
+  )
 
-  const statementsUnder = (id: string) => branchCounts(rows, id).statements
+  // Statement counts on the root chips: once per outline change, not per render.
+  const chipCounts = useMemo(() => new Map(rows.filter((r) => r.depth === 0).map((r) => [r.id, branchCounts(rows, r.id).statements])), [rows])
+  const statementsUnder = (id: string) => chipCounts.get(id) ?? 0
   const lastTop = tops.at(-1)?.id ?? null
 
   return (
@@ -415,7 +457,63 @@ export function ContentOutline({ editor }: { editor: DeckEditor }) {
   )
 }
 
-type OutlineEntry = { key: string; level: number; node: ReactNode; anchor?: 'center' | 'top'; reach?: number }
+// One line of the outline: a node's row (memoized), or the new line / the bulk importer.
+type OutlineEntry = { key: string; level: number; node?: ReactNode; anchor?: 'center' | 'top'; row?: RowState }
+
+// What a row shows. Compared field by field (rowEqual), so a row re-renders only when it changes.
+type RowState = {
+  row: ContentRow
+  top: boolean
+  pending: boolean
+  hasChildren: boolean
+  collapsed: boolean
+  hiddenCount: number | null
+  // The edit field, only on the row being edited.
+  editor: ReactNode
+}
+
+// A row's controls, by row id (one stable object for the whole outline).
+type RowActions = {
+  toggleCollapse: (id: string) => void
+  edit: (id: string) => void
+  addChild: (id: string, type: ContentRow['type']) => void
+  bulk: (id: string) => void
+  toggleType: (id: string) => void
+  move: (id: string) => void
+  remove: (id: string) => void
+}
+
+type RowLineProps = RowState & { level: number; guide: TreeGuide; actions: RowActions }
+
+const sameRow = (a: ContentRow, b: ContentRow) => a === b || (a.id === b.id && a.content === b.content && a.type === b.type && a.depth === b.depth && a.parentId === b.parentId)
+
+// Whether a row line can skip re-rendering: same row data, level, connectors and state. The row being
+// edited always re-renders (its field is a new element each time).
+export function rowEqual(a: RowLineProps, b: RowLineProps): boolean {
+  return (
+    sameRow(a.row, b.row) &&
+    a.level === b.level &&
+    a.guide === b.guide &&
+    a.top === b.top &&
+    a.pending === b.pending &&
+    a.hasChildren === b.hasChildren &&
+    a.collapsed === b.collapsed &&
+    a.hiddenCount === b.hiddenCount &&
+    a.editor === null &&
+    b.editor === null &&
+    a.actions === b.actions
+  )
+}
+
+// A node's whole line (connectors + row), memoized.
+const OutlineRowLine = memo(function OutlineRowLine({ level, guide, ...rest }: RowLineProps) {
+  return (
+    // A row without children has an empty spacer where ▾ would be: the elbow runs through it to the bullet.
+    <OutlineLine level={level} guide={guide} reach={rest.hasChildren ? 0 : LEAF_REACH}>
+      <OutlineRow {...rest} />
+    </OutlineLine>
+  )
+}, rowEqual)
 
 // Connector lines: thin wood-toned strokes. Column k is centred under the bullet of the level-k
 // node (its ▾ toggle / spacer, 16 px wide, starts at k * STEP).
@@ -464,27 +562,12 @@ function OutlineLine({
   )
 }
 
-type OutlineRowProps = {
-  row: ContentRow
-  top: boolean
-  pending: boolean
-  hasChildren: boolean
-  collapsed: boolean
-  hidden: { statements: number; roots: number } | null
-  onToggleCollapse: () => void
-  editing: boolean
-  editor: ReactNode
-  onEdit: () => void
-  onAddChild: (type: ContentRow['type']) => void
-  onBulk: () => void
-  onToggleType: () => void
-  onMove: () => void
-  onDelete: () => void
-}
-
 // One node: ▾ / ▸ when it has children, its icon (🌱 a top-level root, 🌿 a root, • a statement), its
 // text (double-click to edit), a status badge for statements, and the owner's hover tools.
-function OutlineRow({ row, top, pending, hasChildren, collapsed, hidden, onToggleCollapse, editing, editor, onEdit, onAddChild, onBulk, onToggleType, onMove, onDelete }: OutlineRowProps) {
+function OutlineRow({ row, top, pending, hasChildren, collapsed, hiddenCount, editor, actions }: RowState & { actions: RowActions }) {
+  const editing = editor !== null
+  const onToggleCollapse = () => actions.toggleCollapse(row.id)
+  const onEdit = () => actions.edit(row.id)
   const isRoot = row.type === 'root'
   const drillable = !isRoot && isDrillable(row.content)
   const status = isRoot ? null : pending ? { icon: '⏳', label: 'Saving…', always: true } : drillable ? { icon: '✅', label: 'Ready to drill', always: false } : { icon: '💧', label: DRILL_TIP, always: true }
@@ -522,14 +605,14 @@ function OutlineRow({ row, top, pending, hasChildren, collapsed, hidden, onToggl
           >
             {row.content}
           </span>
-          {hidden && (
+          {hiddenCount !== null && (
             <button
               type="button"
               onClick={onToggleCollapse}
-              aria-label={`Expand ${row.content}: ${hidden.statements + hidden.roots} hidden`}
+              aria-label={`Expand ${row.content}: ${hiddenCount} hidden`}
               className="shrink-0 rounded-full border border-dashed border-amber-700/40 bg-amber-50 px-1.5 text-[10px] leading-4 font-semibold text-amber-800 tabular-nums hover:bg-amber-100 focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none"
             >
-              +{hidden.statements + hidden.roots} {hidden.statements + hidden.roots === 1 ? 'item' : 'items'}
+              +{hiddenCount} {hiddenCount === 1 ? 'item' : 'items'}
             </button>
           )}
           {status && (
@@ -544,18 +627,18 @@ function OutlineRow({ row, top, pending, hasChildren, collapsed, hidden, onToggl
           )}
           {!pending && (
             <HoverActions label={`Tools for ${row.content}`} className="ml-auto shrink-0 [&_button]:h-6 [&_button]:min-w-6 [&_button]:text-[11px]">
-              <HoverActionButton icon={isRoot ? '＋📜' : '＋↳'} label={`Add a statement under ${row.content}`} onClick={() => onAddChild('statement')} />
-              {isRoot && <HoverActionButton icon="＋🌿" label={`Add a sub-root under ${row.content}`} onClick={() => onAddChild('root')} />}
+              <HoverActionButton icon={isRoot ? '＋📜' : '＋↳'} label={`Add a statement under ${row.content}`} onClick={() => actions.addChild(row.id, 'statement')} />
+              {isRoot && <HoverActionButton icon="＋🌿" label={`Add a sub-root under ${row.content}`} onClick={() => actions.addChild(row.id, 'root')} />}
               <HoverActionButton icon="✏️" label={`Edit ${row.content}`} tone="edit" onClick={onEdit} />
-              {isRoot && <HoverActionButton icon="📋" label={`Bulk add statements under ${row.content}`} onClick={onBulk} />}
+              {isRoot && <HoverActionButton icon="📋" label={`Bulk add statements under ${row.content}`} onClick={() => actions.bulk(row.id)} />}
               <HoverActionButton
                 icon="⇄"
                 label={top ? 'A top-level root stays a root' : isRoot ? 'Make it a statement (Alt)' : 'Make it a root (Alt)'}
                 disabled={top}
-                onClick={onToggleType}
+                onClick={() => actions.toggleType(row.id)}
               />
-              {!top && <HoverActionButton icon="📂" label={`Move ${row.content} to another root`} onClick={onMove} />}
-              <HoverActionButton icon="🗑️" label={`Delete ${row.content}`} tone="delete" onClick={onDelete} />
+              {!top && <HoverActionButton icon="📂" label={`Move ${row.content} to another root`} onClick={() => actions.move(row.id)} />}
+              <HoverActionButton icon="🗑️" label={`Delete ${row.content}`} tone="delete" onClick={() => actions.remove(row.id)} />
             </HoverActions>
           )}
         </>

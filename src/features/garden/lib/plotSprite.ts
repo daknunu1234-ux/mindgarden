@@ -13,8 +13,12 @@ export const TREE_GROUND_Y = 108
 export const TREE_VIEW_X = TREE_TRUNK_X - TREE_VIEW / 2
 export const TREE_VIEW_Y = TREE_GROUND_Y - TREE_VIEW * 0.9
 export const TREE_BASE_RATIO = { x: (TREE_TRUNK_X - TREE_VIEW_X) / TREE_VIEW, y: (TREE_GROUND_Y - TREE_VIEW_Y) / TREE_VIEW } as const
-// Topmost painted point of the tallest crown (stage 5), in view units.
-const TREE_TOP_Y = -20
+// Topmost painted point of the tallest crowns (stage 5), in view units: the default when the tree's
+// own crown top (lib/crownTop.ts crownTopY) isn't given.
+export const TREE_TOP_Y = -20
+// World pixels from the crown top to the bottom of the action icons: negative, so they just kiss the
+// tip of the canopy (2 px over it) instead of floating above it.
+export const ACTION_GAP = -2
 
 // Scale about the trunk base (bottom-centre anchor) as one SVG matrix:
 // x' = s·x + (1 − s)·ax, y' = s·y + (1 − s)·ay, so (ax, ay) maps onto itself.
@@ -37,22 +41,26 @@ export type PlotSprite = {
   hitbox: Box
   // Tree box (unscaled); the trunk base sits exactly on (x, y) whatever the scale.
   tree: Box
-  // World y of the (scaled) crown top.
+  // World y of the (scaled) crown top: this tree's own (`crownTop`), else the tallest crown's.
   treeTop: number
   sign: Anchor
   badge: Anchor
   label: Anchor
-  thirsty: Anchor
-  mighty: Anchor
+  // The tree's action icons (💧 water, 🍎 harvest): their cluster is centred on the trunk and its
+  // bottom edge sits here, just above the crown.
+  actions: Anchor
 }
 
-// World coordinates for the plot centred at (x, y) with a size-tier multiplier `scale`.
-export function plotSprite(x: number, y: number, scale = 1): PlotSprite {
+// World coordinates for the plot centred at (x, y) with a size-tier multiplier `scale` (× the
+// species' presence: treeScale) and the crown's top in view units (lib/crownTop.ts crownTopY for its
+// species and stage).
+export function plotSprite(x: number, y: number, scale = 1, crownTop = TREE_TOP_Y): PlotSprite {
   const s = Number.isFinite(scale) && scale > 0 ? scale : 1
   const size = FARM_TREE_SIZE
   const baseY = size * TREE_BASE_RATIO.y
   const unit = size / TREE_VIEW
-  const treeTop = y - (TREE_GROUND_Y - TREE_TOP_Y) * unit * s
+  const top = Number.isFinite(crownTop) ? crownTop : TREE_TOP_Y
+  const treeTop = y - (TREE_GROUND_Y - top) * unit * s
   return {
     hitbox: { left: x - PLOT_HALF_W, top: y - PLOT_HALF_H * 1.05, width: PLOT_HALF_W * 2, height: PLOT_HALF_H * 2.1 },
     tree: { left: x - size * TREE_BASE_RATIO.x, top: y - baseY, width: size, height: size },
@@ -64,8 +72,7 @@ export function plotSprite(x: number, y: number, scale = 1): PlotSprite {
     // The name + progress capsule: centred on the trunk, at the front edge of the tile, just under
     // the tree's base. Below the crown and its bubbles for every tier.
     label: { x, y: y + PLOT_HALF_H * 0.5 },
-    // Bubbles ride just above the crown, spreading with it.
-    thirsty: { x: x + 36 * s, y: treeTop + 2 },
-    mighty: { x: x - 56 * s, y: treeTop + 4 },
+    // Resting on the tip of the crown (which rises with the stage, the species and the tier).
+    actions: { x, y: treeTop - ACTION_GAP },
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getTreeSizeTier, TREE_SIZE_TIERS } from '@/shared/lib/treeSkins'
 import { layoutFarm, PLOT_HALF_H, PLOT_HALF_W } from '../lib/farmLayout'
-import { bottomCenterScale, FARM_TREE_SIZE, plotSprite, TREE_BASE_RATIO, TREE_GROUND_Y, TREE_TRUNK_X } from '../lib/plotSprite'
+import { bottomCenterScale, FARM_TREE_SIZE, plotSprite, TREE_BASE_RATIO, TREE_GROUND_Y, TREE_TRUNK_X, ACTION_GAP } from '../lib/plotSprite'
 
 // Apply an SVG `matrix(a b c d e f)` string to a point.
 function applyMatrix(m: string, [x, y]: [number, number]): [number, number] {
@@ -47,12 +47,18 @@ describe('plotSprite', () => {
     expect(colossal.height).toBeLessThanOrEqual(PLOT_HALF_H * 2.2)
   })
 
-  it('raises the crown top with the tier and floats the bubbles above it', () => {
+  it('raises the crown top with the tier and rests the action icons on its tip, centred on the trunk', () => {
     const sm = plotSprite(X, Y, getTreeSizeTier(10).scale)
     const xl = plotSprite(X, Y, getTreeSizeTier(500).scale)
     expect(xl.treeTop).toBeLessThan(sm.treeTop)
-    expect(xl.thirsty.y).toBeLessThan(Y - 100)
-    expect(Math.abs(xl.thirsty.y - xl.treeTop)).toBeLessThan(10)
+    for (const p of [sm, xl]) {
+      expect(p.actions.x).toBe(X)
+      // The icons' bottom edge kisses the crown tip: at most 2 px over it, never floating above.
+      expect(ACTION_GAP).toBeGreaterThanOrEqual(-2)
+      expect(ACTION_GAP).toBeLessThanOrEqual(0)
+      expect(p.treeTop - p.actions.y).toBe(ACTION_GAP)
+    }
+    expect(xl.actions.y).toBeLessThan(sm.actions.y)
   })
 
   it('keeps sign and badge on the mound, below the crown, for every tier', () => {

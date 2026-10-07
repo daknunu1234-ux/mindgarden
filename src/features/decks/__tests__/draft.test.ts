@@ -87,6 +87,20 @@ describe('applyDeckOps', () => {
     expect(apply([{ key: 'x', kind: 'toggle', id: 'r1' }]).editor?.rows).toEqual(rows)
   })
 
+  it('shows a new tree name at once (the latest wins); a refused rename goes back', () => {
+    const ops: DeckOp[] = [
+      { key: 't1', kind: 'title', title: 'Sinh học' },
+      { key: 't2', kind: 'title', title: 'Sinh học 101' },
+    ]
+    expect(apply(ops).detail.deck.title).toBe('Sinh học 101')
+    expect(apply(dropOp(ops, 't2')).detail.deck.title).toBe('Sinh học')
+    expect(apply([]).detail.deck.title).toBe('Sinh học')
+    // The rows and the species are untouched.
+    expect(apply(ops).editor?.rows).toEqual(rows)
+    expect(detail.deck.title).toBe('Sinh học')
+    expect(applyDeckOps(detail, null, ops).detail.deck.title).toBe('Sinh học 101')
+  })
+
   it('works for visitors too (no editor)', () => {
     expect(applyDeckOps(detail, null, [{ key: 'a', kind: 'species', treeType: 'palm' }]).editor).toBeNull()
   })

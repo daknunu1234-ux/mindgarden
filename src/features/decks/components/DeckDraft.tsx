@@ -8,6 +8,7 @@ import { createContentNode, indentContentNode, toggleNodeType } from '../actions
 import { createKnowledgeItems, type BulkImportResult } from '../actions/createKnowledgeItems'
 import { deleteKnowledgeItem } from '../actions/deleteKnowledgeItem'
 import { moveKnowledgeItem } from '../actions/moveKnowledgeItem'
+import { renameDeck } from '../actions/renameDeck'
 import { updateDeck } from '../actions/updateDeck'
 import { updateKnowledgeItem } from '../actions/updateKnowledgeItem'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
@@ -36,6 +37,9 @@ export type DeckDraftActions = {
   // Show the new species at once; updateDeck in the background, rolled back with a toast on error
   // (a pricier species charges the difference: a short purse is such an error).
   changeSpecies: (treeType: string) => void
+  // The tree's new name (already cleaned and checked: shared/lib/treeName), shown at once in the
+  // header and the Workshop; renameDeck in the background, rolled back with a toast on error.
+  renameTree: (title: string) => void
   // One new root or statement, shown at once; returns its temporary id (so the next line can go
   // right below it or under it) and the server's verdict. Its parent may be a node still saving.
   addNode: (node: NewNode) => { id: string; done: Promise<AddResult> }
@@ -187,6 +191,10 @@ export function useDeckDraft(detail: DeckDetail, editor: DeckEditor | null): { v
           edit((l) => dropOp(l, key))
           failed(`Could not change the species to ${getTreeSpecies(treeType).label}: ${res.error.message}`)
         })
+      },
+      renameTree: (title) => {
+        if (title === current.current.detail.deck.title) return
+        change((key) => ({ key, kind: 'title', title }), () => renameDeck({ deckId, title }), `rename the tree to “${title}”`)
       },
       addNode,
       addStatement: (nodeId, statement, place = {}) =>

@@ -137,6 +137,50 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   updates at once and a toast says "🌱 Tree watered today! N-day streak: +N 🪙". A streak that restarts
   and reaches 7 again pays again.
 
+### New trees: buy, place, name, grow; renaming
+
+- **Buying a tree from the Shop** is one flow on the farm: pick a seed packet → confirm (price, purse
+  before → after) → the tree is planted with a suggested name ("Oak Tree", "Oak Tree 2"…) → placement
+  mode starts right away, every open tile glowing softly (the hovered one bright green) → click a tile
+  (tap twice on touch) → "🌱 Name your tree" with the suggestion selected → the tree's page opens with
+  the Tree Workshop in view and a new root line focused. Esc while placing keeps the tree in the Shop's
+  Trees tab; "Later" keeps it planted with its suggested name; a refresh at any step loses nothing.
+- **Renaming**: ✏️ (or double-click) next to the tree's name in the deck page header, at the top of
+  the Tree Workshop and in the farm's tree popover. Enter or clicking away saves, Esc reverts; names
+  are cleaned and 1–100 characters (`shared/lib/treeName`). Instant everywhere (optimistic), saved by
+  `renameDeck`; the link (slug) never changes.
+
+### A clean island: two icons over a tree
+
+- Over each tree on the island only two icons can show, small (26 px) and side by side, resting on
+  the very tip of its crown (each species' real crown height at each growth stage): **💧**
+  (needs practice today: one tap opens its drill round) and **🍎** (ripe fruit: one tap harvests). They
+  float gently and grow and glow under the pointer, appear only when there is something to do, and stay
+  tappable (about 27 px) when the island is zoomed out on a phone. Percentages, stage chips, the ✨ mastered sparkle
+  and the +20% / +50% buff tags are gone from the canvas (the name capsule shows the name only; buffs
+  and growth are in the tree's popover); placing a stream or Farmer's House still previews, dashed, the
+  buff it would add.
+
+### The farm opens on your trees
+
+- On arrival the island camera starts on the overview, then glides (about half a second, ease-out)
+  onto the player's trees: one tree close up (1.3×), several framed together with a comfortable
+  margin, none: the overview stays. Touching, dragging, pinching, scrolling or the zoom buttons stop it
+  at once; with reduced motion it jumps straight there.
+
+### Performance: smoother Workshop and farm
+
+- **Tree Workshop**: typing in a row, opening a row for editing or adding a line re-renders only that
+  row (it used to re-render every row of the tree on every keystroke). Rows are memoized; the
+  connectors are recomputed only when the outline's shape changes. A test counts row renders on a
+  200-row outline.
+- **Farm**: its dialogs (Shop, tree and item popovers, Daily Delivery, naming prompt) are separate
+  chunks, loaded when the browser is idle after the island appears (initial JS of `/`: 1065.8 → 1030.0
+  KB raw, 301.1 → 288.4 KB gzip). The island's animations pause in a background tab and while a dialog
+  is open over it (no per-frame re-blur of the dialog backdrop).
+- Not profiled in a browser yet (React DevTools / Chrome Performance): the numbers above are from
+  tests and the build output.
+
 ## Sign-in
 
 - **Google 1-click** (active): the login dialog leads with "Đăng nhập bằng Google" (Google logo, loading
@@ -771,7 +815,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(decks): unified `content_nodes` (roots + statements in one hierarchy, `node_type`), practice = every statement node, Enter / Tab / Shift+Tab / Alt in place on one outline (`lib/contentTree.ts` + `indent_content_node()`), compact "⌨️ Shortcuts" panel; tree connector lines (│ through-lines, ├ / └ elbows, stems) in the Workshop outline; migrations 23–24 |
+| (pending) | feat(garden): auto-glide and focus camera on planted trees upon initial load. Also carries: buy a seed in the Shop → place it (open tiles glow) → name it → its Workshop opens on the first root; ✏️ rename trees inline (`renameDeck`); only 💧 / 🍎 icons over trees, resting on each species' crown tip; perf (Workshop rows memoized, farm dialogs lazy after idle, island animations paused when hidden or behind a dialog; happy-dom); a wider Tree Workshop column |
+| `bf7a8e6` | feat(decks): unified `content_nodes` (roots + statements in one hierarchy, `node_type`), practice = every statement node, Enter / Tab / Shift+Tab / Alt in place on one outline (`lib/contentTree.ts` + `indent_content_node()`), compact "⌨️ Shortcuts" panel; tree connector lines (│ through-lines, ├ / └ elbows, stems) in the Workshop outline; migrations 23–24 |
 | `15ab043` | feat(decks): sub-statements (drilled like statements), Notion-like Enter / Shift+Enter editing, 📂 move statements between roots, edit / discard lines in the bulk preview; migration 22 |
 | `5f85bcd` | feat(progress): special trees (180 🪙 species) pay ×1.5 mastery coins; "⭐ 1.5x Coins" tags; migration 21. The same commit also carries the "Tree & roots" hierarchy canvas row below |
 | (pending) | feat(mindmap): "Tree & roots" as a zoomable, pannable hierarchy canvas: the tree, every tier of roots as compact cards, curving tendrils, statements in the side drawer only, a transform-based camera (50%–180%); the tree stands free (no box) with a floating label, and the roots sprout from its trunk through a taproot |
@@ -820,7 +865,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 89 files, 895 tests passing (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 98 files, 943 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

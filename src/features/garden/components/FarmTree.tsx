@@ -1,20 +1,22 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import Link from 'next/link'
 import { FRUIT_COINS } from '@/shared/lib/economy'
-import { getTreeSizeTier, GOLDEN_BLOOM_PERCENT, treeScale } from '@/shared/lib/treeSkins'
+import { getTreeSizeTier, treeScale } from '@/shared/lib/treeSkins'
 import { treeLook } from '@/shared/lib/treeVitality'
 import { usePrefetchOnIntent } from '@/shared/hooks/usePrefetchOnIntent'
 import { cn } from '@/shared/utils/cn'
 import { getTreeStage, TREE_STAGES } from '../hooks/useTreeStage'
+import { crownTopY } from '../lib/crownTop'
 import { FARM_TREE_SIZE, plotSprite, TREE_BASE_RATIO } from '../lib/plotSprite'
 import type { FarmPlotView } from '../types'
-import { AppleIcon, SparkleIcon, WaterDropIcon } from './BubbleIcons'
+import { AppleIcon, WaterDropIcon } from './BubbleIcons'
 import { Bees, FallingParticles, useWateredSplash, WaterSplash } from './FarmAmbience'
 import { TreeStageSvg } from './TreeStageSvg'
 
 // A planted tree on the farm: the tree itself (a button over its soil) and, in a separate layer
-// above everything, its sign, mastery badge and 💧 / ✨ bubbles. Placed by its ground point: the
+// above everything, its name capsule and its two action icons (💧 water, 🍎 harvest). Placed by its ground point: the
 // centre of its grid tile (FarmIsometricGrid).
 
 // Where a tree stands, in world pixels.
@@ -23,10 +25,10 @@ export type GroundPoint = { x: number; y: number }
 // Plot labels sit above every tree and building (whose z-index is their ground y).
 export const LABEL_LAYER = 100_000
 
-// A tree's label: one capsule with its name and progress (TreeLabel). With "show all tree labels" off (the farm root has
+// A tree's label: one capsule with its name (TreeLabel). With "show all tree labels" off (the farm root has
 // `.mg-labels-hover`, lib/treeLabels.ts), globals.css hides these and fades them in for the tree
-// that is hovered, focused or was just tapped. The 💧 / 🍎 / ✨ bubbles are prompts, not labels:
-// they always show.
+// that is hovered, focused or was just tapped. The 💧 / 🍎 icons are actions, not labels: they show
+// whenever there is something to do.
 export const TREE_LABEL = 'mg-tree-label'
 
 // ── Plot: tree, ambience, badges and nameplate (HTML button over the SVG bed) ─
@@ -203,9 +205,16 @@ export function ChopPuff({ x, y }: { x: number; y: number }) {
   )
 }
 
-// Everything that labels a plot: title sign, mastery badge, 💧 / ✨ bubbles. Rendered in one layer
-// above every tree, so a big crown in front can never hide (or block clicks on) a neighbour's sign.
-// Decorative for assistive tech (the plot button's label says it all); clicks open the plot.
+// What floats over a planted tree, in one layer above every tree (so a big crown in front can never
+// hide, or block clicks on, a neighbour's): only its two actions and its name. No percentages, levels
+// or buffs here (those are in the tree's popover).
+//   💧 Water: the tree needs practice today (owner): a link straight to its drill round (review mode
+//      when every statement is already 5/5).
+//   🍎 Harvest: its fruit is ripe (owner): one tap picks it.
+// Both sit side by side in one small cluster resting on the tip of the crown (its own height, for
+// its species and stage: lib/crownTop.ts), bobbing gently (one animation
+// for the cluster), each glowing and growing a little under the pointer. The capsule at the base
+// says the tree's name (revealed on hover in hover-labels mode). Clicks never reach the grid.
 export function PlotLabels({
   geometry,
   plot,
@@ -218,9 +227,8 @@ export function PlotLabels({
   // Owner: pick the tree's fruit (the farm credits the coins at once and confirms in the background).
   onHarvest?: (plot: FarmPlotView) => void
 }) {
-  const { label, thirsty: thirstyAt, mighty: mightyAt } = plotSprite(geometry.x, geometry.y, treeScale(plot.treeType, plot.itemCount))
-  const thirsty = plot.needsWater === true && plot.itemCount > 0
-  const mighty = plot.masteryPercent >= 100
+  const { label, actions } = plotSprite(geometry.x, geometry.y, treeScale(plot.treeType, plot.itemCount), crownTopY(plot.treeType, getTreeStage(plot.masteryPercent)))
+  const { water, harvest } = treeActions(plot, onHarvest !== undefined)
   const open = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
     onOpen(plot)
@@ -230,72 +238,95 @@ export function PlotLabels({
   return (
     // mg-plot-labels: must directly follow the tree's `.mg-plot` wrapper (see TREE_LABEL below).
     <div aria-hidden className="mg-plot-labels pointer-events-none absolute inset-0" style={{ zIndex: LABEL_LAYER + Math.round(geometry.y) }}>
-      {/* Thought-bubble asking for water, just above the crown. */}
-      {thirsty && (
-        <span
-          onClick={open}
-          className="mg-bob pointer-events-auto absolute flex size-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border-[2.5px] border-[#1c6fa8] bg-gradient-to-b from-white to-[#dff4ff] text-base shadow-[inset_0_2px_0_#fff,0_3px_0_#1c6fa8]"
-          style={at(thirstyAt)}
-        >
-          <WaterDropIcon />
-        </span>
+      {(water || harvest) && (
+        <div data-tree-actions className="absolute flex -translate-x-1/2 -translate-y-full items-end gap-1.5" style={at(actions)}>
+          {/* Zoomed out, the icons grow back toward their size on screen (up to 3×, about 27 px at the
+              farthest zoom), anchored at their bottom centre so they stay on the crown's tip. */}
+          <div className={ACTION_SCALE}>
+            <div className="mg-bob flex items-end gap-1">
+              {water && (
+                <Link
+                  href={water.href}
+                  onClick={(e) => e.stopPropagation()}
+                  // The layer is aria-hidden; the tree's own button says it needs water. Keyboard users
+                  // water from its popover.
+                  tabIndex={-1}
+                  title="Water this tree: practise it today"
+                  className={cn(ACTION, 'border-[#1c6fa8] from-white to-[#dff4ff] shadow-[inset_0_1.5px_0_#fff,0_2px_0_#1c6fa8] hover:shadow-[inset_0_1.5px_0_#fff,0_2px_0_#1c6fa8,0_0_10px_3px_rgba(125,211,252,0.85)]')}
+                >
+                  <WaterDropIcon size={ICON_GLYPH} />
+                </Link>
+              )}
+              {harvest && onHarvest && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onHarvest(plot)
+                  }}
+                  tabIndex={-1}
+                  title={`Harvest: +${FRUIT_COINS} 🪙`}
+                  className={cn(ACTION, 'border-[#b45309] from-[#fff7d6] to-[#ffd36b] shadow-[inset_0_1.5px_0_#fff,0_2px_0_#b45309] hover:shadow-[inset_0_1.5px_0_#fff,0_2px_0_#b45309,0_0_10px_3px_rgba(253,224,71,0.9)]')}
+                >
+                  <AppleIcon size={ICON_GLYPH} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-      {/* Ripe fruit (practised yesterday): one tap harvests it. Beside the 💧 when both show. */}
-      {plot.fruitReady && onHarvest && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onHarvest(plot)
-          }}
-          aria-label={`Harvest the fruit of ${plot.title}: +${FRUIT_COINS} coins`}
-          title={`Harvest: +${FRUIT_COINS} 🪙`}
-          className="mg-bob pointer-events-auto absolute flex h-8 -translate-x-1/2 items-center gap-0.5 rounded-full border-[2.5px] border-[#b45309] bg-gradient-to-b from-[#fff7d6] to-[#ffd36b] px-1.5 font-game text-xs font-extrabold text-[#7c2d12] shadow-[inset_0_2px_0_#fff,0_3px_0_#b45309] focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
-          style={at({ x: thirstyAt.x + (thirsty ? 38 : 0), y: thirstyAt.y })}
-        >
-          <AppleIcon />+{FRUIT_COINS}
-        </button>
-      )}
-      {mighty && (
-        <span
-          onClick={open}
-          className="mg-glow pointer-events-auto absolute flex size-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border-[2.5px] border-[#b7830c] bg-gradient-to-b from-[#fffbe0] to-[#ffe28a] text-base shadow-[inset_0_2px_0_#fff,0_3px_0_#b7830c]"
-          style={at(mightyAt)}
-        >
-          <SparkleIcon />
-        </span>
-      )}
-      {/* One compact capsule at the tree's base: its name and how far it has grown. */}
-      <TreeLabel title={plot.title} percent={plot.masteryPercent} emoji={plot.withered ? '🥀' : TREE_STAGES[getTreeStage(plot.masteryPercent)].emoji} style={at(label)} onClick={open} />
+      {/* One compact capsule at the tree's base: its name. */}
+      <TreeLabel title={plot.title} withered={plot.withered === true} style={at(label)} onClick={open} />
     </div>
   )
 }
 
-// The tree's label: `[ 🌿 Tree name • 75% ]` on one line, a dark see-through pill 18 px tall at the
-// front edge of the tile (plotSprite `label`), under the crown and its bubbles. No backdrop blur: it
-// repeats on every tile, and blurs there cost fill-rate on every frame. The percentage turns gold from
-// the golden-bloom threshold.
-function TreeLabel({ title, percent, emoji, style, onClick }: { title: string; percent: number; emoji: string; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
-  const pct = Math.min(100, Math.max(0, Math.round(percent)))
-  const golden = pct >= GOLDEN_BLOOM_PERCENT
+// Counter-scales with the farm camera (--mg-inv-zoom, set on the zoomed world), between 1× and 3×:
+// on screen an icon is never smaller than ICON_SIZE × the zoom × 3 (≈ 27 px at MIN_ZOOM 0.35), and
+// from zoom 1 / 3 up it keeps ICON_SIZE px.
+export const ACTION_SCALE = 'origin-bottom [transform:scale(clamp(1,var(--mg-inv-zoom,1),3))]'
+
+// The icons' diameter and their glyph, in farm units: compact beads; the glyph is a vector icon
+// (BubbleIcons, a 24-unit view box), drawn at 15 px inside the 26 px bead with the 2 px border, so it
+// stays crisp at any zoom and never touches the rim.
+export const ICON_SIZE = 26
+const ICON_GLYPH = 15
+
+// One round action icon over a tree: a glossy bead that grows and glows under the pointer.
+const ACTION =
+  'pointer-events-auto flex size-[26px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 bg-gradient-to-b leading-none transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(.34,1.8,.64,1)] hover:scale-110 active:scale-95'
+
+// Which action icons a tree shows (pure, tested): 💧 when its owner hasn't practised it today and it
+// has statements; 🍎 when its fruit is ripe and the farm can harvest it. Visitors see neither.
+export function treeActions(plot: FarmPlotView, canHarvest: boolean): { water: { href: string } | null; harvest: boolean } {
+  const owner = plot.isOwner
+  const thirsty = owner && plot.needsWater === true && plot.itemCount > 0
+  const review = plot.itemCount > 0 && plot.masteredCount >= plot.itemCount
+  return {
+    water: thirsty ? { href: `/deck/${plot.slug}/drill${review ? '?review=1' : ''}` } : null,
+    harvest: owner && canHarvest && plot.fruitReady === true,
+  }
+}
+
+// The tree's label: `[ Tree name ]` on one line, a dark see-through pill 18 px tall at the front
+// edge of the tile (plotSprite `label`), under the crown and its icons; a 🥀 marks a withered tree.
+// No backdrop blur: it repeats on every tile, and blurs there cost fill-rate on every frame.
+function TreeLabel({ title, withered, style, onClick }: { title: string; withered: boolean; style: CSSProperties; onClick: (e: { stopPropagation: () => void }) => void }) {
   return (
     <span
       onClick={onClick}
       className={cn(
         TREE_LABEL,
-        'pointer-events-auto absolute flex h-[18px] max-w-[156px] -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border bg-black/55 px-2 font-game text-[11px] leading-none font-bold whitespace-nowrap text-white',
-        golden ? 'border-yellow-300/60' : 'border-white/10',
+        'pointer-events-auto absolute flex h-[18px] max-w-[156px] -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border border-white/10 bg-black/55 px-2 font-game text-[11px] leading-none font-bold whitespace-nowrap text-white',
       )}
       style={style}
     >
-      <span aria-hidden className="shrink-0 text-[10px]">
-        {emoji}
-      </span>
+      {withered && (
+        <span aria-hidden className="shrink-0 text-[10px]">
+          🥀
+        </span>
+      )}
       <span className="truncate">{title}</span>
-      <span aria-hidden className="shrink-0 text-white/45">
-        •
-      </span>
-      <span className={cn('shrink-0 tabular-nums', golden ? 'text-yellow-300' : 'text-emerald-300')}>{pct}%</span>
     </span>
   )
 }
