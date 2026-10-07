@@ -195,6 +195,11 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### One Windmill
+
+- The Grand Windmill is gone: the island has one **Windmill** (2×2, **60 🪙**) that powers a **10×10** area.
+  Grand Windmills already standing became Windmills on the same tiles (migration 28), so nothing lost power.
+
 ### Rendered building sprites
 
 - The Small Windmill, Candy Factory and Furniture Factory now show detailed rendered artwork (static
@@ -859,6 +864,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 28 | `20261017000000_unified_windmill.sql` | One Windmill: 60 🪙, a 10×10 field; Grand Windmills become Windmills; `windmill_large` retired. With the deploy |
 | 27 | `20261016000000_grand_windmill.sql` | The Large Windmill becomes the 2×2 Grand Windmill (power reach 2: a 6×6 zone); standing ones shrink. With the deploy |
 | 26 | `20261015000000_rail_logistics.sql` | New prices; Candy Factory, Railroad Track (1 🪙), Freight Train (on tracks only); fruit and candy inventory; harvests give 🍎 instead of 🪙; candy exported by train for 15 🪙 a box. Run **with** the deploy |
 | 25 | `20261014000000_power_grid.sql` | Footprints up to 6; windmills, Furniture Factory, coastal Seaport; Farmer's House / Woodshop retired (ITEM_RETIRED); `farm_economy` + `settle_farm_economy()` (server-side production and cargo-ship payouts). Any time after 12 and 14, before or with the deploy |
@@ -877,7 +883,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): integrate 3D low-poly Seaport and animated Cargo Ship loop (`SeaportImage`, `seaportFit`, `CargoShip`; prep script `flip`, `water`, `maxWidth`) with the ship's arrive / dock / depart loop (`.mg-dock`, `.mg-float`) |
+| (pending) | feat(garden): unify windmill into a single structure powering 10x10 area at 60 coins (migration 28): Grand Windmill removed from catalogue, Shop, types and drawings; standing ones converted (migration 28) |
+| 1cd6af1 | feat(garden): integrate 3D low-poly Seaport and animated Cargo Ship loop (`SeaportImage`, `seaportFit`, `CargoShip`; prep script `flip`, `water`, `maxWidth`) with the ship's arrive / dock / depart loop (`.mg-dock`, `.mg-float`) |
 | 68a97fa | feat(garden): add powered SVG overlay animations for Candy Factory and Furniture Factory: chimney / pipe smoke, rolling candies (`.mg-roll`), sawdust sparks; windmill rotor built, off while the render has painted sails (`WINDMILL_RENDER.bakedSails`); candy sprite without painted smoke |
 | c186840 | feat(garden): integrate optimized 3D low-poly WebP sprites for Small Windmill and factories (`BuildingImage`, WebP made by `npm run sprites` from `raw-assets/structures/*.png`, anchored on the 2×2 footprint, unpowered factories muted). Also carries: vivid casual-game look for island buildings: saturated lighting with warm highlights and indigo shadows (`vivid`, `lit`), bevel highlights, footprint shadows, new props and details (planters, lanterns, brass cogs, striped sails, sawdust sparks, gumdrops, ripples, ship wake, ribboned candy crates) |
 | fb5953c | feat(garden): restyle island buildings into 3D low-poly faceted aesthetic and resize Grand Windmill to 2x2 (migration 27). Also carries: power grid with windmills, Furniture Factory and coastal Seaport, Farmer's House and Woodshop retired (migration 25); fruit harvests, Candy Factory, Railroad Track (1 🪙) and Freight Train, candy exported by train for 15 🪙 a box (migration 26) |
@@ -931,7 +938,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 104 files, 1031 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 104 files, 1032 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

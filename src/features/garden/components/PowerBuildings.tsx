@@ -3,10 +3,8 @@
 // outlines), drawn around their ground point (0, 0), the centre of the footprint's diamond. Pure
 // markup, no hooks; animations are `.mg-*` classes in globals.css (off for reduced motion, paused
 // with the farm: `.mg-paused`).
-//   Windmill (Small): ivory limestone tower, honey-wood balcony with flower planters and lanterns,
-//     terracotta cone, golden-oak lattice sails with white fabric panels (`.mg-spin`).
-//   Grand Windmill: cobblestone base under timber decking, stone tower with glowing amber windows,
-//     polished brass gear cogs, a crimson dome, double-braced sails with red-and-white striped canvas.
+// (The farm draws the Windmill, both factories and the Seaport from rendered sprites now:
+// BuildingImages.tsx. These vector drawings remain for the factories and the seaport.)
 //   Furniture Factory: cedar-sided sawmill, cobalt corrugated tin roof, amber lumber, a silver saw on
 //     a safety-striped bench (`.mg-spin-slow` and sawdust sparks `.mg-spark` while powered), smoking pipes.
 //   Candy Factory: mint workshop, hot-pink roof with glowing gumdrops and a lollipop, a candy-cane
@@ -29,23 +27,11 @@ export function diamond(w: number, h: number): [Pt, Pt, Pt, Pt] {
 // The ground blocks the 2 × 2 buildings stand on (iso half-extents): inside their tile diamond, so
 // they never spill onto a neighbour's tiles and depth sorting by ground point holds (tested).
 export const BASES = {
-  windmillSmall: { a: 34, b: 34 },
-  windmillLarge: { a: 40, b: 40 },
   factory: { a: 46, b: 40 },
 } as const
 
 // The building palette: saturated casual-game colours (the kit's lighting adds warmth and depth).
 export const PALETTE = {
-  limestone: '#f6e7c1',
-  terracotta: '#e2502c',
-  honeyWood: '#eaa43a',
-  goldenOak: '#d9972a',
-  fabric: '#fffdf4',
-  cobble: '#8f8aa8',
-  timber: '#b8662a',
-  masonry: '#e0d6c2',
-  brass: '#f0b81c',
-  crimson: '#d3132b',
   amberGlow: '#ffb627',
   canvasRed: '#ec1c2e',
   cedar: '#c8582a',
@@ -103,225 +89,6 @@ function HazardStripes({ a, b, height, count, skew = 4, yellow = PALETTE.hazard 
         const p1 = mix(a, b, (i + 1) / count)
         return <Face key={i} at={[p0, p1, add(p1, [skew, -height]), add(p0, [skew, -height])]} fill={i % 2 ? PALETTE.hazardDark : yellow} />
       })}
-    </g>
-  )
-}
-
-// ── Windmills ────────────────────────────────────────────────────────────────
-
-// One sail: a timber spar from the hub and a lattice frame carrying fabric panels (`canvas` colours,
-// repeated: one colour for plain sails, two for striped ones). `braced`: a second spar and diagonal
-// braces, for the heavy sails of the Grand Windmill.
-function Sail({ length, width, frame, canvas, braced = false }: { length: number; width: number; frame: string; canvas: string[]; braced?: boolean }) {
-  const panels = 6
-  const t = (k: number) => 0.2 + (k / panels) * 0.8
-  const spar = lit(frame, 0.45)
-  return (
-    <g>
-      <Face at={[[-2.5, 0], [2.5, 0], [3, -length], [-2, -length]]} fill={spar} />
-      <Bevel from={[-2, -4]} to={[-1.6, -length]} width={1} opacity={0.6} />
-      {Array.from({ length: panels }, (_, k) => (
-        <Face key={k} at={[[3, -length * t(k)], [3 + width, -length * t(k)], [3 + width, -length * t(k + 1)], [3, -length * t(k + 1)]]} fill={canvas[k % canvas.length]} />
-      ))}
-      {/* The panels' shaded outer half: the sail is a shallow fold. */}
-      <Face at={[[3 + width * 0.55, -length * 0.2], [3 + width, -length * 0.2], [3 + width, -length], [3 + width * 0.55, -length]]} fill="#2a1150" opacity={0.12} />
-      {/* The lattice: an outer rail and laths across between the panels. */}
-      <Face at={[[3 + width - 2, -length * 0.2], [3 + width, -length * 0.2], [3 + width, -length], [3 + width - 2, -length]]} fill={frame} />
-      {Array.from({ length: panels + 1 }, (_, k) => (
-        <Face key={k} at={[[3, -length * t(k) + 0.8], [3 + width, -length * t(k) + 0.8], [3 + width, -length * t(k) - 0.8], [3, -length * t(k) - 0.8]]} fill={lit(frame, -0.3)} />
-      ))}
-      {braced && (
-        <g data-part="brace">
-          <Face at={[[3 + width * 0.5 - 1, -length * 0.2], [3 + width * 0.5 + 1, -length * 0.2], [3 + width * 0.5 + 1, -length], [3 + width * 0.5 - 1, -length]]} fill={spar} />
-          {[0, 1, 2].map((k) => (
-            <line key={k} x1={3} y1={-length * t(k * 2)} x2={3 + width} y2={-length * t(k * 2 + 2)} stroke={spar} strokeWidth={1.4} strokeLinecap="round" />
-          ))}
-        </g>
-      )}
-    </g>
-  )
-}
-
-// Four sails turning about the hub (the group's box is centred on the hub).
-function Sails({ at, length, width, frame, canvas, hub, braced }: { at: Pt; length: number; width: number; frame: string; canvas: string[]; hub: string; braced?: boolean }) {
-  return (
-    <g transform={`translate(${at[0]} ${at[1]})`}>
-      <g className="mg-spin" style={spin}>
-        {[0, 90, 180, 270].map((a) => (
-          <g key={a} transform={`rotate(${a})`}>
-            <Sail length={length} width={width} frame={frame} canvas={canvas} braced={braced} />
-          </g>
-        ))}
-        <circle r={length * 0.1} fill={hub} />
-        <circle r={length * 0.055} fill={PALETTE.brass} />
-        <circle cx={-length * 0.02} cy={-length * 0.02} r={length * 0.02} fill="#fff6c8" />
-      </g>
-    </g>
-  )
-}
-
-// A ring deck round a tower: a thin faceted disc with posts and a rail.
-function Deck({ at, rx, ry, color }: { at: Pt; rx: number; ry: number; color: string }) {
-  return (
-    <g>
-      <Cylinder at={at} rx={rx} ry={ry} h={4} facets={12} color={color} />
-      {Array.from({ length: 7 }, (_, i) => {
-        const t = Math.PI * (0.08 + (i / 6) * 0.84)
-        const x = at[0] + rx * Math.cos(t)
-        const y = at[1] + ry * Math.sin(t) - 4
-        return <Face key={i} at={[[x - 1, y], [x + 1, y], [x + 1, y - 9], [x - 1, y - 9]]} fill={lit(color, Math.cos(t))} />
-      })}
-      <Face at={[[at[0] - rx, at[1] - 12], [at[0] + rx, at[1] - 12], [at[0] + rx, at[1] - 10.5], [at[0] - rx, at[1] - 10.5]]} fill={lit(color, 0.3)} opacity={0.9} />
-      <Bevel from={[at[0] - rx, at[1] - 12]} to={[at[0], at[1] - 12]} width={0.9} opacity={0.7} />
-    </g>
-  )
-}
-
-// A flower planter on a balcony: a little wooden box with round blooms.
-function Planter({ at, blooms }: { at: Pt; blooms: string[] }) {
-  return (
-    <g data-part="planter">
-      <IsoBox at={at} a={5} b={3} h={4} color="#a5521f" />
-      <ellipse cx={at[0]} cy={at[1] - 5} rx={6} ry={2.6} fill="#3fae2a" />
-      {blooms.map((c, i) => (
-        <circle key={i} cx={at[0] - 4 + i * 4} cy={at[1] - 6.5 - (i % 2) * 1.5} r={1.9} fill={c} />
-      ))}
-    </g>
-  )
-}
-
-// A lantern hanging under the balcony rail: a brass cap and a warm glow.
-function Lantern({ at }: { at: Pt }) {
-  return (
-    <g data-part="lantern">
-      <line x1={at[0]} y1={at[1] - 6} x2={at[0]} y2={at[1] - 2} stroke="#5b2a0d" strokeWidth={0.9} />
-      <Glow at={[at[0], at[1] + 1.5]} r={2.6} color={PALETTE.amberGlow} />
-      <Face at={[[at[0] - 2.6, at[1] - 2], [at[0] + 2.6, at[1] - 2], [at[0] + 1.4, at[1] - 3.6], [at[0] - 1.4, at[1] - 3.6]]} fill={PALETTE.brass} />
-    </g>
-  )
-}
-
-// A polished brass cog: square teeth round a disc, a dark hub and a bright glint.
-function Cog({ at, r, teeth = 10 }: { at: Pt; r: number; teeth?: number }) {
-  const points: Pt[] = []
-  for (let i = 0; i < teeth; i++) {
-    const a = (i / teeth) * Math.PI * 2
-    const d = Math.PI / teeth
-    for (const [angle, radius] of [[a - d * 0.5, r * 0.78], [a - d * 0.35, r], [a + d * 0.35, r], [a + d * 0.5, r * 0.78]] as const) {
-      points.push([at[0] + radius * Math.cos(angle), at[1] + radius * Math.sin(angle) * 0.9])
-    }
-  }
-  return (
-    <g data-part="brass-cog">
-      <Face at={points} fill={lit(PALETTE.brass, -0.2)} />
-      <circle cx={at[0]} cy={at[1]} r={r * 0.55} fill={lit(PALETTE.brass, 0.5)} />
-      <circle cx={at[0]} cy={at[1]} r={r * 0.22} fill="#5b3a06" />
-      <circle cx={at[0] - r * 0.35} cy={at[1] - r * 0.35} r={r * 0.16} fill="#fff6c8" opacity={0.9} />
-    </g>
-  )
-}
-
-export function WindmillSprite({ size = 'small' }: { size?: 'small' | 'large' }) {
-  if (size === 'large') return <GrandWindmill />
-  return (
-    <g strokeLinejoin="round" data-building="windmill_small">
-      <FootprintShadow w={2} h={2} />
-      <Contact rx={72} ry={30} />
-      {/* Plinth, then the ivory limestone tower narrowing upwards. */}
-      <IsoBox {...BASES.windmillSmall} h={10} color="#c9bfe0" />
-      <Cylinder at={[0, -10]} rx={32} ry={16} h={112} taper={0.7} facets={10} color={PALETTE.limestone} />
-      {/* Door and two windows on the lit side. */}
-      <Face at={[[-22, -8], [-10, -3], [-10, -36], [-22, -41]]} fill="#8a3f12" />
-      <circle cx={-12.5} cy={-20} r={1.4} fill={PALETTE.brass} />
-      <Face at={[[-18, -64], [-10, -61], [-10, -50], [-18, -53]]} fill="#1f7ac9" />
-      <Face at={[[6, -86], [12, -88], [12, -77], [6, -75]]} fill="#16568f" />
-      {/* Honey-wood balcony half way up, flower planters on its rail and lanterns under it. */}
-      <Deck at={[0, -74]} rx={30} ry={15} color={PALETTE.honeyWood} />
-      <Planter at={[-20, -76]} blooms={['#ff3d6e', '#ffd21a', '#ff7ab8']} />
-      <Planter at={[4, -70]} blooms={['#ffd21a', '#ff3d6e', '#b25cff']} />
-      <Lantern at={[-28, -68]} />
-      <Lantern at={[22, -66]} />
-      {/* Terracotta cone roof. */}
-      <Cone at={[0, -122]} rx={27} ry={13.5} h={46} facets={10} color={PALETTE.terracotta} />
-      <Sails at={[10, -116]} length={76} width={18} frame={PALETTE.goldenOak} canvas={[PALETTE.fabric, '#f3ead6']} hub="#6b2f0a" />
-    </g>
-  )
-}
-
-// A cobble on a wall: a rounded stone in two tones.
-const cobbles = (from: Pt, to: Pt, h: number, color: string) =>
-  [0.08, 0.26, 0.44, 0.62, 0.8].flatMap((t, i) =>
-    [0.3, 0.72].map((v) => {
-      const q = add(mix(from, to, t + (v > 0.5 ? 0.09 : 0) + (i % 2) * 0.02), [0, -h * v])
-      return <ellipse key={`${t}-${v}`} cx={q[0]} cy={q[1]} rx={5.4} ry={2.6} fill={color} opacity={0.75} />
-    }),
-  )
-
-// The Grand Windmill: a cobblestone base under timber decking, a tall masonry tower with glowing amber
-// windows, polished brass gear cogs under a crimson dome, and wide double-braced striped sails.
-function GrandWindmill() {
-  const base = 14
-  const [, e, s, w] = isoCorners([0, 0], BASES.windmillLarge.a, BASES.windmillLarge.b)
-  return (
-    <g strokeLinejoin="round" data-building="windmill_large">
-      <FootprintShadow w={2} h={2} />
-      <Contact rx={86} ry={36} />
-      <g data-part="cobblestone">
-        <IsoBox {...BASES.windmillLarge} h={base} color={PALETTE.cobble} />
-        {cobbles(w, s, base, lit(PALETTE.cobble, -0.9))}
-        {cobbles(s, e, base, lit(PALETTE.cobble, 0.2))}
-      </g>
-      {/* Timber decking on the base. */}
-      <g data-part="timber-deck">
-        <IsoBox at={[0, -base]} a={36} b={36} h={3} color={PALETTE.timber} />
-        {[0.2, 0.4, 0.6, 0.8].map((t) => {
-          const [n2, e2, s2, w2] = isoCorners([0, -base - 3], 36, 36)
-          const p = mix(w2, n2, t)
-          const q = mix(s2, e2, t)
-          return <line key={t} x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} stroke={lit(PALETTE.timber, 0.7)} strokeWidth={0.9} opacity={0.7} />
-        })}
-      </g>
-      {/* Stone masonry: courses as darker bands up the tower. */}
-      <Cylinder
-        at={[0, -17]}
-        rx={38}
-        ry={19}
-        h={147}
-        taper={0.74}
-        facets={12}
-        color={PALETTE.masonry}
-        bands={[0.12, 0.27, 0.42, 0.57, 0.72, 0.87].map((t) => ({ t, color: '#b6a58b', width: 0.025 }))}
-      />
-      <Face at={[[-26, -15], [-12, -9], [-12, -46], [-26, -52]]} fill="#6b2a0a" />
-      <Face at={[[-26, -52], [-12, -46], [-12, -49], [-26, -55]]} fill={PALETTE.brass} />
-      {/* Glowing amber windows. */}
-      <g data-part="amber-windows">
-        {(
-          [
-            [[-22, -88], [-12, -84], [-12, -70], [-22, -74]],
-            [[-14, -136], [-6, -134], [-6, -122], [-14, -124]],
-            [[10, -100], [17, -103], [17, -91], [10, -88]],
-          ] as Pt[][]
-        ).map((at, i) => (
-          <g key={i}>
-            <circle cx={(at[0][0] + at[2][0]) / 2} cy={(at[0][1] + at[2][1]) / 2} r={11} fill={PALETTE.amberGlow} opacity={0.25} />
-            <Face at={at} fill={PALETTE.amberGlow} />
-            <Face at={[at[0], at[1], mix(at[1], at[2], 0.3), mix(at[0], at[3], 0.3)]} fill="#fff1b8" opacity={0.85} />
-          </g>
-        ))}
-      </g>
-      {/* Two observation decks. */}
-      <Deck at={[0, -66]} rx={38} ry={19} color={PALETTE.timber} />
-      <Deck at={[0, -118]} rx={33} ry={16.5} color={PALETTE.honeyWood} />
-      {/* Brass gear housing with its cogs, and the crimson dome. */}
-      <Cylinder at={[0, -164]} rx={30} ry={15} h={16} facets={12} color={PALETTE.brass} bands={[{ t: 0.4, color: '#9a6a05', width: 0.2 }]} />
-      <Cog at={[-20, -170]} r={9} />
-      <Cog at={[-6, -166]} r={6} teeth={8} />
-      <Cone at={[0, -180]} rx={32} ry={16} h={40} facets={12} color={PALETTE.crimson} />
-      <Cylinder at={[0, -216]} rx={4} ry={2} h={10} facets={6} color={PALETTE.brass} />
-      <circle cx={0} cy={-228} r={3.4} fill={PALETTE.brass} />
-      <circle cx={-1} cy={-229} r={1.2} fill="#fff6c8" />
-      <Sails at={[14, -172]} length={104} width={28} frame={PALETTE.goldenOak} canvas={[PALETTE.fabric, PALETTE.canvasRed]} hub="#4a1d05" braced />
     </g>
   )
 }

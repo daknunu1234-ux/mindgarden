@@ -13,8 +13,8 @@ export function powerReachOf(itemType: FarmItemType): number {
 export const isPowerSource = (itemType: FarmItemType): boolean => powerReachOf(itemType) > 0
 export const requiresPower = (itemType: FarmItemType): boolean => catalogFor(itemType, null)?.requiresPower === true
 
-// A power source's field: its footprint grown by its reach on every side (Small Windmill 2×2 + 1 →
-// 4×4, Large Windmill 6×6 + 3 → 12×12). It may run past the grid's edge (that part powers nothing).
+// A power source's field: its footprint grown by its reach on every side (the Windmill: 2×2 + 4 →
+// 10×10). It may run past the grid's edge (that part powers nothing).
 export function powerField(source: Footprint & { itemType: FarmItemType }): Footprint | null {
   const reach = powerReachOf(source.itemType)
   if (reach <= 0) return null

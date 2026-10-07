@@ -17,7 +17,7 @@ function fakeSupabase(viewer: string | null, { coins = 100, taken = false, owned
   const calls: Record<string, unknown>[] = []
   const deletes: unknown[] = []
   const excluded: [string, unknown][] = []
-  const prices: Record<string, number> = { tree: 0, windmill_small: 60, windmill_large: 100, furniture_factory: 120, seaport: 150, stream: 5, fence: 1, rockery: 2, animal: 5 }
+  const prices: Record<string, number> = { tree: 0, windmill_small: 60, furniture_factory: 50, seaport: 100, stream: 5, fence: 1, rockery: 2, animal: 5 }
   const client = {
     auth: { getUser: async () => ({ data: { user: viewer ? { id: viewer } : null } }) },
     rpc: async (fn: string, args: Record<string, unknown>) => {

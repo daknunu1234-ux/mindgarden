@@ -51,7 +51,10 @@ placements are this feature's table.
 - `FarmItemDialog` props `powered`, `poweredCount`, `economy` → `StatusPanel`
 - Tests: `__tests__/powerGrid.test.ts`, `__tests__/powerGridDb.test.ts` (PGlite)
 
-## 3D low-poly buildings and the Grand Windmill (supersedes the drawing notes above)
+## One Windmill (supersedes every windmill note below and above)
+- Since migration `20261017000000_unified_windmill.sql` the island has a single **Windmill** (item type `windmill_small`, the stored id; shown as "Windmill"): 2 × 2, **60 🪙**, `powerReach` **4** → a **10 × 10** field. The Grand Windmill (`windmill_large`) is gone from `FarmItemType`, the catalogue, the Shop, the DTO and the database type check; standing ones became Windmills on the same tiles. It is drawn by `BuildingImage` (the rendered sprite); the vector `WindmillSprite` / `GrandWindmill` drawings and their palette colours were removed
+
+## 3D low-poly buildings and the Grand Windmill (historical)
 - `components/lowPolyKit.tsx` (pure markup): `Face`, `Contact`, `lit(base, facing)` (one key light, upper left), `isoCorners`, `IsoBox` (lit left wall, shaded right wall, brightest top), `Cylinder` (faceted; only the facets facing the viewer; optional bands), `Cone`, `GableRoof`. Tested in `__tests__/lowPolyArt.test.ts`
 - `components/PowerBuildings.tsx`: `WindmillSprite({ size })` (small: stucco tower, timber balcony, terracotta cone, lattice sails; `large` = Grand Windmill: coursed stone, two decks, brass gear housing, crimson dome, wide sails; both `.mg-spin`), `FactorySprite({ powered, kind })` (furniture: timber-frame sawmill, corrugated roof, lumber, circular saw `.mg-spin-slow` and pipe smoke while powered; candy: pastel teal, coral roof, candy-swirl chimney with steam, giant wrapped candy, conveyor `.mg-conveyor` while powered), `SeaportSprite` (wharf on pilings, hazard curb, bollards, pallets, `ContainerStack`, yellow `JibCrane`, `Freighter` `.mg-ship` while powered); `BASES` (each 2 × 2 building's ground block, inside its tile diamond: tested)
 - `components/RailwaySprites.tsx`: `TrackTile` (ballast, ties, steel rails; `trackShape`: straight, curve with Bézier rails, junction), `TrainSprite` (steam locomotive: boiler with gold bands, red cab, cowcatcher, smokestack with faceted `.mg-smoke` puffs; two hopper wagons of candy crates), `RunningTrain`

@@ -502,7 +502,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id: string | null
           grid_x: number
           grid_y: number
@@ -514,7 +514,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id?: string | null
           grid_x: number
           grid_y: number
@@ -526,7 +526,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
-          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
+          item_type?: 'tree' | 'fence' | 'stream' | 'farmer_house' | 'woodshop' | 'rockery' | 'animal' | 'windmill_small' | 'furniture_factory' | 'seaport' | 'candy_factory' | 'rail_track' | 'freight_train'
           deck_id?: string | null
           grid_x?: number
           grid_y?: number

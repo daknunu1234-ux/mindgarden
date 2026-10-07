@@ -558,9 +558,9 @@ const FarmItem = memo(function FarmItem({
   // The click target follows the footprint: 2 × 2 buildings as before, bigger ones by their diamond.
   const span = (placement.width + placement.height) / 4
   const box =
-    // Windmills are 2 × 2 towers: a tall target over the whole tower.
-    placement.itemType === 'windmill_small' || placement.itemType === 'windmill_large'
-      ? { w: 170, h: placement.itemType === 'windmill_large' ? 300 : 240 }
+    // The Windmill is a 2 × 2 tower: a tall target over the whole tower.
+    placement.itemType === 'windmill_small'
+      ? { w: 170, h: 240 }
       : placement.width > 2 || placement.height > 2
       ? { w: Math.round(span * TILE_W * 1.6), h: Math.round(span * TILE_W * 0.9) }
       : big
@@ -584,7 +584,6 @@ const FarmItem = memo(function FarmItem({
           {placement.itemType === 'rockery' && <RockerySprite />}
           {placement.itemType === 'fence' && <FenceSprite links={{ north: bit(links, 0), east: bit(links, 1), south: bit(links, 2), west: bit(links, 3) }} />}
           {(placement.itemType === 'windmill_small' ||
-            placement.itemType === 'windmill_large' ||
             placement.itemType === 'furniture_factory' ||
             placement.itemType === 'candy_factory' ||
             placement.itemType === 'seaport' ||

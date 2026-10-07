@@ -10,7 +10,7 @@
 //     the conveyor's end (`.mg-roll`).
 //   Furniture Factory: exhaust smoke from the metal pipe; golden sawdust sparks and wood chips spraying
 //     from the saw bench (`.mg-spark`).
-//   Small Windmill: a rotor of four lattice sails turning about the painted hub, in the sails' plane
+//   Windmill: a rotor of four lattice sails turning about the painted hub, in the sails' plane
 //     (`.mg-spin`). Off while the render has its sails painted in (`bakedSails`): turning sails over
 //     still ones would show both. A render without sails turns it on.
 import type { CSSProperties } from 'react'
@@ -144,7 +144,7 @@ function FurnitureOverlay() {
   )
 }
 
-// ── Small Windmill ───────────────────────────────────────────────────────────
+// ── Windmill ───────────────────────────────────────────────────────────
 
 // One sail in the rotor's own frame (hub at the origin, the sail along −y, 100 long): a ladder of
 // golden-oak rails and laths with cream canvas panels.

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PGlite } from '@electric-sql/pglite'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { asUser, migratedDb } from '@/test/pglite'
@@ -37,16 +39,14 @@ beforeEach(async () => {
 describe('buying the new buildings', () => {
   it('charges the catalogue prices and sizes, the 6 × 2 seaport included', async () => {
     await buy('windmill_small', 2, 4)
-    await buy('windmill_large', 8, 4)
     await buy('furniture_factory', 4, 4)
     await buy('seaport', 0, 14)
-    // Today's prices (migration 20261015000000 lowered them).
-    expect(await coins()).toBe(2000 - 30 - 60 - 50 - 100)
+    // Today's prices (migration 20261015000000; the Windmill 60 since 20261017000000).
+    expect(await coins()).toBe(2000 - 60 - 50 - 100)
     const rows = (await db.query<{ item_type: string; width: number; height: number }>(`select item_type, width, height from public.garden_placements where user_id = $1 order by item_type`, [OWNER])).rows
     expect(rows).toEqual([
       { item_type: 'furniture_factory', width: 2, height: 2 },
       { item_type: 'seaport', width: 6, height: 2 },
-      { item_type: 'windmill_large', width: 2, height: 2 },
       { item_type: 'windmill_small', width: 2, height: 2 },
     ])
   })
@@ -54,6 +54,21 @@ describe('buying the new buildings', () => {
   it('no longer sells the retired buildings', async () => {
     await expect(buy('farmer_house', 0, 0)).rejects.toThrow(/ITEM_RETIRED/)
     await expect(buy('woodshop', 0, 0)).rejects.toThrow(/ITEM_RETIRED/)
+    await expect(buy('windmill_large', 0, 0)).rejects.toThrow(/ITEM_RETIRED/)
+    expect(await coins()).toBe(2000)
+  })
+
+  it('folds any Grand Windmill left standing into a Windmill on the same tiles (migration 20261017000000)', async () => {
+    const sql = readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', '20261017000000_unified_windmill.sql'), 'utf8')
+    await asUser(db, null)
+    // A Grand Windmill as an island had it before the migration (the type check allowed it then).
+    await db.query(`alter table public.garden_placements drop constraint garden_placements_item_type_check`)
+    await db.query(`insert into public.garden_placements (user_id, item_type, grid_x, grid_y, width, height) values ($1, 'windmill_large', 3, 5, 2, 2)`, [OWNER])
+    await db.exec(sql)
+    expect((await db.query(`select item_type, grid_x, grid_y, width, height from public.garden_placements where user_id = $1`, [OWNER])).rows).toEqual([
+      { item_type: 'windmill_small', grid_x: 3, grid_y: 5, width: 2, height: 2 },
+    ])
+    await expect(db.query(`insert into public.garden_placements (user_id, item_type, grid_x, grid_y) values ($1, 'windmill_large', 9, 9)`, [OWNER])).rejects.toThrow(/item_type_check/)
     expect(await coins()).toBe(2000)
   })
 
@@ -74,25 +89,26 @@ describe('power', () => {
     (await one<{ on: boolean }>(`select public.farm_building_powered(id) as on from public.garden_placements where item_type = $1`, [type])).on
 
   it('a factory touching a windmill field works; out of reach it does not', async () => {
-    await buy('furniture_factory', 10, 10)
+    await buy('furniture_factory', 12, 12)
     expect(await powered('furniture_factory')).toBe(false)
-    // Small windmill at (6..7, 10..11): its field is (5..8, 9..12), the factory starts at x = 10.
-    await buy('windmill_small', 6, 10)
+    // Windmill at (0..1, 6..7): its field is (−4..5, 2..11), far from the factory at (12..13, 12..13).
+    await buy('windmill_small', 0, 6)
     expect(await powered('furniture_factory')).toBe(false)
-    await buy('windmill_small', 7, 12)
-    // Field (6..9, 11..14) touches the factory's (10..11)? No: 9 < 10. Still off.
+    // Windmill at (8..9, 4..5): field (4..13, 0..9): the right columns, but 9 < 12. Still off.
+    await buy('windmill_small', 8, 4)
     expect(await powered('furniture_factory')).toBe(false)
-    await buy('windmill_small', 12, 12)
-    // Field (11..14, 11..14) shares tile (11, 11) with the factory.
+    // Windmill at (8..9, 8..9): field (4..13, 4..13) shares tiles with the factory.
+    await buy('windmill_small', 8, 8)
     expect(await powered('furniture_factory')).toBe(true)
   })
 
-  it('the Grand Windmill (2 × 2) reaches 2 tiles all round: a 6 × 6 zone', async () => {
-    await buy('windmill_large', 0, 0)
-    await buy('furniture_factory', 3, 3)
+  it('the Windmill (2 × 2) reaches 4 tiles all round: a 10 × 10 zone', async () => {
+    expect((await one<{ r: number }>(`select public.farm_power_reach('windmill_small') as r`)).r).toBe(4)
+    await buy('windmill_small', 0, 0)
+    await buy('furniture_factory', 5, 5)
     expect(await powered('furniture_factory')).toBe(true)
     await db.query(`delete from public.garden_placements where item_type = 'furniture_factory'`)
-    await buy('furniture_factory', 4, 4)
+    await buy('furniture_factory', 6, 6)
     expect(await powered('furniture_factory')).toBe(false)
   })
 })

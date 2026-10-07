@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { catalogItem } from '../lib/farmCatalog'
 import { vivid } from '@/shared/lib/color'
 import { Cone, Cylinder, DEEP_SHADOW, FootprintShadow, isoCorners, IsoBox, lit } from '../components/lowPolyKit'
-import { BASES, diamond, FactorySprite, PALETTE, SeaportSprite, WindmillSprite } from '../components/PowerBuildings'
+import { BASES, diamond, FactorySprite, PALETTE, SeaportSprite } from '../components/PowerBuildings'
 import { RunningTrain, TrackTile, trackArms, trackShape, TrainSprite } from '../components/RailwaySprites'
 
 // The island's buildings in the 3D low-poly style: the faceted kit, tile bounds, and what each
@@ -91,16 +91,15 @@ describe('tile bounds and sizes', () => {
     expect([top[1], left[0]]).toEqual([-56, -112])
   })
 
-  it('the Grand Windmill is a 2 × 2 tower now, like the small one', () => {
-    expect(catalogItem('windmill_large')).toMatchObject({ name: 'Grand Windmill', width: 2, height: 2, powerReach: 2 })
+  it('the island has one Windmill (2 × 2), and no Grand Windmill', () => {
+    expect(catalogItem('windmill_small')).toMatchObject({ name: 'Windmill', width: 2, height: 2, powerReach: 4 })
+    expect(catalogItem('windmill_large')).toBeUndefined()
   })
 })
 
 describe('the buildings', () => {
   it('every 2 × 2 building sits on its footprint shadow', () => {
     for (const el of [
-      createElement(WindmillSprite, { size: 'small' }),
-      createElement(WindmillSprite, { size: 'large' }),
       createElement(FactorySprite, { powered: true }),
       createElement(FactorySprite, { powered: true, kind: 'candy' }),
     ]) {
@@ -109,32 +108,8 @@ describe('the buildings', () => {
   })
 
   it('the palette is vivid: every hue is strongly saturated', () => {
-    const hues = [PALETTE.terracotta, PALETTE.crimson, PALETTE.brass, PALETTE.cobalt, PALETTE.mint, PALETTE.candyPink, PALETTE.magenta, PALETTE.lime, PALETTE.citrus, PALETTE.azure, PALETTE.vermilion, PALETTE.royalBlue, PALETTE.emerald, PALETTE.hazard]
+    const hues = [PALETTE.canvasRed, PALETTE.cobalt, PALETTE.mint, PALETTE.candyPink, PALETTE.magenta, PALETTE.lime, PALETTE.citrus, PALETTE.azure, PALETTE.vermilion, PALETTE.royalBlue, PALETTE.emerald, PALETTE.hazard]
     for (const c of hues) expect(saturation(c), c).toBeGreaterThan(0.7)
-  })
-
-  it('Small Windmill: limestone tower, a balcony with flower planters and lanterns, a cone roof and four turning lattice sails', () => {
-    const html = svg(createElement(WindmillSprite, { size: 'small' }))
-    expect(html).toContain('data-building="windmill_small"')
-    expect((html.match(/data-part="planter"/g) ?? []).length).toBeGreaterThanOrEqual(2)
-    expect(html).toContain('data-part="lantern"')
-    expect(html).not.toContain('data-part="brace"')
-    expect(html).toMatch(/class="mg-spin"/)
-    expect((html.match(/rotate\((0|90|180|270)\)/g) ?? []).length).toBe(4)
-  })
-
-  it('Grand Windmill: cobblestone base, timber deck, amber windows, brass cogs, a crimson dome, braced striped sails', () => {
-    const html = svg(createElement(WindmillSprite, { size: 'large' }))
-    expect(html).toContain('data-building="windmill_large"')
-    expect(html).toMatch(/class="mg-spin"/)
-    const small = svg(createElement(WindmillSprite, { size: 'small' }))
-    expect((html.match(/<polygon/g) ?? []).length).toBeGreaterThan((small.match(/<polygon/g) ?? []).length)
-    for (const part of ['cobblestone', 'timber-deck', 'amber-windows', 'brass-cog', 'brace']) expect(html, part).toContain(`data-part="${part}"`)
-    // A crimson dome: a strong red facet with little green.
-    expect(fills(html).some((c) => rgb(c)[0] > 150 && rgb(c)[1] < 50 && rgb(c)[2] < 80)).toBe(true)
-    // Red-and-white striped canvas on the Grand Windmill only.
-    expect(html).toContain(`fill="${PALETTE.canvasRed}"`)
-    expect(small).not.toContain(`fill="${PALETTE.canvasRed}"`)
   })
 
   it('Furniture Factory: the saw turns and the pipes smoke only while powered', () => {

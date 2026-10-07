@@ -1,6 +1,6 @@
 // The farm shop catalogue (pure). The database charges the same prices and uses the same sizes in
 // purchase_and_place_item() (migrations 20260930000000_farm_grid.sql, 20261014000000_power_grid.sql and,
-// for today's prices, 20261015000000_rail_logistics.sql and 20261016000000_grand_windmill.sql); tests
+// for today's prices, 20261015000000_rail_logistics.sql and 20261017000000_unified_windmill.sql); tests
 // check they match.
 
 export type FarmItemType =
@@ -12,7 +12,6 @@ export type FarmItemType =
   | 'rockery'
   | 'animal'
   | 'windmill_small'
-  | 'windmill_large'
   | 'furniture_factory'
   | 'seaport'
   | 'candy_factory'
@@ -27,7 +26,6 @@ export type CatalogItem = {
     | 'farmer_house'
     | 'woodshop'
     | 'windmill_small'
-    | 'windmill_large'
     | 'furniture_factory'
     | 'candy_factory'
     | 'seaport'
@@ -88,31 +86,20 @@ export const RETIRED_CATALOG: readonly CatalogItem[] = [
 
 // What the 🏪 Shop sells.
 export const FARM_CATALOG: readonly CatalogItem[] = [
+  // The island's one Windmill (item type `windmill_small`, kept as the stored id): a 2 × 2 tower whose
+  // field reaches 4 tiles all round, a 10 × 10 area.
   {
     id: 'windmill_small',
     itemType: 'windmill_small',
     variant: null,
     tab: 'structures',
-    name: 'Windmill (Small)',
+    name: 'Windmill',
     icon: '🌬️',
-    price: 30,
-    width: 2,
-    height: 2,
-    description: 'Generates power for buildings in a 4×4 area around it.',
-    powerReach: 1,
-  },
-  {
-    id: 'windmill_large',
-    itemType: 'windmill_large',
-    variant: null,
-    tab: 'structures',
-    name: 'Grand Windmill',
-    icon: '🌀',
     price: 60,
     width: 2,
     height: 2,
-    description: 'A stately stone tower that powers buildings in a 6×6 area around it.',
-    powerReach: 2,
+    description: 'Generates power for buildings in a 10×10 area around it.',
+    powerReach: 4,
   },
   {
     id: 'furniture_factory',

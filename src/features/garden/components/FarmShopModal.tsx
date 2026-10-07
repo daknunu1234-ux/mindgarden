@@ -36,8 +36,7 @@ type PerkTone = 'stream' | 'house' | 'wood' | 'decor' | 'animal' | 'power' | 'po
 const PERKS: Record<CatalogItem['id'], { label: string; tone: PerkTone }> = {
   farmer_house: { label: '+50% 🪙 aura', tone: 'house' },
   woodshop: { label: '25% chop refund', tone: 'wood' },
-  windmill_small: { label: '⚡ Powers 4×4', tone: 'power' },
-  windmill_large: { label: '⚡ Powers 6×6', tone: 'power' },
+  windmill_small: { label: '⚡ Powers 10×10', tone: 'power' },
   furniture_factory: { label: 'Needs power', tone: 'wood' },
   seaport: { label: 'Coast · Needs power', tone: 'port' },
   candy_factory: { label: '10 🍎 → 1 🍬', tone: 'animal' },

@@ -560,10 +560,11 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 ```typescript
 // getFarmPlacements({ ownerId?: uuid }) → Placement[]   // { id, itemType, deckId, x, y, width, height, variant }
 //   yours without ownerId (signed out → []); a neighbour's: their items and PUBLIC trees only (RLS)
-// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'windmill_small' | 'windmill_large' | 'furniture_factory' | 'candy_factory' | 'seaport' | 'rail_track' | 'freight_train' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
+// placeFarmItem({ item: 'tree', deckId, x, y } | { item: 'windmill_small' | 'furniture_factory' | 'candy_factory' | 'seaport' | 'rail_track' | 'freight_train' | 'stream' | 'fence' | 'rockery' | 'cow' | 'pig', x, y })
 //   freight_train: on three Railroad Tracks in a row, else TILE_UNAVAILABLE "A Freight Train needs three Railroad Tracks in a row under it" (NOT_ON_TRACK);
 //   a track under a train can't be moved or picked up (TILE_UNAVAILABLE "A train stands on that track: move the train first", TRACK_IN_USE)
-//   (farmer_house / woodshop are retired: VALIDATION_FAILED; the database refuses them too: ITEM_RETIRED)
+//   (farmer_house / woodshop / windmill_large are retired: VALIDATION_FAILED; the database refuses them too: ITEM_RETIRED)
+//   windmill_small is the one Windmill: 2 × 2, 60 coins, a 10 × 10 power field (migration 20261017000000)
 //   seaport: coast only (its top tile on row 0 or row 14), else TILE_UNAVAILABLE "A Seaport must stand on the shore" (NOT_COASTAL; moves too)
 //   → { placementId, remainingCoins, cost }   x, y = top tile, 0–15
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS, TILE_UNAVAILABLE, DECK_NOT_FOUND, INTERNAL_ERROR

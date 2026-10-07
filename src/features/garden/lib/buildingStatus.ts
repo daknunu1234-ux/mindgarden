@@ -42,8 +42,7 @@ export function buildingStatus(
   }
   const stock = economy
   switch (itemType) {
-    case 'windmill_small':
-    case 'windmill_large': {
+    case 'windmill_small': {
       const side = entry.width + 2 * (entry.powerReach ?? 0)
       return {
         status: '⚡ Generating power',

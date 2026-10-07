@@ -45,11 +45,10 @@ describe('prices and placement', () => {
     await trackRow(5, 0, 9)
     expect(await coins()).toBe(1000 - 10)
     await buy('windmill_small', 0, 0)
-    await buy('windmill_large', 10, 0)
     await buy('furniture_factory', 3, 0)
     await buy('candy_factory', 6, 0)
     await buy('seaport', 0, 14)
-    expect(await coins()).toBe(990 - 30 - 60 - 50 - 50 - 100)
+    expect(await coins()).toBe(990 - 60 - 50 - 50 - 100)
   })
 
   it('a Freight Train (1 × 3) stands only on three tracks, and costs 30', async () => {
@@ -108,12 +107,12 @@ describe('fruit and candy', () => {
 })
 
 describe('the freight link: Candy Factory → track + train → Seaport', () => {
-  // Candy Factory at (4..5, 10..11), Seaport at (2..7, 14..15), each powered by a Small Windmill.
+  // Candy Factory at (4..5, 10..11), Seaport at (2..7, 14..15), each powered by a Windmill.
   // Track: (4, 12) beside the factory's bottom edge, (4, 13) beside the port's top edge, then a run
   // along y = 12 to x = 8 and up to (8, 10): the Freight Train stands on (8, 10..12).
   async function build({ gap = false, train = true } = {}) {
-    await buy('windmill_small', 2, 8) // field (1..4, 7..10): touches the factory at (4, 10)
-    await buy('windmill_small', 0, 12) // field (-1..2, 11..14): touches the port at (2, 14)
+    await buy('windmill_small', 2, 8) // field (−2..7, 4..13): touches the factory at (4..5, 10..11)
+    await buy('windmill_small', 0, 12) // field (−4..5, 8..17): touches the port at (2..7, 14..15)
     await buy('candy_factory', 4, 10)
     await buy('seaport', 2, 14)
     await trackCol(4, 12, 13)

@@ -21,7 +21,7 @@ import {
 } from '../lib/farmEconomy'
 import { GRID_SIZE, type Placement } from '../lib/farmGrid'
 import { checkIsPowered, checkItemPlacement, isCoastalSpot, poweredMap, powerField, seaportSpots, validateSeaportPlacement } from '../lib/powerGrid'
-import { FactorySprite, SeaportSprite, WindmillSprite } from '../components/PowerBuildings'
+import { FactorySprite, SeaportSprite } from '../components/PowerBuildings'
 
 const at = (id: string, itemType: Placement['itemType'], x: number, y: number): Placement => {
   const entry = catalogFor(itemType, null)
@@ -30,13 +30,12 @@ const at = (id: string, itemType: Placement['itemType'], x: number, y: number): 
 const migration = (file: string) => readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', file), 'utf8').split('-- Verify')[0]
 const SQL = migration('20261014000000_power_grid.sql')
 // Today's catalogue and settlement: the latest migration that re-created them.
-const LATEST = migration('20261016000000_grand_windmill.sql')
+const LATEST = migration('20261017000000_unified_windmill.sql')
 
 describe('the catalogue', () => {
   it('sells the power-grid buildings at today’s prices and sizes, and no longer the two retired ones', () => {
-    expect(['windmill_small', 'windmill_large', 'furniture_factory', 'candy_factory', 'seaport'].map((id) => catalogItem(id)).map((i) => [i!.id, i!.price, i!.width, i!.height])).toEqual([
-      ['windmill_small', 30, 2, 2],
-      ['windmill_large', 60, 2, 2],
+    expect(['windmill_small', 'furniture_factory', 'candy_factory', 'seaport'].map((id) => catalogItem(id)).map((i) => [i!.id, i!.price, i!.width, i!.height])).toEqual([
+      ['windmill_small', 60, 2, 2],
       ['furniture_factory', 50, 2, 2],
       ['candy_factory', 50, 2, 2],
       ['seaport', 100, 6, 2],
@@ -48,6 +47,15 @@ describe('the catalogue', () => {
     expect(RETIRED_CATALOG.map((i) => i.id)).toEqual(['farmer_house', 'woodshop'])
     expect(isRetired('farmer_house')).toBe(true)
     expect(isRetired('seaport')).toBe(false)
+  })
+
+  it('sells one Windmill: 2 × 2, 60 coins, a 10 × 10 power field; the Grand Windmill is gone', () => {
+    const windmills = FARM_CATALOG.filter((i) => (i.powerReach ?? 0) > 0)
+    expect(windmills).toHaveLength(1)
+    expect(windmills[0]).toMatchObject({ itemType: 'windmill_small', name: 'Windmill', price: 60, width: 2, height: 2, powerReach: 4 })
+    expect(windmills[0].description).toContain('10×10')
+    expect(catalogItem('windmill_large')).toBeUndefined()
+    expect([...FARM_CATALOG, ...RETIRED_CATALOG].some((i) => i.name.includes('Grand'))).toBe(false)
   })
 
   it('the database charges the same prices and sizes (latest catalogue), and refuses the retired buildings', () => {
@@ -63,30 +71,28 @@ describe('the catalogue', () => {
 })
 
 describe('checkIsPowered: the power grid', () => {
-  it('Small Windmill: a 4 × 4 field (its 2 × 2 + 1 tile around)', () => {
-    expect(powerField(at('w', 'windmill_small', 5, 5))).toEqual({ x: 4, y: 4, width: 4, height: 4 })
-    // The Grand Windmill: a 2 × 2 tower reaching 2 tiles all round (6 × 6).
-    expect(powerField(at('w', 'windmill_large', 5, 5))).toEqual({ x: 3, y: 3, width: 6, height: 6 })
+  it('the Windmill: a 10 × 10 field (its 2 × 2 tower + 4 tiles all round)', () => {
+    expect(powerField(at('w', 'windmill_small', 5, 5))).toEqual({ x: 1, y: 1, width: 10, height: 10 })
     expect(powerField(at('f', 'furniture_factory', 5, 5))).toBeNull()
   })
 
   it('a factory works when it touches a field, even by one tile; not beyond', () => {
-    const mill = at('w', 'windmill_small', 5, 5) // field x 4..7, y 4..7
-    expect(checkIsPowered(at('f', 'furniture_factory', 8, 5), [mill])).toBe(false) // x 8..9: just outside
-    expect(checkIsPowered(at('f', 'furniture_factory', 7, 5), [mill])).toBe(true) // shares column 7
-    expect(checkIsPowered(at('f', 'furniture_factory', 7, 7), [mill])).toBe(true) // shares tile (7, 7)
-    expect(checkIsPowered(at('f', 'furniture_factory', 8, 8), [mill])).toBe(false) // diagonal, outside
+    const mill = at('w', 'windmill_small', 5, 5) // field x 1..10, y 1..10
+    expect(checkIsPowered(at('f', 'furniture_factory', 11, 5), [mill])).toBe(false) // x 11..12: just outside
+    expect(checkIsPowered(at('f', 'furniture_factory', 10, 5), [mill])).toBe(true) // shares column 10
+    expect(checkIsPowered(at('f', 'furniture_factory', 10, 10), [mill])).toBe(true) // shares tile (10, 10)
+    expect(checkIsPowered(at('f', 'furniture_factory', 11, 11), [mill])).toBe(false) // diagonal, outside
     expect(checkIsPowered(at('f', 'furniture_factory', 10, 10), [])).toBe(false) // no windmill at all
   })
 
-  it('the Grand Windmill reaches 2 tiles beyond its 2 × 2 tower (a 6 × 6 zone)', () => {
-    const mill = at('w', 'windmill_large', 0, 0) // field −2..3
-    expect(checkIsPowered(at('f', 'furniture_factory', 3, 3), [mill])).toBe(true)
-    expect(checkIsPowered(at('f', 'furniture_factory', 4, 4), [mill])).toBe(false)
-    const grand = readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', '20261016000000_grand_windmill.sql'), 'utf8').split('-- Verify')[0]
-    expect(grand).toMatch(/when 'windmill_small' then 1 when 'windmill_large' then 2/)
-    expect(grand).toMatch(/when 'windmill_large'\s+then v_cost := 60; v_w := 2; v_h := 2;/)
-    expect(grand).toMatch(/update public\.garden_placements set width = 2, height = 2 where item_type = 'windmill_large'/)
+  it('the database: reach 4, price 60, standing Grand Windmills become Windmills, buying one is refused', () => {
+    expect(LATEST).toMatch(/select case p_item_type when 'windmill_small' then 4 else 0 end;/)
+    expect(LATEST).toMatch(/set item_type = 'windmill_small', width = 2, height = 2\s+where item_type = 'windmill_large';/)
+    expect(LATEST).toMatch(/when 'farmer_house', 'woodshop', 'windmill_large' then raise exception 'ITEM_RETIRED'/)
+    // The item type check no longer allows it.
+    const check = LATEST.slice(LATEST.indexOf('add constraint garden_placements_item_type_check'), LATEST.indexOf('-- 3.'))
+    expect(check).toContain("'windmill_small'")
+    expect(check).not.toContain('windmill_large')
   })
 
   it('buildings that need no power always work; the seaport needs it too', () => {
@@ -101,8 +107,7 @@ describe('checkIsPowered: the power grid', () => {
     expect(Object.fromEntries(poweredMap(farm))).toEqual({ f: true, g: false })
   })
 
-  it('the database applies the same field rule (reach 1 and 3, footprints touching)', () => {
-    expect(SQL).toMatch(/when 'windmill_small' then 1 when 'windmill_large' then 3/)
+  it('the database applies the same field rule (footprints touching the reach)', () => {
     expect(SQL).toMatch(/w\.grid_x - public\.farm_power_reach\(w\.item_type\) < b\.grid_x \+ b\.width/)
     expect(SQL).toMatch(/b\.grid_x < w\.grid_x \+ w\.width \+ public\.farm_power_reach\(w\.item_type\)/)
     expect(SQL).toMatch(/when b\.item_type not in \('furniture_factory', 'seaport'\) then true/)
@@ -173,8 +178,7 @@ describe('the export loop', () => {
 })
 
 describe('the buildings on the island', () => {
-  it('windmills turn their sails; the factory smokes and its gear turns only while powered', () => {
-    expect(renderToStaticMarkup(createElement('svg', null, createElement(WindmillSprite, { size: 'large' })))).toMatch(/class="mg-spin"/)
+  it('the vector factory smokes and its gear turns only while powered', () => {
     const on = renderToStaticMarkup(createElement('svg', null, createElement(FactorySprite, { powered: true })))
     const off = renderToStaticMarkup(createElement('svg', null, createElement(FactorySprite, { powered: false })))
     expect(on).toContain('mg-smoke')
@@ -200,7 +204,7 @@ describe('the buildings on the island', () => {
     expect(buildingStatus('seaport', { powered: true, economy: stock })?.status).toBe('Exporting Goods...')
     const now = Date.parse('2026-10-14T10:00:00Z')
     expect(buildingStatus('seaport', { powered: true, economy: { ...stock, payout: 12, lastExportAt: '2026-10-14T09:55:00Z' }, now })?.status).toBe('🚢 Cargo Ship Docked')
-    expect(buildingStatus('windmill_small', { poweredCount: 2, economy: null })?.power).toBe('Power field: 4×4 around it · powering 2 buildings')
+    expect(buildingStatus('windmill_small', { poweredCount: 2, economy: null })?.power).toBe('Power field: 10×10 around it · powering 2 buildings')
     expect(buildingStatus('woodshop', { economy: null })?.status).toMatch(/Retired building/)
     expect(buildingStatus('rockery', { economy: null })).toBeNull()
   })

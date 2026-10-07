@@ -18,6 +18,8 @@ import {
   type BuildingImageKind,
 } from '../components/BuildingImages'
 import { ItemDrawing } from '../components/FarmStructures'
+import { buildingStatus } from '../lib/buildingStatus'
+import { catalogItem, FARM_CATALOG } from '../lib/farmCatalog'
 import type { Pt } from '../components/lowPolyKit'
 import { diamond, type Shore } from '../components/PowerBuildings'
 
@@ -39,15 +41,27 @@ function webpSize(file: string): [number, number] {
 }
 
 describe('PNG building sprites', () => {
-  it('the Small Windmill, Candy Factory and Furniture Factory draw as images', () => {
+  it('the Windmill, Candy Factory and Furniture Factory draw as images', () => {
     for (const kind of KINDS) {
       const html = svg(createElement(ItemDrawing, { item: { itemType: kind, variant: null } }))
       expect(html, kind).toContain(`data-building="${kind}"`)
       expect(html, kind).toContain('data-sprite="image"')
       expect(html, kind).toContain(`href="${BUILDING_IMAGES[kind].href}"`)
     }
-    // The Grand Windmill keeps its vector drawing.
-    expect(svg(createElement(ItemDrawing, { item: { itemType: 'windmill_large', variant: null } }))).not.toContain('data-sprite="image"')
+  })
+
+  it('the one Windmill (Shop, island and inspector alike): the rendered sprite, 60 coins, a 10 × 10 field', () => {
+    const windmill = catalogItem('windmill_small')!
+    expect(windmill).toMatchObject({ name: 'Windmill', price: 60, width: 2, height: 2 })
+    expect(windmill.width + 2 * windmill.powerReach!).toBe(10)
+    // The Shop card's drawing is the same rendered sprite.
+    expect(svg(createElement(ItemDrawing, { item: windmill }))).toContain(`href="${BUILDING_IMAGES.windmill_small.href}"`)
+    expect(buildingStatus('windmill_small', { poweredCount: 0, economy: null })?.outputs).toEqual([{ label: 'Power', value: '10×10 area' }])
+    // No other windmill anywhere: no catalogue entry, no sprite, no vector fallback.
+    expect(FARM_CATALOG.filter((i) => i.itemType.startsWith('windmill'))).toHaveLength(1)
+    expect(catalogItem('windmill_large')).toBeUndefined()
+    expect(KINDS.filter((k) => k.startsWith('windmill'))).toEqual(['windmill_small'])
+    expect(readFileSync(join(__dirname, '..', 'components', 'PowerBuildings.tsx'), 'utf8')).not.toMatch(/WindmillSprite|GrandWindmill|windmill_large/)
   })
 
   it('each image is anchored on the ground point: its base centre at (0, 0), inside the 2 × 2 diamond', () => {

@@ -7,7 +7,7 @@ import type { CatalogItem } from '../lib/farmCatalog'
 import { GRID_SIZE, streamVariant, TILE_H, TILE_W, tileToScreen, type Footprint, type Links } from '../lib/farmGrid'
 import { streamShapes, type StreamLayer } from '../lib/streamTiles'
 import { BuildingImage, SeaportImage } from './BuildingImages'
-import { WindmillSprite, type Shore } from './PowerBuildings'
+import type { Shore } from './PowerBuildings'
 import { TrackTile, TrainSprite } from './RailwaySprites'
 import { Blossom, facetedVolume, rampColor } from './treeKit'
 
@@ -606,8 +606,6 @@ export function ItemDrawing({
   switch (item.itemType) {
     case 'windmill_small':
       return <BuildingImage kind="windmill_small" powered={powered} />
-    case 'windmill_large':
-      return <WindmillSprite size="large" />
     case 'furniture_factory':
       return <BuildingImage kind="furniture_factory" powered={powered} />
     case 'candy_factory':
