@@ -50,7 +50,9 @@ describe('contextual inheritance in questions', () => {
 
   it('asks a predicate-only note as its full proposition, with the breadcrumb badge', () => {
     const q = ask(deck, 'ts1')
-    expect(q.kind).toBe('statement')
+    // Type 1: the claim against its direct opposite (no opposite word here: the negated predicate).
+    expect(q.kind).toBe('antonym')
+    expect(q.trapType).toBe(1)
     expect(q.context).toEqual(['Web', 'TypeScript'])
     expect(answerOf(q)).toBe('TypeScript is a superset of JavaScript')
     expect(q.choices.every((c) => c.text.startsWith('TypeScript '))).toBe(true)
@@ -170,12 +172,13 @@ describe('plausible distractors', () => {
     }
   })
 
-  it('never offers a root title from the breadcrumb, nor a category name, as a wrong answer', () => {
+  it('never offers a root title from the breadcrumb, nor (outside concept mapping) a category name, as a wrong answer', () => {
     for (const s of SEEDS) {
       const q = ask(deck, 's4', s)
       const wrong = q.choices.filter((c) => c.tag !== q.correctTag).map((c) => c.text)
       expect(wrong).not.toContain('TypeScript')
-      expect(wrong).not.toContain('Vật lý')
+      // A concept-mapping question asks for the topic: other topics are its wrong answers.
+      if (q.trapType !== 3) expect(wrong).not.toContain('Vật lý')
     }
   })
 })
@@ -191,8 +194,8 @@ describe('short phrases: recognition with sibling categories as distractors', ()
   ]
 
   it('asks which item is filed under the root, never offering another item of that same root', () => {
-    const q = ask(deck, 'o1')
-    expect(q.kind).toBe('recognize')
+    const q = SEEDS.map((s) => ask(deck, 'o1', s)).find((x) => x.kind === 'recognize')!
+    expect(q.trapType).toBe(3)
     expect(q.prompt).toBe('Which note belongs under “Bào quan”?')
     expect(answerOf(q)).toBe('Ty thể')
     for (const c of q.choices) expect(['Ribosome', 'Golgi']).not.toContain(c.text)
@@ -213,12 +216,15 @@ describe('short phrases: recognition with sibling categories as distractors', ()
 })
 
 describe('zero-drop fallback', () => {
-  it('asks a note no pattern fits by recognition across the deck', () => {
+  it('asks a note no other pattern fits by concept mapping: which topic it belongs to', () => {
     const deck = [note('f1', 'xem lại ghi chú này nha', ['Việc cần làm']), note('f2', 'Ty thể sản sinh ATP', ['Sinh học'])]
-    expect(questionKinds(prepareDeck(deck), 'f1')).toEqual(['recognize'])
+    expect(questionKinds(prepareDeck(deck), 'f1')).toEqual(['category'])
     const q = ask(deck, 'f1')
-    expect(q.context).toEqual(['Việc cần làm'])
-    expect(answerOf(q)).toBe('xem lại ghi chú này nha')
+    expect(q.prompt).toBe('xem lại ghi chú này nha')
+    // The badge would give the topic away: only the parent breadcrumb (none here) is shown.
+    expect(q.context).toEqual([])
+    expect(answerOf(q)).toBe('Việc cần làm')
+    expect(q.choices.map((c) => c.text).sort()).toEqual(['Sinh học', 'Việc cần làm'])
     expectWellFormed(q)
   })
 
@@ -288,12 +294,21 @@ describe('determinism and grading', () => {
         const q = ask(deck, n.id, s)
         expectWellFormed(q)
         const answer = answerOf(q)
+        const root = n.path[n.path.length - 1]
         const truth: Record<QuestionKind, () => boolean> = {
+          antonym: () => answer.endsWith(text),
           cloze: () => q.prompt.replace('____', answer) === text,
           'recall-right': () => q.prompt.replace('____', answer) === text,
           'recall-left': () => q.prompt.replace('____', answer).replace(' – ', ' - ') === text || q.prompt.replace('____', answer) === text,
-          statement: () => answer.endsWith(text),
+          category: () => answer === root,
           recognize: () => answer === text,
+          sibling: () => answer.endsWith(text),
+          scenario: () => text.includes(q.prompt.replace(/^Scenario: /, '').replace(/\.$/, '').toLocaleLowerCase()) || answer === root,
+          // The odd one out is a note from another root; the other three are filed under this one.
+          'least-likely': () => deck.some((m) => m.statement === answer && m.path.at(-1) !== root) && q.choices.filter((c) => c.text !== answer).every((c) => deck.some((m) => m.statement === c.text && m.path.at(-1) === root)),
+          'conditional-outcome': () => text.toLocaleLowerCase().includes(answer.replace(/\.$/, '').toLocaleLowerCase()),
+          'conditional-condition': () => text.toLocaleLowerCase().includes(answer.toLocaleLowerCase()),
+          formula: () => answer.endsWith(text),
           exact: () => answer === text,
         }
         expect(truth[q.kind](), `${n.id} ${s} ${q.kind}: ${q.prompt} → ${answer}`).toBe(true)
@@ -328,10 +343,10 @@ describe('purity (hard rule 8: deterministic, no DB, no network)', () => {
   })
 
   it('imports nothing but other pure modules', () => {
-    for (const file of ['questionEngine.ts', 'notePatterns.ts']) {
+    for (const file of ['questionEngine.ts', 'notePatterns.ts', 'conceptPatterns.ts']) {
       const source = readFileSync(join(__dirname, '..', file), 'utf8')
       const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1])
-      expect(imports.every((i) => ['./trapEngine', './trapDictionary', './notePatterns', '@/shared/utils/seededRandom'].includes(i)), `${file}: ${imports}`).toBe(true)
+      expect(imports.every((i) => ['./trapEngine', './trapDictionary', './notePatterns', './conceptPatterns', '@/shared/utils/seededRandom'].includes(i)), `${file}: ${imports}`).toBe(true)
       // Code only: the header comments mention what the engine must never do.
       expect(source.replace(/\/\/.*$/gm, '')).not.toMatch(/Math\.random|new Date|Date\.now|fetch\(|supabase/)
     }

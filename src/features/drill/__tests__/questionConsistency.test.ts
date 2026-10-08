@@ -90,7 +90,8 @@ describe('session ↔ grading consistency', () => {
   it('shows the breadcrumb and, for a predicate-only note, the inherited subject', async () => {
     const { session } = await gradeAll()
     const q3 = session.questions.find((q) => q.itemId === 'i3')!
-    expect(q3.context).toEqual(['Sinh học', 'Bào quan'])
-    if (q3.kind === 'statement') expect(q3.choices.some((c) => c.text.startsWith('Bào quan là nơi'))).toBe(true)
+    // Concept mapping and scenarios hide the note's own root (it is the answer): the parent stays.
+    expect(q3.context).toEqual(q3.kind === 'category' || q3.kind === 'scenario' ? ['Sinh học'] : ['Sinh học', 'Bào quan'])
+    if (q3.kind === 'antonym' || q3.kind === 'sibling') expect(q3.choices.some((c) => c.text.startsWith('Bào quan là nơi'))).toBe(true)
   })
 })

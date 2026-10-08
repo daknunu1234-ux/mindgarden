@@ -118,7 +118,8 @@ describe('drill rounds and grading with sub-statements', () => {
   it('shows a sub-statement under its statement in the breadcrumb, asked about it', async () => {
     const { session } = await round()
     const q = session.questions.find((x) => x.itemId === 'c1')!
-    expect(q.context).toEqual(['Sinh học', 'Bào quan', 'Ty thể'])
-    if (q.kind === 'statement') expect(q.choices.some((c) => c.text.startsWith('Ty thể sản sinh'))).toBe(true)
+    // Concept mapping and scenarios hide the note's own root (it is the answer): the parents stay.
+    expect(q.context).toEqual(q.kind === 'category' || q.kind === 'scenario' ? ['Sinh học', 'Bào quan'] : ['Sinh học', 'Bào quan', 'Ty thể'])
+    if (q.kind === 'antonym' || q.kind === 'sibling') expect(q.choices.some((c) => c.text.startsWith('Ty thể sản sinh'))).toBe(true)
   })
 })

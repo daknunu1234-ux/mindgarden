@@ -191,6 +191,50 @@ export function collectTrapTiers(correctStmt: string, rules: TrapRules, siblings
   )
 }
 
+// ── Typed variants (the 8-type question engine, questionEngine.ts) ──────────
+
+// Negation words: a variant with two of them is a double negative, never offered.
+const NEGATION_WORD = /(?<![\p{L}\p{M}\p{N}])(không|chẳng|chưa|not|no|never|cannot|n't)(?![\p{L}\p{M}\p{N}])/giu
+const negations = (s: string) => [...s.matchAll(NEGATION_WORD)].length
+
+// Type 1 (semantic antonym): the statement with one defining keyword swapped for its opposite
+// (dictionary opposites and the author's own trap_rules.swaps first). Only when the tree allows it
+// (trap_rules.negate) and the statement has no negation of its own, the predicate itself negated as
+// the last resort ("is" → "is not"): the direct opposite of the claim, never a double negative.
+export function antonymVariants(statement: string, rules: TrapRules): string[] {
+  const text = statement.normalize('NFC')
+  const swaps = (rules.swaps ?? []).map((s) => ({ from: s.from.normalize('NFC'), to: s.to.normalize('NFC') }))
+  const own = comparable(text)
+  const out = new Map<string, string>()
+  const negated = rules.negate && negations(text) === 0 ? replaceEachMatch(text, NEGATION_PAIRS.map(([from, to]) => ({ from, to }))) : []
+  for (const v of [...replaceEachMatch(text, swaps), ...replaceEachMatch(text, bothWays(OPPOSITE_PAIRS)), ...negated]) {
+    const key = comparable(v)
+    if (key !== own && negations(v) < 2 && !out.has(key)) out.set(key, v)
+  }
+  return [...out.values()]
+}
+
+// Type 4 (sibling swap): the statement with its subject swapped for a sibling's subject, the rest
+// intact. A variant that is itself a sibling's true statement is dropped.
+export function siblingSwapVariants(statement: string, siblings: readonly string[]): string[] {
+  const text = statement.normalize('NFC')
+  const sibs = normalizeSiblings(text, siblings)
+  const taken = new Set([comparable(text), ...sibs.map(comparable)])
+  const out = new Map<string, string>()
+  for (const v of siblingSwaps(text, sibs)) {
+    const key = comparable(v)
+    if (!taken.has(key) && !out.has(key)) out.set(key, v)
+  }
+  return [...out.values()]
+}
+
+// Operator swaps between operands (+ ↔ −, × ↔ ÷, * ↔ /): one variant per operator.
+export const operatorVariants = (statement: string): string[] => operatorMutations(statement.normalize('NFC'))
+
+// One-word replacements of the given pairs, both ways, each match on its own (used for conditional
+// clauses: an intensity or direction shift).
+export const oppositeVariants = (text: string): string[] => replaceEachMatch(text.normalize('NFC'), bothWays(OPPOSITE_PAIRS)).filter((v) => negations(v) < 2)
+
 // All candidates in tier order (used for "is this drillable?" checks and tests).
 export function collectTrapCandidates(correctStmt: string, rules: TrapRules, siblings: readonly string[] = []): string[] {
   return collectTrapTiers(correctStmt, rules, siblings).flat()

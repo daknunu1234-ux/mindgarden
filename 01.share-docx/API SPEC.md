@@ -320,7 +320,7 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //   a statement under root nodeId, or under statement parentItemId (any depth), right below afterItemId when that is a sibling
 // Both are createContentNode underneath. Errors: as createContentNode, plus ITEM_NOT_FOUND (parentItemId not in the tree)
 ```
-- Authors never see or send trap rules. Zero drop: every note gets a question (cloze, recall, true/false, recognition, or "spot your exact note"; backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable. The mindmap's `AddRootDialog` and ⚙️ Manage dialog call these and `router.refresh()`
+- Authors never see or send trap rules. Zero drop: every note gets a question in one of 8 conceptual trap types (antonym, cloze / recall, concept mapping, sibling swap, scenario, least likely, condition, formula), balanced over a round and never the same type twice within 2 questions; only a lone note no type fits gets "spot your exact note" (backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable. The mindmap's `AddRootDialog` and ⚙️ Manage dialog call these and `router.refresh()`
 
 ### `createKnowledgeItems` (decks)
 ```typescript
@@ -423,11 +423,12 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
   sessionId: string;                          // crypto.randomUUID() per call
   focus: { nodeId: string; title: string } | null;   // set for a branch round
   questions: { itemId: string; nodeTitle: string;
-               kind: 'cloze' | 'recall-right' | 'recall-left' | 'statement' | 'recognize' | 'exact';
+               kind: 'antonym' | 'cloze' | 'recall-right' | 'recall-left' | 'category' | 'recognize' | 'sibling' | 'scenario'
+                   | 'least-likely' | 'conditional-outcome' | 'conditional-condition' | 'formula' | 'exact';
                context: string[];             // breadcrumb badge: root titles, top-level → the note's own root
                prompt: string;                // the big line: a sentence with ____, a key, "Which statement is true?"…
                instruction: string;           // the hint under it ("Fill in the blank"); may be ''
-               seed: string;                  // hash(itemId + sessionId), backend/ARCHITECTURE.md §7
+               seed: string;                  // "t{trap type}" + hash(itemId + sessionId): the scheduled type travels in it (§7)
                choices: { tag: 'A' | 'B' | 'C' | 'D'; text: string }[] }[];   // 2–4 choices, no correctTag
   skippedCount: number;                       // notes the question engine can't ask (a lone "aaa"); nearly always 0
   masteredCount: number;                      // drillable items the player has at 5/5 (resting, or mixed in when reviewing)

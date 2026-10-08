@@ -143,28 +143,36 @@ Two pure, deterministic layers in `shared/lib/` (no `Math.random`, no `Date`, no
 | Module | Job |
 |--------|-----|
 | `notePatterns.ts` | Reads mindmap notes: implicit subject, `Key: Value` / `Key - Value` / `Key = Value`, definition markers, cloze targets, short phrases, `[author marks]` |
-| `questionEngine.ts` | Builds one multiple-choice question per note and seed, from the note and its deck (`prepareDeck` → `buildQuestion`) |
-| `trapEngine.ts` | The true/false "statement" question type: one-mutation traps (7a) |
+| `questionEngine.ts` | Builds one multiple-choice question per note and seed, from the note and its deck (`prepareDeck` → `buildQuestion`), in 8 conceptual trap types; `trapTypes` (the eligible pool), `typedSeed` / `seedTrapType` |
+| `conceptPatterns.ts` | Statement shapes for types 5, 7, 8: `parseConditional` (A does B when C, When C A does B, Khi / Nếu …), `parseScenario` (…, e.g. … / Ví dụ: …), `conceptOf`, `isFormula` + `formulaVariants` |
+| `trapEngine.ts` | One-change variants: `antonymVariants` (type 1), `siblingSwapVariants` (type 4), `operatorVariants`, `oppositeVariants`; the older `generateTraps` (7a) |
 
 **Zero drop**: every note gets a question. Notes are fragments in a mindmap, so the engine never requires a full sentence.
 
 ```
 DeckNote = { id, nodeId, statement, path /* root titles, top → own root */, ancestry /* their ids */, rules }
 prepareDeck(notes) ─► analyse every note once (sorted: DB order never matters)
-buildQuestion(deck, noteId, seed) ─► { kind, context (breadcrumb), prompt, instruction, choices (2–4, A–D), correctTag }
+buildQuestion(deck, noteId, seed) ─► { kind, trapType (1–8 | null), context (breadcrumb), prompt, instruction, choices (2–4, A–D), correctTag }
+trapTypes(deck, noteId) ─► the trap types the note is eligible for · typedSeed(type, base) = "t{type}{base}"
 ```
 
-| Kind | When the note supports it | Prompt → choices |
-|------|---------------------------|------------------|
-| `cloze` | A cloze target has a wrong option. `[author marks]` make this the only kind | The note with one target blanked → the term + other notes' terms; numbers → plausible wrong numbers (a year stays a year, `%` and decimals kept) |
-| `recall-right` / `recall-left` | `Key: Value`, spaced `-` / `=`, or a definition (`là`, `nghĩa là`, `is defined as`, `refers to`, `means`, `is`…), and other pair notes exist | `Ty thể: ____` → values · `____: nhà máy năng lượng` → keys |
-| `statement` | `generateTraps` finds a trap in the note's **proposition** | "Which statement is true?" → the proposition + 1–2 traps |
-| `recognize` | A short phrase / bullet item (≤ 5 words, no sentence shape) | "Which note belongs under “Root”?" → the note + notes filed under other roots (never its own root or anything below it) |
-| fallback `recognize` | Nothing above fits | The same, for any note |
-| fallback `exact` | Alone in its deck | "Which is exactly your note?" → the note + copies with two words swapped / one dropped (one word: two letters swapped) |
+Quality rules for every type: no misspellings, phonetic lookalikes, double negatives or surface tricks; every wrong answer is a well-formed statement or expression that differs in meaning, mechanism or mathematics (tested: every word of every choice comes from the tree, the opposite / negation dictionaries or a mutated index).
+
+| Type | Kind | When the note supports it | Prompt → choices |
+|------|------|---------------------------|------------------|
+| 1 Semantic antonym | `antonym` | An opposite keyword (dictionary `OPPOSITE_PAIRS`, the author's `trap_rules.swaps`); last resort, with `negate` and no negation already in the note, the negated predicate. A variant with two negations is never made | "Which statement is true?" → the proposition + variants |
+| 2 Cloze | `cloze`, `recall-right`, `recall-left` | A cloze target with a wrong option (`[author marks]` make cloze the only kind); a `Key: Value` / definition pair with other pairs in the deck | The note with one target blanked → the term + other notes' terms (numbers: plausible wrong numbers) · `Ty thể: ____` → values · `____: …` → keys |
+| 3 Concept mapping | `category`, `recognize` | The note doesn't name its own root, and other unrelated roots exist · (short phrases) items filed under other roots | The statement → "Which topic does this belong to?" → its root + unrelated roots (never an ancestor or descendant; the badge shows only the parent) · "Which note belongs under “Root”?" |
+| 4 Sibling swap | `sibling` | A subject swap with a sibling statement (same root; else a sibling root under the same parent) | "Which statement is true?" → the proposition + the claim about sibling concepts |
+| 5 Scenario | `scenario` | The note gives a worked example (`…, e.g. …`, `for example`, `such as`, `Ví dụ: …`, `chẳng hạn`) that doesn't name the concept | "Scenario: <example>." → "Which concept is demonstrated?" → the claim's subject (`conceptOf`) or the root + other concepts / topics |
+| 6 Least likely | `least-likely` | ≥ 3 notes under the root and one under an unrelated root | "Which of the following is LEAST LIKELY a characteristic of “Root”?" → 3 notes of the root + 1 alien (the answer) |
+| 7 Condition | `conditional-outcome`, `conditional-condition` | A conditional / causal statement (`when`, `if`, `whenever`, `once`, `because`, `khi`, `nếu`, `hễ`, `vì`; condition first or last) | "When C: what happens?" → the main clause + near misses (one opposite word, a number moved to an adjacent value) and other conditionals' outcomes · "A does B ____." → "when C" + near-miss conditions and sibling mechanisms' conditions |
+| 8 Formula | `formula` | An equation, ratio between symbols, indexed variable (D0, D_1), time step (t + 1) or compounding factor (1 + r) with a mutation | "Which formula is correct?" → the formula + index shifts (D0 ↔ D1), (1 + r) → r, sign swaps (r − g → r + g), × ↔ ÷, fraction inverted (a / b → b / a) |
+| fallback | `recognize`, then `exact` | No type fits (`exact`: alone in its deck; outside the 8 types, `trapType: null`) | The same recognition · "Which is exactly your note?" → copies with two words swapped / one dropped |
 
 - **Contextual inheritance**: a predicate-only note ("compiles down to clean JavaScript", "sản sinh ATP", "is a superset of…": it starts with a predicate word, or it's a lower-case fragment with no subject) borrows its own root's title as subject, so the proposition is "TypeScript compiles down to clean JavaScript". Clauses (`khi`, `when`…), pairs and notes with their own subject are left alone. Every question carries its breadcrumb (`context`), shown as a badge.
-- **Choosing**: which kinds a note supports doesn't depend on the seed; the seed picks one (rounds vary) and shuffles the choices.
+- **Choosing**: which kinds a note supports doesn't depend on the seed. A typed seed (`t{1–8}…`, `typedSeed`) asks that type when the note supports it; a plain seed (Daily Rush) picks a type with equal odds, then one of its questions; the seed also shuffles the choices.
+- **Scheduling** (`drill/lib/trapSchedule.ts` `scheduleTrapTypes`, used by `buildDrillSession` for practice and tournament rounds): each question gets the least-used type its note is eligible for (≈ 12.5 % each when all 8 are eligible; ties by the session seed) and never a type used by either of the last 2 questions; when the next note can only repeat one, one of the next 4 goes first; a repeat only when nothing else can go. The type travels in the question's seed, so grading rebuilds that exact question (the seed still passes the `[0-9a-z]{1,16}` DTO check).
 - **Distractors**: closest notes first (shared breadcrumb); only from the note's own top-level subject when it has any there (fewer, plausible choices beat an obvious odd one out); never the answer, never text already in the note, never a title from the note's own breadcrumb, never a root title as a cloze filler.
 - **The only undrillable note**: one with no two distinct words or letters and nothing else in its deck (a lone "aaa"). `decks/lib/drillable.ts` `isDrillable` = `isNoteDrillable` (askable even alone): the editor's ✅ / 💧.
 - **Grading**: the client gets `kind`, `context`, `prompt`, `instruction`, `choices` and `seed`, never `correctTag`. `submitDrillResult` / `checkDrillAnswer` / `submitTournamentAnswer` rebuild the question from the seed and the **whole deck** (`decks/server` `findDrillItem` returns `deckItems`, the same rows `listDrillItems` gives the session), so a one-branch round grades against the same context (`drill/__tests__/questionConsistency.test.ts`). No self-graded cards: mastery and 🪙 come only from a server-checked pick.

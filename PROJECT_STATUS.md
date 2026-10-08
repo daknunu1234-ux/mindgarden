@@ -195,6 +195,17 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### 8-type conceptual drill
+
+- Every statement is asked as one of 8 conceptual trap types: **antonym** (one keyword turned into its
+  opposite), **cloze** (and key–value recall), **concept mapping** (which topic?), **sibling swap** (the claim
+  about a sibling concept), **scenario** (the note's worked example: which concept?), **least likely** (3
+  characteristics + 1 alien), **condition** (A does B when C, asked both ways) and **formula** (index, compounding,
+  sign and fraction mutations). No typo, lookalike or double-negative tricks.
+- Types 5, 7 and 8 need an example, a condition or a formula; other notes fall back to the rest.
+- A round spreads its questions evenly over the types each statement supports and never repeats a type
+  within 2 questions; the type travels in the question's seed, so grading rebuilds it exactly.
+
 ### Tree cloning rewards
 
 - A shared tree can be cloned only once it has **at least 50 statements**; the clone button shows
@@ -912,7 +923,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |
+| (pending) | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
+| 9a56a4a | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |
 | 232b617 | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |
 | 9467a9b | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
 | 403e28d | feat(garden): replace railway with modular roads and delivery trucks (migration 29) (`lib/roads.ts`, `RoadSprites`, truck sprite, migration 29: tracks → roads, trains refunded, candy over roads) |
@@ -971,7 +983,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 104 files, 1026 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 108 files, 1076 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

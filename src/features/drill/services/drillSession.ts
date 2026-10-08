@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDrillItems } from '@/features/decks/server'
-import { buildQuestion, prepareDeck, toDeckNote } from '@/shared/lib/questionEngine'
+import { buildQuestion, prepareDeck, questionKinds, toDeckNote, trapTypes, typedSeed } from '@/shared/lib/questionEngine'
 import { canPractice, tournamentAccess, VISITOR_PRACTICE_MESSAGE } from '@/shared/lib/visitor'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
@@ -12,11 +12,14 @@ import type { DrillSize } from '../lib/drillSize'
 import { collectBranch } from '../lib/branch'
 import { drillSeed } from '../lib/drillSeed'
 import { emptyRoundReason, orderByMastery, selectPracticeItems } from '../lib/queue'
+import { scheduleTrapTypes } from '../lib/trapSchedule'
 import type { DrillQuestion, DrillSession } from '../types'
 
 // Builds a shuffled practice round for a deck, or for one branch when input.nodeId is set
 // (that node and all its sub-roots). Answers stay on the server:
-// questions carry only choices + seed, and checkDrillAnswer re-runs the engine to grade.
+// questions carry only choices + seed, and checkDrillAnswer re-runs the engine to grade. The round's
+// questions are spread evenly over the 8 trap types, never the same type twice within 2 questions
+// (lib/trapSchedule); each question's seed carries its type (typedSeed), so grading rebuilds it.
 // Only the deck's OWNER may practise it (strict read-only visitor mode): anyone else, including a
 // signed-out visitor, gets FORBIDDEN_VISITOR_PRACTICE and must clone the tree first.
 // `loadLevels` returns the player's mastery for the given items: 5/5 items sit out unless
@@ -71,18 +74,9 @@ export async function buildDrillSession(
   // The whole deck is the question engine's context (siblings, other roots' notes as distractors),
   // even for a one-branch round: grading rebuilds each question from the same whole-deck context.
   const deck = prepareDeck(res.data.items.map(toDeckNote))
-  const drillable: DrillQuestion[] = []
-  let skippedCount = 0
-  for (const item of items) {
-    const seed = drillSeed(item.id, sessionId)
-    const built = buildQuestion(deck, item.id, seed)
-    if (!built.ok) {
-      skippedCount += 1
-      continue
-    }
-    const { kind, context, prompt, instruction, choices } = built.question
-    drillable.push({ itemId: item.id, nodeTitle: item.nodeTitle, kind, context, prompt, instruction, seed, choices })
-  }
+  // Every statement the engine can ask (zero drop: in practice all of them).
+  const drillable = items.filter((item) => questionKinds(deck, item.id).length > 0).map((item) => ({ itemId: item.id, nodeTitle: item.nodeTitle }))
+  const skippedCount = items.length - drillable.length
 
   const levels = loadLevels && drillable.length > 0 ? await loadLevels(
           drillable.map((q) => q.itemId),
@@ -99,7 +93,21 @@ export async function buildDrillSession(
 
   // Shuffle, then lowest mastery first (ties keep the shuffle), then cut to the chosen size (5 / 10 /
   // 20). A smaller queue simply gives a shorter round.
-  const round = orderByMastery(seededShuffle(queue, seededRandom(sessionId)), levels).slice(0, input.limit)
+  const order = orderByMastery(seededShuffle(queue, seededRandom(sessionId)), levels).slice(0, input.limit)
+  // Then a trap type per question (balanced, no type twice within 2), carried in its seed.
+  const schedule = scheduleTrapTypes(
+    order.map((item) => ({ item, eligible: trapTypes(deck, item.itemId) })),
+    seededRandom(`${sessionId}:types`),
+  )
+  const round: DrillQuestion[] = []
+  for (const { item, type } of schedule) {
+    const base = drillSeed(item.itemId, sessionId)
+    const seed = type === null ? base : typedSeed(type, base)
+    const built = buildQuestion(deck, item.itemId, seed)
+    if (!built.ok) continue // unreachable: drillable statements always build
+    const { kind, context, prompt, instruction, choices } = built.question
+    round.push({ itemId: item.itemId, nodeTitle: item.nodeTitle, kind, context, prompt, instruction, seed, choices })
+  }
   const { id, slug, title, treeType } = res.data.deck
   return ok({
     deck: { id, slug, title, treeType },

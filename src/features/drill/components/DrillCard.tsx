@@ -20,13 +20,23 @@ type DrillCardProps = {
 
 // The ribbon over the question: what kind of question this is.
 const KIND_TITLE: Record<DrillQuestion['kind'], string> = {
+  antonym: 'Which is true?',
   cloze: 'Fill the gap',
   'recall-right': 'Recall',
   'recall-left': 'Recall',
-  statement: 'Which is true?',
+  category: 'Which topic?',
   recognize: 'Which belongs here?',
+  sibling: 'Which is true?',
+  scenario: 'Scenario',
+  'least-likely': 'Least likely',
+  'conditional-outcome': 'Cause and effect',
+  'conditional-condition': 'Cause and effect',
+  formula: 'Which formula?',
   exact: 'Spot your note',
 }
+// "Which is true?" questions (antonym, sibling, formula): the wrong pick differs from the truth in one
+// place, highlighted in the feedback.
+const ONE_CHANGE: ReadonlySet<DrillQuestion['kind']> = new Set(['antonym', 'sibling', 'formula', 'exact'])
 
 function choiceState(tag: DrillTag, state: DrillState): ChoiceState {
   if (state.status === 'answering' || state.status === 'done') return 'idle'
@@ -82,7 +92,7 @@ function DrillCard({ question, state, onSelect, onNext }: DrillCardProps) {
               <p className="font-game text-lg font-bold text-amber-700">🌿 Almost! This root needs a little more water</p>
               {/* A true/false trap differs from the note in one place: highlight it. Other kinds just
                   show the right answer next to the pick. */}
-              {question.kind === 'statement' || question.kind === 'exact' ? (
+              {ONE_CHANGE.has(question.kind) ? (
                 <>
                   <p className="mt-3 text-sm">
                     <span className="font-semibold">{question.kind === 'exact' ? 'Your pick changed: ' : 'The trap changed: '}</span>
