@@ -606,7 +606,8 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, DECK_NOT_FOUND (not your tree), DRILL_NO_ITEMS, RUSH_ALREADY_PLAYED, INTERNAL_ERROR
 // answerDailyRush({ day: string; tag: 'A' | 'B' | 'C' | 'D' | null /* null = the clock ran out */ })
 //   → { isCorrect; correctTag; streak } & ( { finished: false; next: RushCard }
-//                                          | { finished: true; outcome: 'wrong' | 'timeout' | 'complete'; coinsEarned: number; totalCoins: number | null } )
+//                                          | { finished: true; outcome: 'wrong' | 'timeout' | 'complete'; coinsEarned: number; totalCoins: number | null;
+//                                              watering: { deckId; cards: number; streakCount: number | null; streakReward: number } | null } )
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, RUSH_NOT_ACTIVE, INTERNAL_ERROR
 type RushCard = { index: number; kind; context: string[]; prompt: string; instruction: string; choices: { tag; text }[] }   // no correctTag
 ```
@@ -614,8 +615,8 @@ type RushCard = { index: number; kind; context: string[]; prompt: string; instru
 - **Sudden death, 8 s a card**: a right answer in time returns the next card; a wrong answer, a timeout (`tag: null`) or an answer that reaches the database more than 8 s + 2.5 s network grace after the card was dealt ends the run. The database clock decides, never the client
 - **Reward**: coins = cards answered in a row, paid by `answer_daily_rush()` in the same transaction that ends the run. A run asks each statement at most once and at most 30 cards (`RUSH_MAX_STREAK`), so it pays at most 30 🪙; answering them all is `outcome: 'complete'`
 - **Server-graded**: the payload carries only the pick. Cards are rebuilt from the run's seed and the tree (`rushOrder`, `rushQuestionSeed`); nothing about the answer is sent before the pick
-- **Isolated**: never touches `user_progress`, `practice_days`, tree fruit or withering. `getDailyRushStatus` is read-only except that it settles a run abandoned mid-card (pays the streak it had)
-- UI: ⚡ Daily Rush beside 💧 Water Tree in the farm's tree popover → `/deck/[slug]/rush` (`DailyRushArena`: the run starts on the Start button, never on page load). No `revalidatePath`; the result pushes `totalCoins` into `CoinsProvider`
+- **Waters its tree like a drill run**: a finished run's answered cards (the streak, plus a wrong last pick; not a timed-out card) water the rushed tree through progress's watering step, the same as `submitDrillResult`: `last_practiced_at` on those statements (💧 badge, withering), today's `practice_days` (🔥 streak, milestone bonus in `totalCoins`) and the tree's `deck_practice_days` (🍎 fruit tomorrow). Mastery is never changed by a rush. `watering` is null when nothing was answered. `getDailyRushStatus` is read-only except that it settles a run abandoned mid-card (pays the streak it had; waters nothing)
+- UI: ⚡ Daily Rush beside 💧 Water Tree in the farm's tree popover → `/deck/[slug]/rush` (`DailyRushArena`: the run starts on the Start button, never on page load). No `revalidatePath`; the result pushes `totalCoins` into `CoinsProvider` and shows "💧 Watered “<tree>”: +X progress" beside the score
 
 ### `getFarmHud` (progress)
 ```typescript

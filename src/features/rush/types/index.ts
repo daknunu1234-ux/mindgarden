@@ -37,6 +37,19 @@ export type RushAnswer = {
   streak: number
 } & (
   | { finished: false; next: RushCard }
-  // The run is over: why, what it paid and the purse after it.
-  | { finished: true; outcome: RushOutcome; coinsEarned: number; totalCoins: number | null }
+  // The run is over: why, what it paid, the purse after it (the streak milestone bonus included) and
+  // how it watered its tree.
+  | { finished: true; outcome: RushOutcome; coinsEarned: number; totalCoins: number | null; watering: RushWatering | null }
 )
+
+// A finished run's answered cards water its tree as drill answers do (progress waterTree): null when
+// none was answered.
+export type RushWatering = {
+  deckId: string
+  // Cards answered (rushAnsweredCards): the watering progress shown on the result screen.
+  cards: number
+  // The 🔥 watering streak after it (null if it couldn't be read).
+  streakCount: number | null
+  // A streak milestone bonus paid by this watering (0 if none).
+  streakReward: number
+}

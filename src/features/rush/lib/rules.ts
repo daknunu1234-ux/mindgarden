@@ -32,6 +32,12 @@ export const rushQuestionSeed = (itemId: string, seed: string, index: number): s
 
 export type RushOutcome = 'wrong' | 'timeout' | 'complete'
 
+// Cards a finished run answered, which water its tree as drill answers do: every card answered in a
+// row, plus the last pick when it was wrong (a wrong drill answer waters too). A card the clock ran
+// out on was never answered.
+export const rushAnsweredCards = (outcome: RushOutcome, streak: number): number =>
+  Math.min(rushCoins(streak) + (outcome === 'wrong' ? 1 : 0), RUSH_MAX_STREAK)
+
 // The result screen's headline.
 export function rushHeadline(outcome: RushOutcome, streak: number): string {
   if (outcome === 'complete') return 'Perfect rush!'

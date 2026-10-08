@@ -22,6 +22,7 @@ Per-player mastery for knowledge items.
 | `index.ts` | `DrillSubmissionDto` | Zod `{ itemId, seed, tag }`, also used by drill's `checkDrillAnswer` |
 | `index.ts` | `nextMastery`, `MASTERY_NAMES`, `MAX_MASTERY`, types | Pure rules: correct +1 (max 5), wrong −1 (min 0; 5/5 → 4/5 too). The scale (`MAX_MASTERY = 5`, names, `isMastered`) lives in `shared/lib/mastery.ts` and is re-exported here |
 | `server.ts` | `gradeSubmission`, `fetchMasteryLevels` | For drill: grading, and the player's levels to rest 5/5 items |
+| `server.ts` | `waterTree(supabase, userId, { deckId, timeZone })`, `touchPractised(supabase, userId, itemIds)`, `claimStreakReward` | Watering a tree (`services/watering.ts`), shared by `recordDrillResult` and a finished Daily Rush: today's practice day (`practice_days`, the 🔥 streak) and the tree's (`deck_practice_days`, 🍎 fruit tomorrow), once a day; `touchPractised` freshens `last_practiced_at` (💧 badge, withering) without changing mastery (missing rows at 0/5); then the streak milestone bonus. Tests: `__tests__/watering.test.ts` |
 | `server.ts` | `gradeSubmission(supabase, submission, viewerId)` | Rebuilds the question from the seed and the whole deck (`decks/server` `findDrillItem` → `deckItems`, `shared/lib/questionEngine`); shared with drill. Owner only: anyone else (or `viewerId = null`) gets `FORBIDDEN_VISITOR_PRACTICE`, so `submitDrillResult` saves no progress, streak or coin on someone else's tree (`__tests__/visitorGrading.test.ts`) |
 
 ## Notes

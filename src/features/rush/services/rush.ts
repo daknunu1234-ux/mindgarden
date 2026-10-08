@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listDrillItems } from '@/features/decks/server'
+import { claimStreakReward, touchPractised, waterTree } from '@/features/progress/server'
 import { localDay, resolveTimeZone } from '@/shared/lib/localDay'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import { buildQuestion, prepareDeck, questionKinds, toDeckNote } from '@/shared/lib/questionEngine'
@@ -10,8 +11,8 @@ import { canPractice } from '@/shared/lib/visitor'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import type { AnswerDailyRushInput, StartDailyRushInput } from '../dto/RushDto'
-import { RUSH_LIMIT_MS, RUSH_STALE_MS, rushOrder, rushQuestionSeed, type RushOutcome } from '../lib/rules'
-import type { RushAnswer, RushCard, RushStart, RushStatus } from '../types'
+import { RUSH_LIMIT_MS, RUSH_STALE_MS, rushAnsweredCards, rushOrder, rushQuestionSeed, type RushOutcome } from '../lib/rules'
+import type { RushAnswer, RushCard, RushStart, RushStatus, RushWatering } from '../types'
 
 // Daily Rush (migration 20261008000000_daily_rush.sql): one sudden-death run a day on one of the
 // player's own trees. The run's cards are never stored: the server rebuilds them from the run's seed
@@ -23,7 +24,7 @@ type Client = SupabaseClient<Database>
 const MIGRATION = 'supabase/migrations/20261008000000_daily_rush.sql'
 const missing = (code?: string) => code === '42P01' || code === 'PGRST202' || code === 'PGRST205' || code === '42883'
 
-type DealtCard = RushCard & { correctTag: DrillTag }
+type DealtCard = RushCard & { correctTag: DrillTag; itemId: string }
 
 // The cards a run deals, in order: every statement of the tree the question engine can ask, shuffled
 // by the run's seed, each at most once. Owner only.
@@ -39,7 +40,7 @@ async function dealCards(supabase: Client, userId: string, deckId: string, seed:
     const built = buildQuestion(deck, itemId, rushQuestionSeed(itemId, seed, cards.length))
     if (!built.ok) continue
     const { kind, context, prompt, instruction, choices, correctTag } = built.question
-    cards.push({ index: cards.length, kind, context, prompt, instruction, choices, correctTag })
+    cards.push({ index: cards.length, kind, context, prompt, instruction, choices, correctTag, itemId })
   }
   return ok(cards)
 }
@@ -102,9 +103,10 @@ export async function startRush(supabase: Client, userId: string, { deckId, time
 }
 
 // Grades one pick (or a timeout: tag null) of the player's run of `day`. Right and in time: the next
-// card. Otherwise, or after the last card, the run ends and pays its streak in the same transaction.
+// card. Otherwise, or after the last card, the run ends and pays its streak in the same transaction;
+// then its answered cards water the tree (wateringOf).
 export async function answerRush(supabase: Client, userId: string, { day, tag }: AnswerDailyRushInput): Promise<ActionResult<RushAnswer>> {
-  const { data: run, error: readError } = await supabase.from('daily_rush_runs').select('deck_id, seed, streak, status').eq('user_id', userId).eq('day', day).maybeSingle()
+  const { data: run, error: readError } = await supabase.from('daily_rush_runs').select('deck_id, seed, streak, status, time_zone').eq('user_id', userId).eq('day', day).maybeSingle()
   if (readError) {
     console.error('[rush] answerRush read failed', readError.code, readError.message)
     return fail('INTERNAL_ERROR', 'Could not check this answer')
@@ -144,5 +146,35 @@ export async function answerRush(supabase: Client, userId: string, { day, tag }:
   // The player's own verdict is the database's: a right pick that arrived too late is a timeout.
   const verdict = { isCorrect: row.is_finished ? row.outcome === 'complete' : true, correctTag: card?.correctTag ?? 'A', streak: row.run_streak }
   if (!row.is_finished) return ok({ ...verdict, finished: false, next: publicCard(dealt[row.run_streak]) })
-  return ok({ ...verdict, finished: true, outcome: row.outcome as RushOutcome, coinsEarned: row.coins_earned, totalCoins: row.total_coins })
+  const outcome = row.outcome as RushOutcome
+  const watered = run.deck_id ? await wateringOf(supabase, userId, { deckId: run.deck_id, timeZone: run.time_zone, cards: dealt.slice(0, rushAnsweredCards(outcome, row.run_streak)) }) : null
+  return ok({
+    ...verdict,
+    finished: true,
+    outcome,
+    coinsEarned: row.coins_earned,
+    // The streak milestone bonus (if this watering earned one) lands after the run's coins: its total is the newest.
+    totalCoins: watered?.totalCoins ?? row.total_coins,
+    watering: watered?.watering ?? null,
+  })
+}
+
+// A finished run's answered cards water its tree exactly as drill answers do: the statements are
+// marked practised now (mastery untouched: the rush stays out of grading), today becomes a practice day
+// for the 🔥 watering streak and for the tree (🍎 fruit tomorrow), and a streak milestone pays its bonus
+// once that day. Nothing answered (the clock ran out on the first card): nothing watered. Watering
+// never fails the answer.
+async function wateringOf(
+  supabase: Client,
+  userId: string,
+  { deckId, timeZone, cards }: { deckId: string; timeZone: string; cards: readonly DealtCard[] },
+): Promise<{ watering: RushWatering; totalCoins: number | null } | null> {
+  if (cards.length === 0) return null
+  await touchPractised(supabase, userId, cards.map((c) => c.itemId))
+  const { today, streak } = await waterTree(supabase, userId, { deckId, timeZone })
+  const bonus = streak.success ? await claimStreakReward(userId, streak.data, today) : null
+  return {
+    watering: { deckId, cards: cards.length, streakCount: streak.success ? streak.data.current : null, streakReward: bonus?.coinsEarned ?? 0 },
+    totalCoins: bonus ? bonus.totalCoins : null,
+  }
 }

@@ -9,7 +9,7 @@ import { cn } from '@/shared/utils/cn'
 import { answerDailyRush } from '../actions/answerDailyRush'
 import { startDailyRush } from '../actions/startDailyRush'
 import { RUSH_CARD_MS, RUSH_MAX_STREAK, RUSH_SECONDS, RUSH_URGENT_SECONDS, rushHeadline } from '../lib/rules'
-import type { DrillTag, RushAnswer, RushCard, RushOutcome } from '../types'
+import type { DrillTag, RushAnswer, RushCard, RushOutcome, RushWatering } from '../types'
 
 type Deck = { id: string; slug: string; title: string }
 
@@ -19,7 +19,7 @@ type Phase =
   | { status: 'starting' }
   // `dealt`: bumps with every card, so the timer bar restarts.
   | { status: 'playing'; card: RushCard; dealt: number; picked: DrillTag | null; checking: boolean }
-  | { status: 'over'; outcome: RushOutcome; streak: number; coins: number; card: RushCard | null; picked: DrillTag | null; correctTag: DrillTag | null }
+  | { status: 'over'; outcome: RushOutcome; streak: number; coins: number; card: RushCard | null; picked: DrillTag | null; correctTag: DrillTag | null; watering: RushWatering | null }
 
 type Vars = CSSProperties & Record<`--mg-${string}`, string>
 
@@ -51,7 +51,7 @@ function DailyRushArena({ deck, statementCount }: { deck: Deck; statementCount: 
       if (res.totalCoins !== null) setCoins(res.totalCoins)
       if (res.outcome !== 'complete') setFlash((n) => n + 1)
       setStreak(res.streak)
-      setPhase({ status: 'over', outcome: res.outcome, streak: res.streak, coins: res.coinsEarned, card, picked, correctTag: res.outcome === 'complete' ? null : res.correctTag })
+      setPhase({ status: 'over', outcome: res.outcome, streak: res.streak, coins: res.coinsEarned, card, picked, correctTag: res.outcome === 'complete' ? null : res.correctTag, watering: res.watering })
     },
     [setCoins],
   )
@@ -68,7 +68,8 @@ function DailyRushArena({ deck, statementCount }: { deck: Deck; statementCount: 
           if (res.error.code === 'AUTH_UNAUTHORIZED') openLogin()
           // The run can't continue (already over, or the server is unreachable): show what we know.
           setFlash((n) => n + 1)
-          setPhase((p) => ({ status: 'over', outcome: tag === null ? 'timeout' : 'wrong', streak: p.status === 'playing' ? p.card.index : 0, coins: 0, card, picked: tag, correctTag: null }))
+          // (Unknown watering: the server didn't answer.)
+          setPhase((p) => ({ status: 'over', outcome: tag === null ? 'timeout' : 'wrong', streak: p.status === 'playing' ? p.card.index : 0, coins: 0, card, picked: tag, correctTag: null, watering: null }))
           return
         }
         if (res.data.finished) return finish(res.data, card, tag)
@@ -162,7 +163,7 @@ function DailyRushArena({ deck, statementCount }: { deck: Deck; statementCount: 
     return (
       <>
         {flash > 0 && <span key={flash} aria-hidden className="mg-rush-flash pointer-events-none fixed inset-0 z-50 bg-amber-400" />}
-        <RushResult deck={deck} outcome={phase.outcome} streak={phase.streak} coins={phase.coins} card={phase.card} picked={phase.picked} correctTag={phase.correctTag} />
+        <RushResult deck={deck} outcome={phase.outcome} streak={phase.streak} coins={phase.coins} card={phase.card} picked={phase.picked} correctTag={phase.correctTag} watering={phase.watering} />
       </>
     )
   }
@@ -229,8 +230,27 @@ function DailyRushArena({ deck, statementCount }: { deck: Deck; statementCount: 
 const RUSH_BUTTON =
   'inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 font-game font-bold text-white shadow-lg transition hover:brightness-110 focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none active:scale-95 disabled:opacity-70'
 
-// The result: the streak, the coins flying into the purse, and the card that ended the run.
-function RushResult({ deck, outcome, streak, coins, card, picked, correctTag }: { deck: Deck; outcome: RushOutcome; streak: number; coins: number; card: RushCard | null; picked: DrillTag | null; correctTag: DrillTag | null }) {
+// The result: the streak, the coins flying into the purse, how the run watered its tree (as a drill
+// round would), and the card that ended the run.
+function RushResult({
+  deck,
+  outcome,
+  streak,
+  coins,
+  card,
+  picked,
+  correctTag,
+  watering,
+}: {
+  deck: Deck
+  outcome: RushOutcome
+  streak: number
+  coins: number
+  card: RushCard | null
+  picked: DrillTag | null
+  correctTag: DrillTag | null
+  watering: RushWatering | null
+}) {
   const right = card && correctTag ? card.choices.find((c) => c.tag === correctTag) : undefined
   const mine = card && picked ? card.choices.find((c) => c.tag === picked) : undefined
   return (
@@ -259,6 +279,22 @@ function RushResult({ deck, outcome, streak, coins, card, picked, correctTag }: 
           </span>
         )}
         <p className="mt-1 text-sm font-semibold text-amber-900/75">{coins > 0 ? 'Added to your purse.' : 'No coins this time. Tomorrow is a new run!'}</p>
+        {/* The watering: the answered cards count as today's practice of this tree. */}
+        <p
+          data-rush-watering={watering ? watering.cards : 0}
+          className={cn('mt-2 rounded-full border-2 px-4 py-1 text-center font-game text-sm font-extrabold', watering ? 'border-sky-700/40 bg-sky-100 text-sky-900' : 'border-amber-800/20 bg-white/70 text-amber-900/80')}
+        >
+          {watering
+            ? `💧 Watered “${deck.title}”: +${watering.cards} progress`
+            : '💧 No card answered: this tree was not watered'}
+        </p>
+        {watering && (
+          <p className="text-center text-xs font-semibold text-sky-900/80">
+            {`${watering.cards === 1 ? '1 card' : `${watering.cards} cards`} counted as today’s practice`}
+            {watering.streakCount !== null && ` · 🔥 ${watering.streakCount}-day watering streak`}
+            {watering.streakReward > 0 && ` · +${watering.streakReward} 🪙 streak bonus`}
+          </p>
+        )}
       </div>
 
       {outcome !== 'complete' && card && (
@@ -276,7 +312,7 @@ function RushResult({ deck, outcome, streak, coins, card, picked, correctTag }: 
           <Link href="/">Back to the farm</Link>
         </GameButton>
         <GameButton asChild tone="sky">
-          <Link href={`/deck/${deck.slug}/drill`}>💧 Water this tree</Link>
+          <Link href={`/deck/${deck.slug}/drill`}>{watering ? '🌱 Keep practising' : '💧 Water this tree'}</Link>
         </GameButton>
       </div>
     </GamePanel>

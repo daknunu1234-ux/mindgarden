@@ -8,10 +8,8 @@ import { shouldAwardMasteryCoin } from '../lib/coins'
 import { nextMastery, toMasteryLevel } from '../lib/masteryRules'
 import type { DrillResult } from '../types'
 import { awardMasteryCoin, claimStreakReward, readCoins } from './coins'
-import { localDay, resolveTimeZone } from '@/shared/lib/localDay'
-import { recordDeckPracticeDay } from './fruit'
 import { gradeWithTree } from './grading'
-import { recordPracticeDay } from './streak'
+import { waterTree } from './watering'
 
 const UNIQUE_VIOLATION = '23505'
 const UNDEFINED_COLUMN = '42703'
@@ -73,12 +71,11 @@ export async function recordDrillResult(
     return fail('INTERNAL_ERROR', 'Could not save progress')
   }
 
-  // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes. It also logs
-  // the tree's own practice day, so tomorrow the tree bears fruit (tree_fruit migration).
-  const today = localDay(new Date(), resolveTimeZone(submission.timeZone))
-  const [streak, , coins] = await Promise.all([
-    recordPracticeDay(supabase, userId, submission.timeZone),
-    recordDeckPracticeDay(userId, gradedWithTree.data.deckId, today),
+  // Any saved answer (right or wrong) waters the tree for today: no penalty for mistakes (watering.ts:
+  // today's practice day, and the tree's own one, so tomorrow it bears fruit). A finished Daily Rush
+  // waters the same way.
+  const [{ today, streak }, coins] = await Promise.all([
+    waterTree(supabase, userId, { deckId: gradedWithTree.data.deckId, timeZone: submission.timeZone }),
     !coinsReady
       ? Promise.resolve(fail('INTERNAL_ERROR', 'Coins are not set up yet'))
       : shouldAwardMasteryCoin({ previous: previousMasteryLevel, next: masteryLevel, alreadyAwarded: current?.coin_awarded_at != null })

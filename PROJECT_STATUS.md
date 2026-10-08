@@ -87,7 +87,7 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   and grades every card (the client only sends the pick); the database clock times each answer
   (8 s + 2.5 s network grace); the streak is paid in the same transaction that ends the run.
 - **Limits**: a run asks each statement once and at most 30 cards, so it pays at most 30 🪙.
-- **Isolated**: a rush changes no mastery, streak, watering or fruit. Only coins.
+- **Waters its tree** (since the watering hook-up): the cards a finished run answered water the rushed tree exactly like a drill run (watering streak, fruit tomorrow, 💧 badge off, no withering); the result screen shows "💧 Watered “<tree>”: +X progress". Mastery is still never changed by a rush.
 - **Rule 10 exception**: this is the one mode with a clock and sudden death (recorded in
   `01.share-docx/AGENTS.md`).
 
@@ -912,7 +912,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |
+| (pending) | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |
+| 232b617 | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |
 | 9467a9b | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
 | 403e28d | feat(garden): replace railway with modular roads and delivery trucks (migration 29) (`lib/roads.ts`, `RoadSprites`, truck sprite, migration 29: tracks → roads, trains refunded, candy over roads) |
 | a298c40 | feat(garden): unify windmill into a single structure powering 10x10 area at 60 coins (migration 28): Grand Windmill removed from catalogue, Shop, types and drawings; standing ones converted (migration 28) |

@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/features/decks/server', () => ({ listDrillItems: vi.fn() }))
 vi.mock('@/shared/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
+// Watering (progress): recorded here; its effects are tested in progress/__tests__/watering.test.ts.
+vi.mock('@/features/progress/server', () => ({ waterTree: vi.fn(), touchPractised: vi.fn(), claimStreakReward: vi.fn() }))
 
 import { listDrillItems } from '@/features/decks/server'
+import { claimStreakReward, touchPractised, waterTree } from '@/features/progress/server'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import { buildQuestion, prepareDeck, toDeckNote } from '@/shared/lib/questionEngine'
 import { AnswerDailyRushDto, StartDailyRushDto } from '../dto/RushDto'
@@ -17,6 +20,7 @@ import {
   RUSH_SECONDS,
   RUSH_STALE_MS,
   RUSH_URGENT_SECONDS,
+  rushAnsweredCards,
   rushCoins,
   rushHeadline,
   rushOrder,
@@ -199,6 +203,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   Object.assign(db, { runs: [], coins: 300, now: new Date('2026-10-02T03:00:00Z'), owner: ME, tree: items(8), rpcs: [] })
   install()
+  // Watering answers like the real one: today, and a 4-day streak with no milestone.
+  vi.mocked(waterTree).mockResolvedValue({ today: '2026-10-02', streak: { success: true, data: { current: 4, best: 4, practicedToday: true } } } as never)
+  vi.mocked(touchPractised).mockResolvedValue(undefined)
+  vi.mocked(claimStreakReward).mockResolvedValue(null)
 })
 
 describe('starting the day\'s run', () => {
@@ -320,6 +328,84 @@ describe('sudden death', () => {
     expect(await answerRush(client(OTHER), OTHER, { day: run.data.day, tag: 'A' })).toMatchObject({ success: false, error: { code: 'RUSH_NOT_ACTIVE' } })
     expect(await pick('2026-09-30', 'A')).toMatchObject({ success: false, error: { code: 'RUSH_NOT_ACTIVE' } })
     expect(db.runs[0].status).toBe('active')
+  })
+})
+
+describe('watering: a finished run waters its tree like a drill run', () => {
+  // The statements the run dealt, in order (as the server rebuilds them).
+  const dealtIds = (day: string) => rushOrder(db.tree.map((i) => i.id), db.runs.find((r) => r.day === day)!.seed)
+
+  it('counts the cards answered: the streak, plus a wrong last pick; a timed-out card was not answered', () => {
+    expect(rushAnsweredCards('wrong', 7)).toBe(8)
+    expect(rushAnsweredCards('wrong', 0)).toBe(1)
+    expect(rushAnsweredCards('timeout', 2)).toBe(2)
+    expect(rushAnsweredCards('timeout', 0)).toBe(0)
+    expect(rushAnsweredCards('complete', 3)).toBe(3)
+    expect(rushAnsweredCards('complete', 999)).toBe(RUSH_MAX_STREAK)
+  })
+
+  it('7 right then a wrong one: the 8 answered statements are watered on the rushed tree, in the run\'s timezone', async () => {
+    const run = await start()
+    if (!run.success) throw new Error('no run')
+    const day = run.data.day
+    for (let i = 0; i < 7; i++) await pick(day, rightTag(day))
+    const res = await pick(day, wrongTag(day))
+    expect(res).toMatchObject({ success: true, data: { finished: true, watering: { deckId: DECK, cards: 8, streakCount: 4, streakReward: 0 } } })
+    // The same watering step as a drill answer: those statements practised, the tree's day, the streak.
+    expect(touchPractised).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(touchPractised).mock.calls[0][2]).toEqual(dealtIds(day).slice(0, 8))
+    expect(waterTree).toHaveBeenCalledWith(expect.anything(), ME, { deckId: DECK, timeZone: 'UTC' })
+    expect(claimStreakReward).toHaveBeenCalledWith(ME, { current: 4, best: 4, practicedToday: true }, '2026-10-02')
+  })
+
+  it('a perfect rush waters every card; a timeout counts only the cards answered before it', async () => {
+    db.tree = items(3)
+    const run = await start()
+    if (!run.success) throw new Error('no run')
+    const day = run.data.day
+    await pick(day, rightTag(day))
+    await pick(day, rightTag(day))
+    expect(await pick(day, rightTag(day))).toMatchObject({ success: true, data: { outcome: 'complete', watering: { cards: 3 } } })
+
+    tick(24 * 3600 * 1000)
+    db.tree = items(8)
+    const next = await start()
+    if (!next.success) throw new Error('no run')
+    await pick(next.data.day, rightTag(next.data.day))
+    await pick(next.data.day, rightTag(next.data.day))
+    tick(8000)
+    expect(await pick(next.data.day, null)).toMatchObject({ success: true, data: { outcome: 'timeout', watering: { cards: 2 } } })
+  })
+
+  it('nothing answered (the clock ran out on the first card): nothing is watered', async () => {
+    const run = await start()
+    if (!run.success) throw new Error('no run')
+    tick(8000)
+    expect(await pick(run.data.day, null)).toMatchObject({ success: true, data: { outcome: 'timeout', streak: 0, watering: null } })
+    expect(waterTree).not.toHaveBeenCalled()
+    expect(touchPractised).not.toHaveBeenCalled()
+  })
+
+  it('only a finished run waters: right answers mid-run water nothing yet', async () => {
+    const run = await start()
+    if (!run.success) throw new Error('no run')
+    await pick(run.data.day, rightTag(run.data.day))
+    await pick(run.data.day, rightTag(run.data.day))
+    expect(waterTree).not.toHaveBeenCalled()
+  })
+
+  it('a watering streak milestone pays its bonus, and the purse shows it', async () => {
+    vi.mocked(claimStreakReward).mockResolvedValue({ coinsEarned: 5, totalCoins: 999 } as never)
+    const run = await start()
+    if (!run.success) throw new Error('no run')
+    await pick(run.data.day, rightTag(run.data.day))
+    expect(await pick(run.data.day, wrongTag(run.data.day))).toMatchObject({ success: true, data: { coinsEarned: 1, totalCoins: 999, watering: { cards: 2, streakReward: 5 } } })
+  })
+
+  it('the result screen shows the watering next to the score', () => {
+    const arena = readFileSync(join(__dirname, '..', 'components', 'DailyRushArena.tsx'), 'utf8')
+    expect(arena).toContain('💧 Watered “${deck.title}”: +${watering.cards} progress')
+    expect(arena).toContain("'💧 No card answered: this tree was not watered'")
   })
 })
 
