@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameButton, GameDialog, GameDialogContent, GameIcon } from '@/shared/components/game'
-import { cloneCost } from '@/shared/lib/economy'
+import { canClone, CLONE_MIN_STATEMENTS, cloneButtonState, cloneCost, cloneRequirementLabel } from '@/shared/lib/economy'
 import { seedPrice } from '@/shared/lib/treeSkins'
 import { useCoinShop } from '@/shared/stores/CoinShopProvider'
 import { useCoins, useDisplayedCoins } from '@/shared/stores/CoinsProvider'
@@ -27,26 +27,57 @@ type CloneTreeButtonProps = {
 }
 
 // "🌱 Clone to Garden (N 🪙)": the only way for a visitor to practise someone else's shared tree.
-// Opens a confirm dialog with the fee (the species' seed + min(statements, 50), cloneCost) and the
-// purse; a short purse offers the Coin Shop, a signed-out visitor gets the sign-in dialog. On success
-// the HUD purse updates and the player lands on their own copy, where editing and practice are unlocked.
+// Under it, the requirement tag ("🌱 52/50 Statements"): a tree needs at least 50 statements to be
+// cloned (economy CLONE_MIN_STATEMENTS); below that the button is disabled with a notice. A known
+// purse that's short says how many coins are missing (the dialog then offers the Coin Shop). The
+// confirm dialog shows the fee (the species' seed + min(statements, 50), cloneCost) and the purse; a
+// signed-out visitor gets the sign-in dialog. On success the HUD purse updates and the player lands on
+// their own copy, where editing and practice are unlocked; the tree's creator earns +50 🪙.
 function CloneTreeButton({ deckId, deckTitle, statementCount, treeType, coins: serverCoins, coinsAsOf, signedIn, size = 'md', className }: CloneTreeButtonProps) {
   const { open: openLogin } = useLoginDialog()
   const [open, setOpen] = useState(false)
   const cost = cloneCost(statementCount, seedPrice(treeType))
+  const eligible = canClone(statementCount)
+  const purse = useDisplayedCoins(serverCoins, coinsAsOf)
+  const short = signedIn && eligible && purse !== null && purse < cost
+  const state = cloneButtonState(statementCount, signedIn ? purse : null, cost)
 
   return (
     <>
-      <GameButton
-        type="button"
-        tone="leaf"
-        size={size}
-        className={className}
-        onClick={() => (signedIn ? setOpen(true) : openLogin())}
-      >
-        🌱 Clone to Garden ({cost} 🪙)
-      </GameButton>
-      <GameDialog open={open} onOpenChange={setOpen}>
+      <span className="inline-flex flex-col items-center gap-1" data-clone-state={state}>
+        <GameButton
+          type="button"
+          tone="leaf"
+          size={size}
+          className={className}
+          disabled={!eligible}
+          aria-describedby={`clone-requirement-${deckId}`}
+          onClick={() => (signedIn ? setOpen(true) : openLogin())}
+        >
+          {eligible ? `🌱 Clone to Garden (${cost} 🪙)` : '🌱 Clone to Garden'}
+        </GameButton>
+        <span
+          id={`clone-requirement-${deckId}`}
+          data-clone-requirement=""
+          className={cn(
+            'rounded-full border-2 px-2.5 py-0.5 font-game text-xs font-extrabold tabular-nums',
+            eligible ? 'border-[#3f6212] bg-[#ecfccb] text-[#365314]' : 'border-[#9a3412] bg-[#ffedd5] text-[#9a3412]',
+          )}
+        >
+          {cloneRequirementLabel(statementCount)}
+        </span>
+        {!eligible && (
+          <span role="note" className="text-center text-xs font-semibold text-amber-900/80">
+            Requires at least {CLONE_MIN_STATEMENTS} statements to clone
+          </span>
+        )}
+        {short && (
+          <span role="status" className="text-center text-xs font-semibold text-amber-900/80">
+            You need {cost - purse} more 🪙
+          </span>
+        )}
+      </span>
+      <GameDialog open={open && eligible} onOpenChange={setOpen}>
         <GameDialogContent title="Clone this tree? 🌱" ribbon="leaf" tone="parchment">
           {/* Remount per open: the error starts fresh each time. */}
           {open && (

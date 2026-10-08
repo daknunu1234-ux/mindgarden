@@ -546,6 +546,70 @@ export type Database = {
         ]
       }
       // Migration 20260928000800_tree_visits.sql. Players read their own rows; record_tree_visit() writes.
+      // Migration 20261019000000: one row per clone; the cloner and the creator read their rows,
+      // only clone_deck() writes.
+      plant_clones: {
+        Row: {
+          id: string
+          source_deck_id: string | null
+          clone_deck_id: string | null
+          cloner_id: string
+          owner_id: string
+          statements: number
+          cost: number
+          owner_reward: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          source_deck_id?: string | null
+          clone_deck_id?: string | null
+          cloner_id: string
+          owner_id: string
+          statements: number
+          cost: number
+          owner_reward: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          source_deck_id?: string | null
+          clone_deck_id?: string | null
+          cloner_id?: string
+          owner_id?: string
+          statements?: number
+          cost?: number
+          owner_reward?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      // Migration 20261019000000: messages for a gardener; they read their own and may only set
+      // read_at (column grant); functions write them.
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          kind: 'tree_cloned'
+          message: string
+          data: Json
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: 'tree_cloned'
+          message: string
+          data?: Json
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          read_at?: string | null
+        }
+        Relationships: []
+      }
       tree_visits: {
         Row: {
           user_id: string

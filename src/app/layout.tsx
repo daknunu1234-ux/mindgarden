@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
 import { FruitBadge, getFarmInventory } from "@/features/garden";
+import { NotificationToaster } from "@/features/notifications";
 import { CoinsBadge, getFarmHud, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
 import { CoinShopModal, GameButton } from "@/shared/components/game";
 import { LIGHTING_BOOT_SCRIPT } from "@/shared/lib/lightingBoot";
@@ -93,6 +94,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </div>
             </div>
           </header>
+          {/* Unread notices for the signed-in gardener (someone cloned their tree…), as toasts. */}
+          {user && <NotificationToaster />}
           {children}
           {/* useSearchParams inside needs a Suspense boundary for static routes like /_not-found. */}
           <Suspense>

@@ -7,8 +7,9 @@ import { CloneDeckDto } from '../dto/CloneDeckDto'
 import { cloneSharedDeck, type ClonedDeck } from '../services/authoring'
 
 // Auth: Required. Copies another gardener's PUBLIC tree (roots + statements, no progress) into
-// the caller's garden for min(100 + statements, 150) 🪙 (cloneCost). INSUFFICIENT_COINS when the
-// purse is short, CANNOT_CLONE_OWN_DECK for your own tree. The copy is private and practisable
+// the caller's garden for its species' seed + min(statements, 50) 🪙 (cloneCost); the tree needs at
+// least 50 statements (CLONE_TOO_SMALL) and its creator earns +50 🪙. INSUFFICIENT_COINS when the
+// purse is short, AUTH_FORBIDDEN for your own tree. The copy is private and practisable
 // from 0/5. Returns the new deck, the purse after paying and the fee charged.
 export async function cloneDeck(input: unknown): Promise<ActionResult<ClonedDeck>> {
   const parsed = CloneDeckDto.safeParse(input)

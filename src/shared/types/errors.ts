@@ -14,6 +14,8 @@ export type ErrorCode =
   // The purse is short for a seed (its species' price, treeSkins seedPrice), a clone, a pricier
   // species or a Shop item.
   | 'INSUFFICIENT_COINS'
+  // Cloning a shared tree with fewer than 50 statements (economy CLONE_MIN_STATEMENTS).
+  | 'CLONE_TOO_SMALL'
   // Practising / grading a tree you don't own: visitors are read-only (clone it to practise).
   | 'FORBIDDEN_VISITOR_PRACTICE'
   // Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (any more).

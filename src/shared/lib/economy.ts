@@ -45,6 +45,19 @@ export const CLONE_COST_CAP = SEED_PRICE_COINS + CLONE_STATEMENT_CAP
 export const cloneCost = (statementCount: number, seedPrice: number = SEED_PRICE_COINS): number =>
   seedPrice + Math.min(Math.max(0, Math.floor(Number.isFinite(statementCount) ? statementCount : 0)), CLONE_STATEMENT_CAP)
 
+// Cloning needs a tree worth copying: at least this many statements (clone_deck() refuses smaller
+// trees with CLONE_TOO_SMALL; migration 20261019000000). Its creator earns CLONE_CREATOR_REWARD
+// coins for every clone. A test checks the database uses the same numbers.
+export const CLONE_MIN_STATEMENTS = 50
+export const CLONE_CREATOR_REWARD = 50
+export const canClone = (statementCount: number): boolean => statementCount >= CLONE_MIN_STATEMENTS
+// The requirement tag on a shared tree: "🌱 52/50 Statements".
+export const cloneRequirementLabel = (statementCount: number): string => `🌱 ${Math.max(0, Math.floor(statementCount))}/${CLONE_MIN_STATEMENTS} Statements`
+// The clone button's state: too few statements (disabled), a known purse short of the fee, or ready
+// (an unknown purse: let the server decide).
+export const cloneButtonState = (statementCount: number, coins: number | null, cost: number): 'too-small' | 'short' | 'ready' =>
+  !canClone(statementCount) ? 'too-small' : coins !== null && coins < cost ? 'short' : 'ready'
+
 // `price`: the seed of the species being planted (treeSkins seedPrice); a standard seed by default.
 export const canAffordSeed = (coins: number | null | undefined, price: number = SEED_PRICE_COINS): boolean => coins != null && coins >= price
 

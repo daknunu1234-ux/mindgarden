@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
 import { seedPrice, speciesUpgradeCost } from '@/shared/lib/treeSkins'
+import { CLONE_MIN_STATEMENTS } from '@/shared/lib/economy'
 import { slugify } from '@/shared/utils/slugify'
 import type { CloneDeckInput } from '../dto/CloneDeckDto'
 import type { CreateDeckInput } from '../dto/CreateDeckDto'
@@ -77,9 +78,11 @@ export async function plantDeck(supabase: Client, input: CreateDeckInput): Promi
 
 export type ClonedDeck = { deck: Deck; remainingCoins: number; cost: number }
 
-// Clones another gardener's shared tree through clone_deck() (migration 20260928000700), which
-// charges the species' seed price + min(statements, 50) 🪙 (economy cloneCost: 100–150 for a standard
-// tree, 180–230 for a surreal one) and deep-copies roots + statements in one transaction.
+// Clones another gardener's shared tree through clone_deck() (migration 20261019000000), which
+// needs at least 50 statements (CLONE_TOO_SMALL), charges the species' seed price + min(statements,
+// 50) 🪙 (economy cloneCost: 150 for a standard tree, 230 for a surreal one once the gate is met),
+// pays the tree's creator +50 🪙, logs the clone, notifies the creator and deep-copies roots +
+// statements, all in one transaction.
 // Like plantDeck, a slug collision (23505) rolls the charge back, so the next slug never
 // double-charges. Progress is never copied: the cloner starts every statement at 0/5.
 export async function cloneSharedDeck(supabase: Client, { deckId }: CloneDeckInput): Promise<ActionResult<ClonedDeck>> {
@@ -101,7 +104,8 @@ export async function cloneSharedDeck(supabase: Client, { deckId }: CloneDeckInp
         const cost = /(\d+) coins/.exec(error.hint ?? '')?.[1]
         return fail('INSUFFICIENT_COINS', cost ? `You need ${cost} coins to clone this tree!` : 'You need more coins to clone this tree!')
       }
-      if (message.includes('CANNOT_CLONE_OWN_DECK')) return fail('AUTH_FORBIDDEN', 'This tree is already in your garden')
+      if (message.includes('CLONE_TOO_SMALL')) return fail('CLONE_TOO_SMALL', `Requires at least ${CLONE_MIN_STATEMENTS} statements to clone`)
+      if (message.includes('CANNOT_CLONE_OWN_DECK')) return fail('AUTH_FORBIDDEN', 'You cannot clone your own tree')
       if (message.includes('DECK_NOT_FOUND')) return fail('DECK_NOT_FOUND', 'This tree is not shared (anymore)')
       if (message.includes('AUTH_UNAUTHORIZED')) return fail('AUTH_UNAUTHORIZED', 'Sign in to clone this tree')
       // PGRST202 / 42883: clone_deck is missing (run 20260928000700_clone_deck.sql).

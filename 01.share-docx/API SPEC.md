@@ -66,6 +66,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `NODE_NOT_FOUND` | 404 | Mindmap node doesn't exist or its deck isn't readable |
 | `ITEM_NOT_FOUND` | 404 | Submitted `itemId` doesn't exist or isn't readable |
 | `DRILL_NO_ITEMS` | 422 | The deck / branch has no askable statement (an empty root; since the zero-drop question engine, only a lone note like "aaa" can't be asked) |
+| `CLONE_TOO_SMALL` | 422 | Cloning a shared tree with fewer than 50 statements (`cloneDeck`; economy `CLONE_MIN_STATEMENTS`) |
 | `INSUFFICIENT_COINS` | 402 | The purse is short: planting a tree costs its species' seed price, 100 🪙 or 180 🪙 for a surreal species (`createDeck`); cloning one costs that seed price + min(statements, 50) 🪙 (`cloneDeck`); changing a tree to a pricier species costs the difference (`updateDeck`); Shop items (`placeFarmItem`) |
 | `FORBIDDEN_VISITOR_PRACTICE` | 403 | Practising or grading a tree you don't own (strict read-only visitor mode, signed out included). Message: "You must clone this tree to your garden to practice it!" (`getDrillSession`, `checkDrillAnswer`, `submitDrillResult`) |
 | `TOURNAMENT_CLOSED` | 403 | Mind Tournament: the tree isn't public or its owner isn't hosting a tournament (`getTournamentSession`, `submitTournamentAnswer`) |
@@ -263,13 +264,24 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 - **Atomic**: each slug candidate calls `plant_deck()` (DATABASE.md "Seed economy"), which charges and inserts in one transaction. A slug clash rolls the charge back before the next candidate, so a tree is paid exactly once
 - On success: `revalidatePath('/')` and `'/profile'`. The form pushes `remainingCoins` into `shared/stores/CoinsProvider` (HUD) and navigates to the new tree
 
+### `getUnreadNotifications` / `markNotificationsRead` (notifications)
+```typescript
+// getUnreadNotifications() → { id, kind: 'tree_cloned', message, createdAt }[]   // Auth optional: [] signed out; oldest first, at most 10
+// markNotificationsRead({ ids: uuid[] /* 1–50 */ }) → { marked: number }         // Auth required; only your own (RLS + read_at column grant)
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INTERNAL_ERROR
+```
+- The root layout mounts `NotificationToaster` for signed-in gardeners: unread notices become toasts once, then are marked read
+
 ### `cloneDeck` (decks)
 ```typescript
 // Input (CloneDeckDto): { deckId: string /* uuid of another gardener's PUBLIC tree */ }
 // data: { deck /* the new copy, same shape as a getDecks row: yours, private */; remainingCoins: number; cost: number /* fee charged */ }
 // Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, INSUFFICIENT_COINS ("You need <cost> coins to clone this tree!"),
-//         DECK_NOT_FOUND (private, deleted, or unknown), AUTH_FORBIDDEN (it's already your tree), INTERNAL_ERROR
+//         CLONE_TOO_SMALL ("Requires at least 50 statements to clone"), DECK_NOT_FOUND (private, deleted, or unknown),
+//         AUTH_FORBIDDEN ("You cannot clone your own tree"), INTERNAL_ERROR
 ```
+- **Quality gate** (migration `20261019000000`): only trees with at least 50 statements (`CLONE_MIN_STATEMENTS`) can be cloned; the button is disabled below that, with the tag "🌱 n/50 Statements" and "Requires at least 50 statements to clone"
+- **Creator reward**: every clone pays the tree's creator exactly +50 🪙 (`CLONE_CREATOR_REWARD`), logs a `plant_clones` row and leaves the creator a notification ("🎉 A player cloned your tree '<title>'! You earned +50 🪙", shown as a toast on their next visit: notifications `NotificationToaster`). A gardener may clone as many trees (or the same tree again) as their coins cover; never their own
 - **Price**: the tree's species seed price + `min(statements, 50)` 🪙 (`cloneCost(n, seedPrice(treeType))`, `shared/lib/economy.ts`; the database computes `seed_price(tree_type) + least(n, 50)`): 100–150 for a standard tree as before, 180–230 for a surreal one, so cloning is never cheaper than planting. The button shows it: `🌱 Clone to Garden (N 🪙)`
 - **Atomic**: `clone_deck()` (DATABASE.md "Cloning") charges and deep-copies the deck, every root (same hierarchy and order) and every statement with its trap rules in one transaction. Slug from the title like `createDeck`; a clash rolls everything back before the next candidate, so the fee is paid once
 - **Fresh start**: progress is never copied. The cloner owns the copy, so editing and practice are unlocked, and every statement starts at 0/5 (with its 🪙 mastery coin still to earn)

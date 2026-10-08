@@ -77,6 +77,10 @@ describe('the schema has no per-answer log', () => {
         'daily_rush_runs',
         // The island's stock: one row per gardener, updated in place (no production log).
         'farm_economy',
+        // Tree cloning (20261019000000): one row per clone (who copied whose tree, the coins paid and
+        // earned) and the creator's notices. Neither records answers or practice.
+        'plant_clones',
+        'notifications',
       ].sort(),
     )
     for (const name of tables) expect(name).not.toMatch(/log|attempt|answer|event|history|telemetry/)

@@ -195,6 +195,16 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### Tree cloning rewards
+
+- A shared tree can be cloned only once it has **at least 50 statements**; the clone button shows
+  "🌱 52/50 Statements" and is disabled below 50 ("Requires at least 50 statements to clone"); a short
+  purse is told how many coins it needs.
+- The cloner pays the usual price (seed + min(statements, 50): 150 🪙, 230 🪙 for a surreal species); the
+  **creator earns +50 🪙** per clone and gets a notification toast on their next visit ("🎉 A player
+  cloned your tree …! You earned +50 🪙"). Clones are logged (`plant_clones`, migration 30). Several
+  clones in a row are fine; your own trees can't be cloned.
+
 ### Continuous placement
 
 - Roads, Water (streams) and Fences are laid like paint: after a tile goes down the tool stays in hand,
@@ -881,6 +891,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 30 | `20261019000000_clone_rewards.sql` | Clone gate (50 statements), +50 🪙 creator reward, `plant_clones`, `notifications`. With the deploy |
 | 29 | `20261018000000_road_logistics.sql` | Roads replace the railway: tracks become roads, trains are refunded 30 🪙, candy exports over a road link. With the deploy |
 | 28 | `20261017000000_unified_windmill.sql` | One Windmill: 60 🪙, a 10×10 field; Grand Windmills become Windmills; `windmill_large` retired. With the deploy |
 | 27 | `20261016000000_grand_windmill.sql` | The Large Windmill becomes the 2×2 Grand Windmill (power reach 2: a 6×6 zone); standing ones shrink. With the deploy |
@@ -901,7 +912,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
+| (pending) | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |
+| 9467a9b | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
 | 403e28d | feat(garden): replace railway with modular roads and delivery trucks (migration 29) (`lib/roads.ts`, `RoadSprites`, truck sprite, migration 29: tracks → roads, trains refunded, candy over roads) |
 | a298c40 | feat(garden): unify windmill into a single structure powering 10x10 area at 60 coins (migration 28): Grand Windmill removed from catalogue, Shop, types and drawings; standing ones converted (migration 28) |
 | 1cd6af1 | feat(garden): integrate 3D low-poly Seaport and animated Cargo Ship loop (`SeaportImage`, `seaportFit`, `CargoShip`; prep script `flip`, `water`, `maxWidth`) with the ship's arrive / dock / depart loop (`.mg-dock`, `.mg-float`) |

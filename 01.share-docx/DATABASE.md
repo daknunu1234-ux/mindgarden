@@ -160,6 +160,38 @@ Applied to `"Mitochondria produce ATP through cellular respiration."` → traps 
 
 ⚠️ Known limits: visitors can read a shared tree's true statements (strict read-only mode, `getDeckReader`), so a contestant can look answers up; and a contestant who answers every statement five times in one sitting graduates in 1 day. The board measures days, not honesty or spacing.
 
+### Tree Cloning & Notifications
+
+**`plant_clones`** (migration `20261019000000`): one row per clone. Written only by `clone_deck()` (SECURITY DEFINER).
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | UUID | PK, default gen_random_uuid() | |
+| source_deck_id | UUID | FK → decks ON DELETE SET NULL | The tree copied |
+| clone_deck_id | UUID | FK → decks ON DELETE SET NULL | The copy |
+| cloner_id | UUID | NOT NULL, FK → users ON DELETE CASCADE | Who paid |
+| owner_id | UUID | NOT NULL, FK → users ON DELETE CASCADE, CHECK ≠ cloner_id | The creator, paid +50 |
+| statements | INTEGER | NOT NULL, ≥ 0 | Statements copied (≥ 50 by the gate) |
+| cost | INTEGER | NOT NULL, ≥ 0 | `seed_price(tree_type) + least(statements, 50)` |
+| owner_reward | INTEGER | NOT NULL, ≥ 0 | 50 (CLONE_CREATOR_REWARD) |
+| created_at | TIMESTAMPTZ | NOT NULL, default now() | |
+
+RLS: `select` for the cloner or the owner; no insert / update / delete grants.
+
+**`notifications`** (migration `20261019000000`): messages for a gardener, written by functions (today `clone_deck()`, kind `tree_cloned`: "🎉 A player cloned your tree '<title>'! You earned +50 🪙").
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | UUID | PK | |
+| user_id | UUID | NOT NULL, FK → users ON DELETE CASCADE | Recipient |
+| kind | TEXT | NOT NULL, CHECK in (tree_cloned) | |
+| message | TEXT | NOT NULL, 1–300 chars | Shown as a toast |
+| data | JSONB | NOT NULL, default {} | e.g. `{ deck_id, reward }` |
+| read_at | TIMESTAMPTZ | NULL = unread | The only column a user may update (column grant) |
+| created_at | TIMESTAMPTZ | NOT NULL, default now() | Partial index on unread rows |
+
+RLS: `select` and `update` (read_at) for the recipient only.
+
 ### Farm Grid Feature
 
 *Migration `20260930000000_farm_grid.sql`. Each gardener's farm is a 16 × 16 isometric grid; trees and everything bought in the 🏪 Shop stand on it. Owned by the `garden` feature.*
@@ -523,6 +555,7 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 30 | `20261019000000_clone_rewards.sql` | Tree cloning: `clone_deck()` re-created (at least 50 statements or CLONE_TOO_SMALL; the cloner pays `seed_price + least(n, 50)`; the creator earns +50; both purses locked in id order); new `plant_clones` (clone log; cloner / owner read, RLS) and `notifications` (owner reads, may only set `read_at`; RLS + column grant) |
   | 29 | `20261018000000_road_logistics.sql` | Roads replace the railway: `rail_track` rows become `road`; `freight_train` rows are deleted and refunded 30 🪙 each; the type check allows `road` instead; `unique_farm_tile` covers every item again; `farm_candy_linked()` searches roads (no vehicle); `purchase_and_place_item()` / `move_garden_placement()` re-created without train rules (`rail_track` / `freight_train` → ITEM_RETIRED); trigger `garden_track_in_use` dropped |
   | 28 | `20261017000000_unified_windmill.sql` | One Windmill: `windmill_small` 60 🪙, `farm_power_reach()` 4 (10 × 10 field); standing `windmill_large` rows become `windmill_small`; the type check drops `windmill_large`; `purchase_and_place_item()` re-created (`windmill_large` → ITEM_RETIRED) |
   | 27 | `20261016000000_grand_windmill.sql` | `windmill_large` becomes a 2 × 2 tower with power reach 2 (6 × 6 zone): `farm_power_reach()` and `purchase_and_place_item()` re-created, standing ones shrunk to 2 × 2 |
@@ -551,6 +584,7 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
 - **File 23** runs **with** the deploy of the content-node code, after file 22 (and 21): the old code reads `mindmap_nodes` / `knowledge_items`, which it renames, and the new code reads `content_nodes`, which it creates. Not re-runnable (it moves data); the rollback block at its end renames the legacy tables back. It re-creates `award_mastery_coin()`, `uproot_deck()`, `clone_deck()` and `record_tournament_answer()`: never re-run files 12, 18, 21 or 22 after it (they would point those functions at the old tables). Two never-shipped drafts (`20261011000000_convert_statements_roots`, `20261012000000_indent_rows`) were folded into it; it drops their functions if one was applied by hand
 - **File 24** only after file 23 has run and the app works on it: it drops the legacy tables (no rollback after that)
+- **File 30** (`20261019000000_clone_rewards.sql`) after file 29, with the deploy of the matching code (the clone button shows the 50-statement requirement; the layout shows notifications). Safe to re-run. Never re-run file 23 after it (its `clone_deck()` has no gate or reward)
 - **File 29** (`20261018000000_road_logistics.sql`) after file 28, WITH the deploy of the matching code (the client no longer knows tracks or trains). Saved layouts keep every track tile as a road; trains are refunded. Safe to re-run. Never re-run files 26, 27 or 28 after it (they bring back the railway rules and types)
 - **File 28** (`20261017000000_unified_windmill.sql`) after file 27, WITH the deploy of the matching code (the client no longer knows `windmill_large`). Grand Windmills become Windmills on the same tiles; every windmill field grows to 10 × 10, so nothing loses power. Safe to re-run. Never re-run files 25, 26 or 27 after it
 - **File 27** (`20261016000000_grand_windmill.sql`) after file 26, with the deploy of the matching code (the Shop shows the 2 × 2 tower and its 6 × 6 zone). Standing large windmills shrink to 2 × 2 and power a smaller area, so buildings beyond it lose power. Never re-run files 14, 25 or 26 after it (they would bring back the 6 × 6 size or reach 3). Safe to re-run
