@@ -25,6 +25,7 @@ import { settleFarmEconomy } from '../actions/settleFarmEconomy'
 import { useDayNight } from '../hooks/useDayNight'
 import { useTreeLabels } from '../hooks/useTreeLabels'
 import { getTreeStage } from '../hooks/useTreeStage'
+import { afterPlace, canAfford, continuousHint, isContinuous, isExitKey, outOfCoinsMessage } from '../lib/buildMode'
 import { dropOutcome } from '../lib/dragGesture'
 import { calculateWoodshopRefund, treeBuff } from '../lib/farmBuffs'
 import { catalogFor, type CatalogItem } from '../lib/farmCatalog'
@@ -125,6 +126,8 @@ type BuildRequest =
 // second tap on the same tile (or "Place here") puts it down. Move mode (↔️ Move in a tree or item
 // popover) works the same way for something already placed: it lifts, the ghost shows where it can
 // go, and putting it down moves it (Esc / Cancel leaves it where it was).
+// Roads, Water and Fences are laid like paint (lib/buildMode): placing one keeps the tool in hand for
+// the next tile, until Esc, Done, a click off the island, the tab going hidden, or an empty purse.
 // Every edit is optimistic (lib/optimistic.ts): planting, buying, moving and picking up show at once
 // and sync in the background (no page refresh); a refusal rolls the farm back with a toast.
 function FarmIslandView({
@@ -182,7 +185,8 @@ function FarmIslandView({
   const [selectedItem, setSelectedItem] = useState<Placement | null>(null)
   const [deliveryOpen, setDeliveryOpen] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
-  const [build, setBuild] = useState<{ request: BuildRequest; tile: { x: number; y: number } | null } | null>(null)
+  // `laid`: tiles put down so far while laying a continuous item (Road, Water, Fence).
+  const [build, setBuild] = useState<{ request: BuildRequest; tile: { x: number; y: number } | null; laid?: number } | null>(null)
   const [buildError, setBuildError] = useState<string | null>(null)
 
   // Optimistic edits over the server's placements; fresh placements from the server clear them.
@@ -281,9 +285,19 @@ function FarmIslandView({
       return
     }
     const request = build.request
+    // Laying tiles: one more only if the purse pays for it (else the tool is put away).
+    if (request.kind === 'item' && !canAfford(request.item.price, coins)) {
+      setBuild(null)
+      toast({ message: outOfCoinsMessage(request.item.name, request.item.price), icon: '🪙', tone: 'amber' })
+      return
+    }
     const key = `op${nextKey.current++}`
     setBuildError(null)
-    setBuild(null)
+    // A Road, Water or Fence tile keeps the tool in hand (the ghost stays for the next tile) while the
+    // purse pays for another; anything else leaves placement mode.
+    const next = request.kind === 'item' ? afterPlace(request.item, coins === null ? null : coins - request.item.price) : ({ keep: false, reason: 'single' } as const)
+    if (next.keep) setBuild((b) => (b ? { ...b, tile, laid: (b.laid ?? 0) + 1 } : b))
+    else setBuild(null)
 
     if (request.kind === 'move') {
       if (tile.x === request.placement.x && tile.y === request.placement.y) return
@@ -306,10 +320,16 @@ function FarmIslandView({
     const purseBefore = coins
     editOps((list) => [...list, { key, kind: 'add', placement }])
     if (price > 0 && purseBefore !== null) setCoins(purseBefore - price)
-    toast({
-      message: request.kind === 'tree' ? `“${request.tree.title}” is planted on your farm` : `${request.item.name} placed · −${price} 🪙`,
-      icon: request.kind === 'tree' ? '🌳' : request.item.icon,
-    })
+    // One toast per one-off item; tiles laid in a row are counted in the build bar instead.
+    if (!next.keep) {
+      toast({
+        message: request.kind === 'tree' ? `“${request.tree.title}” is planted on your farm` : `${request.item.name} placed · −${price} 🪙`,
+        icon: request.kind === 'tree' ? '🌳' : request.item.icon,
+      })
+    }
+    if (!next.keep && next.reason === 'out-of-coins' && request.kind === 'item') {
+      toast({ message: outOfCoinsMessage(request.item.name, request.item.price), icon: '🪙', tone: 'amber' })
+    }
     const saved = placeFarmItem(
       request.kind === 'tree' ? { item: 'tree', deckId: request.tree.id, x: tile.x, y: tile.y } : { item: request.item.id, x: tile.x, y: tile.y },
     ).then((res) => {
@@ -317,6 +337,10 @@ function FarmIslandView({
         editOps((list) => rollback(list, key))
         if (price > 0 && purseBefore !== null) setCoins(purseBefore)
         failed(res.error.message)
+        // Out of coins on the server: put the tile tool away too.
+        if (res.error.code === 'INSUFFICIENT_COINS' && request.kind === 'item') {
+          setBuild((b) => (b?.request.kind === 'item' && b.request.item.id === request.item.id ? null : b))
+        }
         return false
       }
       editOps((list) => confirmAdd(list, key, res.data.placementId))
@@ -331,6 +355,9 @@ function FarmIslandView({
   const cancelBuild = () => {
     const current = build
     setBuild(null)
+    if (current?.request.kind === 'item' && current.laid) {
+      toast({ message: `Done: ${current.laid} ${current.request.item.name} ${current.laid === 1 ? 'tile' : 'tiles'} placed`, icon: current.request.item.icon })
+    }
     if (current?.request.kind === 'tree' && current.request.onboarding) {
       toast({ message: `“${current.request.tree.title}” waits in the 🏪 Shop's Trees tab: plant it whenever you like`, icon: '🌱' })
     }
@@ -466,14 +493,19 @@ function FarmIslandView({
     latest.current = { build, place, chop, farm, startMove, plotsByDeck, harvest, cancelBuild }
   })
   // Esc leaves placement mode (nothing is spent before the item is put down).
+  const building = build !== null
   useEffect(() => {
-    if (!build) return
+    if (!building) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') latest.current.cancelBuild()
+      if (isExitKey(e.key)) latest.current.cancelBuild()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [build])
+  }, [building])
+  // Switching to another browser tab puts the tool away as well.
+  useEffect(() => {
+    if (hidden && latest.current.build) latest.current.cancelBuild()
+  }, [hidden])
 
   const onHarvestPlot = useCallback((plot: FarmPlotView) => latest.current.harvest(plot), [])
   const onBuildHover = useCallback((tile: { x: number; y: number }) => setBuild((b) => (b ? { ...b, tile } : b)), [])
@@ -761,12 +793,16 @@ function FarmIslandView({
                   : `🌳 Planting “${build.request.tree.title}” · free`
                 : build.request.kind === 'move'
                   ? `↔️ Moving ${build.request.name} · free`
-                  : `${build.request.item.icon} Placing ${build.request.item.name} · ${build.request.item.price} 🪙`}
+                  : isContinuous(build.request.item)
+                    ? `${build.request.item.icon} ${continuousHint(build.request.item.name)}`
+                    : `${build.request.item.icon} Placing ${build.request.item.name} · ${build.request.item.price} 🪙`}
               <span className="block font-sans text-xs font-semibold text-amber-900/70">
                 {buildError ??
                   (build.request.kind === 'tree' && build.request.onboarding
                     ? 'Glowing tiles are free: click one (tap twice on touch). Esc keeps the tree in the Shop for later.'
-                    : 'Click a green tile (tap twice on touch). Esc or right-click cancels.')}
+                    : build.request.kind === 'item' && isContinuous(build.request.item)
+                      ? `${build.request.item.price} 🪙 a tile · ${build.laid ?? 0} placed · tap twice on touch · click the sea or Done to finish`
+                      : 'Click a green tile (tap twice on touch). Esc or right-click cancels.')}
               </span>
             </span>
             {build.tile && (
@@ -774,9 +810,15 @@ function FarmIslandView({
                 {build.request.kind === 'move' ? 'Move here' : 'Place here'}
               </GameButton>
             )}
-            <GameButton tone="cream" size="sm" onClick={cancelBuild}>
-              Cancel
-            </GameButton>
+            {build.request.kind === 'item' && isContinuous(build.request.item) ? (
+              <GameButton tone="sky" size="sm" onClick={cancelBuild} data-build-done="">
+                Done
+              </GameButton>
+            ) : (
+              <GameButton tone="cream" size="sm" onClick={cancelBuild}>
+                Cancel
+              </GameButton>
+            )}
           </div>
         </div>
       ) : (

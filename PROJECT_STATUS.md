@@ -195,6 +195,13 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### Continuous placement
+
+- Roads, Water (streams) and Fences are laid like paint: after a tile goes down the tool stays in hand,
+  so the next click lays the next tile. The bar says "Placing Road • Click to place • Press ESC when
+  done" and counts the tiles. Esc, **Done**, a click on the sea or switching browser tabs finishes; an
+  empty purse ends it with an "Out of coins" toast.
+
 ### Roads and Delivery Trucks
 
 - The railway is gone. **Roads** (1 🪙 a tile, Shop tab 🛣️ Roads) join into straights, bends, T-junctions
@@ -894,7 +901,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(garden): replace railway with modular roads and delivery trucks (migration 29) (`lib/roads.ts`, `RoadSprites`, truck sprite, migration 29: tracks → roads, trains refunded, candy over roads) |
+| (pending) | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
+| 403e28d | feat(garden): replace railway with modular roads and delivery trucks (migration 29) (`lib/roads.ts`, `RoadSprites`, truck sprite, migration 29: tracks → roads, trains refunded, candy over roads) |
 | a298c40 | feat(garden): unify windmill into a single structure powering 10x10 area at 60 coins (migration 28): Grand Windmill removed from catalogue, Shop, types and drawings; standing ones converted (migration 28) |
 | 1cd6af1 | feat(garden): integrate 3D low-poly Seaport and animated Cargo Ship loop (`SeaportImage`, `seaportFit`, `CargoShip`; prep script `flip`, `water`, `maxWidth`) with the ship's arrive / dock / depart loop (`.mg-dock`, `.mg-float`) |
 | 68a97fa | feat(garden): add powered SVG overlay animations for Candy Factory and Furniture Factory: chimney / pipe smoke, rolling candies (`.mg-roll`), sawdust sparks; windmill rotor built, off while the render has painted sails (`WINDMILL_RENDER.bakedSails`); candy sprite without painted smoke |

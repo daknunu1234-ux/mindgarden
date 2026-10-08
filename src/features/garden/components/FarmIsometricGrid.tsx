@@ -303,7 +303,10 @@ function FarmIsometricGridImpl({
       onClick={(e) => {
         if (!build) return
         const tile = tileAt(e)
+        // A click on a tile places (or aims); one off the island (the sea) leaves placement mode. A
+        // camera drag swallows its own click, so panning never ends it.
         if (tile) onBuildTap(tile, pointerType.current)
+        else onBuildCancel()
       }}
       onContextMenu={(e) => {
         // Right-click cancels placement mode (but a touch long-press that started a drag doesn't).

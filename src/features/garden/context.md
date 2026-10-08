@@ -51,6 +51,10 @@ placements are this feature's table.
 - `FarmItemDialog` props `powered`, `poweredCount`, `economy` → `StatusPanel`
 - Tests: `__tests__/powerGrid.test.ts`, `__tests__/powerGridDb.test.ts` (PGlite)
 
+## Continuous placement (Roads, Water, Fences)
+- `lib/buildMode.ts` (pure, tested in `__tests__/buildMode.test.ts`): `CONTINUOUS_TYPES` (`road`, `stream`, `fence`: the 1 × 1 tiles that join their neighbours), `isContinuous`, `canAfford`, `afterPlace(item, coinsLeft)` (keep the tool, or leave: `single` / `out-of-coins`), `isExitKey`, `continuousHint`, `outOfCoinsMessage`
+- `FarmIslandView` `place()`: a continuous tile keeps `build` (the ghost stays; `laid` counts the tiles, no toast per tile) while the purse pays for another; otherwise it leaves with an "Out of coins" toast (also when the server answers INSUFFICIENT_COINS). Exits: Esc, the build bar's **Done** button, a click on the sea (`FarmIsometricGrid` onClick with no tile → `onBuildCancel`; a camera drag swallows its click), the tab going hidden. Leaving after laying tiles toasts "Done: N Road tiles placed". The bar reads "Placing Road • Click to place • Press ESC when done"
+
 ## Roads and Delivery Trucks (supersede every railway / train note below)
 - Migration `20261018000000_road_logistics.sql`: the railway is gone. **Road** (`road`, Shop tab "🛣️ Roads", 1 × 1, 1 🪙) replaces Railroad Track and Freight Train; saved tracks became roads on the same tiles, trains were removed and refunded 30 🪙. One item per tile again (`unique_farm_tile`)
 - `lib/roads.ts` (pure, tested in `__tests__/roads.test.ts`): `roadArms` / `roadShape` (straight, curve, tee, cross), `tilesOf`, `besideTiles`, `findRoadRoute` (BFS from a road beside one footprint to a road beside another), `roadLinks(placements, working?)` (every Candy / Furniture Factory a road links to a Seaport, with its route), `candyLinked` (the database `farm_candy_linked()`: candy exports at 15 🪙 a box), `headingOf`
