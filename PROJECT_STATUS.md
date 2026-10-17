@@ -479,11 +479,14 @@ and "Opening a tree": that canvas (`RootMap`) is still in the feature but no lon
   below, in one gradient that follows the camera (`--mg-ground`, set by the camera hook).
 - **Hierarchy**: every tier of roots under the tree: top-level roots, their sub-roots, and so on.
   Each root is centred over its own sub-roots; cards never overlap, whatever the tree's shape.
-- **No statements on the canvas**: a card shows the root's title, a progress ring, a status badge (No
-  statements / Seed / Growing / Thriving / Mighty Root), its own statement count and its sub-root
-  count. Clicking the card, or its "View" button, opens that root's statements in the side drawer.
-  Top-level roots also carry 💧 Drill / ⚔️ Compete; the owner's ✏️ / 🗑️ / ⚙️ tools appear on hover
-  (always on touch) on every card.
+- **No statements on the canvas, and a minimalist card**: at rest a root card shows only its progress
+  ring and its name, large and dark (17 px on top-level roots, 16 px on sub-roots, extra bold, up to two
+  lines; the card is 208 × 104). Its status chip (No statements / Seed / Growing / Thriving / Mighty
+  Root), its statement count (📜 n, which opens them), 💧 Drill / ⚔️ Compete on top-level roots and the
+  owner's ✏️ / ⇄ / 🗑️ / ⚙️ tools are hidden and unclickable, and fade in (150 ms) when the card is
+  hovered, holds keyboard focus or is the one open in the drawer; touch screens always show them. Every
+  control stays a real button in tab order. The reveal moves only the title inside the card, so cards
+  and tendrils never shift. Clicking the card opens that root's statements in the side drawer.
 - **Camera**: drag the background to pan in any direction; wheel or pinch to zoom at the cursor,
   between 50% and 180%; a corner toolbar has zoom out, the zoom percentage, zoom in and fit to
   screen. The chart is one element moved with `translate3d(...) scale(...)`, written once per
@@ -969,7 +972,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(drill): dynamic scenarios, element decomposition, and context inheritance for terse notes (subject / action / object split `conceptPatterns` `decompose`, scenarios and type 7 element questions without markers, same-depth sibling swaps, changed-property least-likely, ~250 opposite pairs; terse bullets inherit their root, `Term: explanation` shorthand, loose opposites on fragments, the "lần đầu ra" phrase guard; drill tests `declarativeEligibility`, `wateringSchedule`) |
+| (pending) | feat(mindmap): redesign root cards with minimalist idle state and hover-to-reveal controls (`RootChart`: larger, darker titles; status, statement count, practice and owner tools revealed on hover / focus / selection; card 208 × 104) |
+| c92035f | feat(drill): dynamic scenarios, element decomposition, and context inheritance for terse notes (subject / action / object split `conceptPatterns` `decompose`, scenarios and type 7 element questions without markers, same-depth sibling swaps, changed-property least-likely, ~250 opposite pairs; terse bullets inherit their root, `Term: explanation` shorthand, loose opposites on fragments, the "lần đầu ra" phrase guard; drill tests `declarativeEligibility`, `wateringSchedule`) |
 | 9237707 | feat(progress): secure answer submissions via RPC with graceful client fallback (`record_practice_answer()` / `touch_practised()`, `progress/services/practice.ts`; players lose write access to `user_progress`, migrations 31–32; the player session is used while migration 31 is missing, `practiceFallback.ts`) |
 | 9d79121 | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
 | 9a56a4a | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |

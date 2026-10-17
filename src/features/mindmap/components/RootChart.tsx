@@ -50,6 +50,15 @@ const STATUS_STYLE: Record<RootStatus, string> = {
 }
 const STATUS_ICON: Record<RootStatus, string> = { empty: '▫️', seed: '🌰', growing: '🌱', thriving: '🌿', mighty: '🌟' }
 
+// A root card at rest shows only its mastery ring and its title. Everything else (status chip,
+// statement count, practice, owner tools) is hidden and unclickable until the card is hovered, holds
+// keyboard focus or is the one open in the drawer; touch screens, which can't hover, always show it.
+const REVEAL =
+  'pointer-events-none opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-data-[selected=true]:pointer-events-auto group-data-[selected=true]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100'
+// The title slides up a little to make room for the revealed row (the card itself never moves).
+const LIFT =
+  'transition-transform duration-150 motion-reduce:transition-none group-hover:-translate-y-3.5 group-focus-within:-translate-y-3.5 group-data-[selected=true]:-translate-y-3.5 [@media(hover:none)]:-translate-y-3.5'
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 // "Tree & roots": a diorama of the tree and everything under it, on a zoomable, pannable canvas.
@@ -57,9 +66,10 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // mastery) beside its trunk: no box round it. A taproot drops from the foot of the trunk into the
 // soil and branches into tendrils that reach the top-level roots; every sub-root hangs under its
 // parent, tier by tier. Sky above the ground, soil below (painted by the frame, following the
-// camera). Only roots are drawn: a card shows its title, a
-// status badge, a progress ring and its counts, and statements never appear on the canvas. Clicking a
-// card (or its "View statements" button) opens that root's statements in the side drawer
+// camera). Only roots are drawn, and statements never appear on the canvas. A card at rest is its
+// progress ring and its title, large and dark; its status chip, statement count, practice button and
+// the owner's tools fade in on hover, keyboard focus or selection. Clicking a card opens that root's
+// statements in the side drawer
 // (`NodeInspector`). Layout is pure (hooks/orgChartLayout.ts); the camera is one CSS transform on the
 // chart (hooks/useChartCamera.ts): drag the background to pan in any direction, wheel or pinch to
 // zoom (50%–180%), or use the corner buttons. No filters.
@@ -212,38 +222,33 @@ function RootChart({ nodes, levels, treeType, title, stageLabel, surface, emptyL
                   key={node.id}
                   data-root-card={node.id}
                   data-depth={box.depth}
+                  data-status={status}
+                  data-selected={inspectedId === node.id}
                   aria-label={`${top ? 'Root' : 'Sub-root'} ${node.title}: ${ROOT_STATUS_LABEL[status]}`}
                   className={cn(
-                    'group absolute flex flex-col rounded-[18px] border-[3px] p-2 transition-shadow duration-200',
-                    status === 'mighty'
-                      ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-amber-100 shadow-[0_4px_0_#ca8a04]'
-                      : top
-                        ? 'border-amber-800/40 bg-gradient-to-b from-[#fffdf6] to-[#fbf0d6] shadow-[0_4px_0_rgba(120,53,15,0.3)]'
-                        : 'border-amber-800/25 bg-gradient-to-b from-white to-[#fdf6e6] shadow-[0_3px_0_rgba(120,53,15,0.22)]',
+                    'group absolute rounded-2xl border-2 transition-shadow duration-150 hover:shadow-[0_5px_0_rgba(120,53,15,0.35)]',
+                    status === 'mighty' ? 'border-yellow-500 bg-[#fffbea] shadow-[0_3px_0_#ca8a04]' : 'border-amber-900/35 bg-[#fffdf8] shadow-[0_3px_0_rgba(120,53,15,0.28)]',
                     inspectedId === node.id && 'ring-4 ring-sky-300/80',
                   )}
                   style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
                 >
-                  {/* The card's body opens the statements: the title is the bigger target. */}
+                  {/* The whole card opens the statements. At rest it shows the ring and the name only. */}
                   <button
                     type="button"
                     onClick={() => inspect(node.id)}
-                    aria-label={`Open ${node.title}: ${plural(own, 'statement', 'statements')}`}
-                    className="flex min-h-0 flex-1 items-start gap-2 rounded-xl text-left focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
+                    aria-label={`Open ${node.title}: ${plural(own, 'statement', 'statements')}${node.children.length > 0 ? `, ${plural(node.children.length, 'sub-root', 'sub-roots')}` : ''}`}
+                    className="flex size-full items-center rounded-[14px] px-3 text-left focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
                   >
-                    <MasteryRing value={mastery} mighty={status === 'mighty'} />
-                    <span className="min-w-0 flex-1">
-                      <span className={cn('line-clamp-2 font-game leading-tight font-extrabold text-amber-950', top ? 'text-sm' : 'text-[13px]')} title={node.title}>
+                    <span data-card-title className={cn('flex min-w-0 flex-1 items-center gap-2.5', LIFT)}>
+                      <MasteryRing value={mastery} mighty={status === 'mighty'} />
+                      <span className={cn(top ? 'text-[17px]' : 'text-base', 'line-clamp-2 min-w-0 flex-1 font-game leading-[1.25] font-extrabold text-stone-950')} title={node.title}>
                         {node.title}
-                      </span>
-                      <span className="mt-0.5 block truncate font-game text-[11px] font-bold text-amber-900/65">
-                        📜 {own}
-                        {node.children.length > 0 && ` · 🌿 ${plural(node.children.length, 'sub-root', 'sub-roots')}`}
                       </span>
                     </span>
                   </button>
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span data-status={status} className={cn('inline-flex min-w-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-game text-[10.5px] font-extrabold', STATUS_STYLE[status])}>
+                  {/* Revealed on hover / focus / selection: status, statement count, practice. */}
+                  <div data-card-actions className={cn('absolute inset-x-2.5 bottom-2 flex items-center gap-1.5', REVEAL)}>
+                    <span className={cn('inline-flex min-w-0 items-center gap-1 rounded-full border px-1.5 py-0.5 font-game text-[11px] font-extrabold', STATUS_STYLE[status])}>
                       <span aria-hidden>{STATUS_ICON[status]}</span>
                       <span className="truncate">{ROOT_STATUS_LABEL[status]}</span>
                     </span>
@@ -251,9 +256,10 @@ function RootChart({ nodes, levels, treeType, title, stageLabel, surface, emptyL
                       type="button"
                       onClick={() => inspect(node.id)}
                       aria-label={`View the statements of ${node.title}`}
+                      title={`View ${plural(own, 'statement', 'statements')}`}
                       className="ml-auto flex h-7 shrink-0 items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 font-game text-[11px] font-extrabold text-sky-900 transition-colors hover:bg-sky-100 focus-visible:ring-3 focus-visible:ring-yellow-300 focus-visible:outline-none"
                     >
-                      View
+                      <span aria-hidden>📜</span> {own}
                     </button>
                     {/* Rounds start from top-level roots; a sub-root is drilled from its drawer. */}
                     {practice && top && branch > 0 && (
@@ -271,9 +277,9 @@ function RootChart({ nodes, levels, treeType, title, stageLabel, surface, emptyL
                       </button>
                     )}
                   </div>
-                  {/* Owner tools float over the card's corner and appear on hover / focus (always on touch). */}
+                  {/* Owner tools float over the card's corner, revealed the same way. */}
                   {(ownerTools || onManage) && (
-                    <HoverActions placement="corner" label={`Tools for root ${node.title}`}>
+                    <HoverActions placement="corner" label={`Tools for root ${node.title}`} className="duration-150 group-data-[selected=true]:pointer-events-auto group-data-[selected=true]:opacity-100">
                       {ownerTools && <HoverActionButton icon="✏️" label={`Edit root ${node.title}`} tone="edit" onClick={() => ownerTools.onEditRoot({ id: node.id, title: node.title })} />}
                       {ownerTools?.onToggleType && !top && (
                         <HoverActionButton icon="⇄" label={`Make ${node.title} a statement, where it stands`} onClick={() => ownerTools.onToggleType?.({ id: node.id })} />

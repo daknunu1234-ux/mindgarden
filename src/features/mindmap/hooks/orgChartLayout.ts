@@ -16,8 +16,9 @@ export const CHART = {
   label: { w: 232, h: 54, dx: 46 },
   // How far the taproot runs straight down from the trunk before it branches.
   taproot: 34,
-  // A root card (every tier uses the same compact card).
-  card: { w: 190, h: 112 },
+  // A root card (every tier uses the same card): wide enough for a 17 px title beside the ring, with
+  // room under two title lines for the row of controls that appears on hover.
+  card: { w: 208, h: 104 },
   // Space between neighbouring subtrees, between tiers (room for the curves), and round the chart.
   gapX: 16,
   gapY: 46,

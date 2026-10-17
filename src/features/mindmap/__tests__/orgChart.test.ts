@@ -239,7 +239,9 @@ describe('RootChart', () => {
     // Statements only show as a count on their root's card.
     expect(html).not.toMatch(/data-root-card="i\d"/)
     expect(html).not.toContain('Statement 1')
-    expect(html).toContain('📜 2 · 🌿 2 sub-roots')
+    // …read out with the card (its sub-roots are drawn right under it, so they aren't counted on it).
+    expect(html).toContain('aria-label="Open cell: 2 statements, 2 sub-roots"')
+    expect(html).not.toContain('sub-roots</')
     expect(html).toContain('aria-label="Sub-root nucleus: Growing"')
     // The label names the tree; the toolbar counts everything under it.
     expect(html).toContain('Sinh học Tế bào')
@@ -249,9 +251,95 @@ describe('RootChart', () => {
   it('gives every card a status badge, a progress ring and a way to its statements', () => {
     expect([...html.matchAll(/data-status="([a-z]+)"/g)].map((m) => m[1])).toEqual(['mighty', 'growing', 'seed', 'mighty', 'thriving', 'empty'])
     expect((html.match(/aria-label="View the statements of /g) ?? []).length).toBe(6)
-    expect(html).toContain('aria-label="Open nucleus: 1 statement"')
+    expect(html).toContain('aria-label="Open nucleus: 1 statement, 1 sub-root"')
     // One mastery ring per card, plus the tree's own.
     expect((html.match(/viewBox="0 0 32 32"/g) ?? []).length).toBe(7)
+  })
+
+  describe('a minimalist card: the name at rest, the controls on hover or focus', () => {
+    const owner = render({
+      practice: { mode: 'drill', onPractice: () => undefined },
+      ownerTools: { onEditStatement: () => undefined, onDeleteStatement: () => undefined, onEditRoot: () => undefined, onDeleteRoot: () => undefined },
+      onManage: () => undefined,
+    })
+    const cards = [...owner.matchAll(/<article data-root-card="([^"]+)"[\s\S]*?<\/article>/g)].map((m) => ({ id: m[1], html: m[0] }))
+    const classOf = (html: string, marker: string) => new RegExp(`${marker}[^>]*class="([^"]*)"`).exec(html)?.[1] ?? ''
+    const HIDDEN = ['opacity-0', 'pointer-events-none']
+    const SHOWN_ON = ['group-hover:', 'group-focus-within:', 'group-data-[selected=true]:', '[@media(hover:none)]:']
+
+    it('at rest only the ring and the title are visible, and the title is large, heavy and dark', () => {
+      expect(cards).toHaveLength(6)
+      for (const card of cards) {
+        // Everything visible sits in the title block: the ring and the name.
+        const title = /<span data-card-title="true"[^>]*>([\s\S]*?)<\/span><\/button>/.exec(card.html)![1]
+        expect(title).toContain('viewBox="0 0 32 32"')
+        expect(title.replace(/<svg[\s\S]*?<\/svg>/, '').replace(/<[^>]+>/g, '')).toBe(card.id)
+        // …and every other piece of text or control is inside a hidden, hover-revealed group.
+        const rest = card.html.replace(/<span data-card-title="true"[\s\S]*?<\/span><\/button>/, '')
+        const groups = [...rest.matchAll(/<div (?:data-card-actions="true"|role="group")[^>]*class="([^"]*)"/g)].map((m) => m[1])
+        expect(groups).toHaveLength(2)
+        for (const cls of groups) for (const hidden of HIDDEN) expect(cls.split(' ')).toContain(hidden)
+      }
+      const top = /<span class="([^"]*)" title="cell">/.exec(owner)![1].split(' ')
+      const sub = /<span class="([^"]*)" title="nucleus">/.exec(owner)![1].split(' ')
+      // 17 px on top-level roots, 16 px below (they were 14 / 13 px), extra bold, near-black, roomy lines.
+      expect(top).toEqual(expect.arrayContaining(['text-[17px]', 'font-extrabold', 'text-stone-950', 'leading-[1.25]', 'line-clamp-2']))
+      expect(sub).toEqual(expect.arrayContaining(['text-base', 'font-extrabold', 'text-stone-950']))
+    })
+
+    it('status, statement count, practice and owner tools fade in on hover, keyboard focus, selection and touch', () => {
+      for (const card of cards) {
+        const actions = classOf(card.html, 'data-card-actions="true"')
+        const tools = classOf(card.html, 'role="group" aria-label="Tools for root')
+        for (const cls of [actions, tools]) {
+          expect(cls).toContain('transition-opacity')
+          expect(cls).toContain('duration-150')
+          for (const on of SHOWN_ON) {
+            expect(cls, on).toContain(`${on}opacity-100`)
+            expect(cls, on).toContain(`${on}pointer-events-auto`)
+          }
+        }
+        // The revealed row holds the status chip and the way to the statements.
+        const row = /data-card-actions="true"[^>]*>([\s\S]*?)<\/div>/.exec(card.html)![1]
+        expect(row).toMatch(/Seed|Growing|Thriving|Mighty Root|No statements/)
+        expect(row).toContain(`aria-label="View the statements of ${card.id}"`)
+      }
+      // The card is the hover / focus group, and the open one is marked selected.
+      expect(owner).toMatch(/<article data-root-card="cell" data-depth="0" data-status="mighty" data-selected="false"[^>]*class="group absolute /)
+    })
+
+    it('stays keyboard-accessible: every control is a real button in tab order, with a focus ring and a name', () => {
+      for (const card of cards) {
+        const buttons = [...card.html.matchAll(/<button ([^>]*)>/g)].map((m) => m[1])
+        // The card itself first (always visible), then the revealed controls.
+        expect(buttons[0]).toContain(`aria-label="Open ${card.id}:`)
+        expect(buttons.length).toBeGreaterThanOrEqual(5)
+        for (const attrs of buttons) {
+          expect(attrs).toContain('type="button"')
+          expect(attrs).toMatch(/aria-label="[^"]+"/)
+          expect(attrs).toMatch(/focus-visible:ring-/)
+          // Hidden with opacity only: never taken out of the tab order or the accessibility tree.
+          expect(attrs).not.toMatch(/tabindex="-1"|aria-hidden|disabled/)
+        }
+        expect(card.html).not.toMatch(/\b(hidden|invisible|sr-only)\b[^"]*"[^>]*data-card-actions|display:none|visibility:hidden/)
+      }
+    })
+
+    it('the reveal never moves or resizes a card: tendrils still meet its head and leave its foot', () => {
+      const l = layoutRootTree(TREE)
+      for (const box of l.cards) {
+        expect(owner).toContain(`style="left:${box.x}px;top:${box.y}px;width:${CHART.card.w}px;height:${CHART.card.h}px"`)
+        const into = l.edges.find((e) => e.to === box.nodeId)!
+        expect([into.x2, into.y2]).toEqual([box.x + box.w / 2, box.y])
+        for (const out of l.edges.filter((e) => e.from === box.nodeId)) expect([out.x1, out.y1]).toEqual([box.x + box.w / 2, box.y + box.h])
+      }
+      // Only the title block inside the card slides (a transform), and not for reduced motion.
+      const lift = classOf(cards[0].html, 'data-card-title="true"')
+      expect(lift).toContain('transition-transform')
+      expect(lift).toContain('motion-reduce:transition-none')
+      expect(lift).toContain('group-hover:-translate-y-3.5')
+      expect(cards[0].html).not.toMatch(/group-hover:(h-|w-|p-|m-|scale)/)
+    })
   })
 
   it('joins the tiers with curving tendrils, thinner with every tier', () => {
