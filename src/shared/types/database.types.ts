@@ -700,6 +700,16 @@ export type Database = {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]
       }
+      // Migration 20261020000000_progress_rpc.sql. Service role only: the only writers of
+      // user_progress (players have no INSERT / UPDATE on it since 20261020000100).
+      record_practice_answer: {
+        Args: { p_user_id: string; p_item_id: string; p_correct: boolean }
+        Returns: { previous_level: number; new_level: number; coins_earned: number; total_coins: number }[]
+      }
+      touch_practised: {
+        Args: { p_user_id: string; p_item_ids: string[] }
+        Returns: number
+      }
       // Migration 20261004000000_streak_rewards.sql. Service role only: counts the streak ending on
       // p_day itself and pays the milestone bonus (7, 30, every 100 days) once per day.
       award_streak_reward: {

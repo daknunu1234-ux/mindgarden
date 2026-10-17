@@ -1,8 +1,8 @@
 import { MAX_MASTERY } from './masteryRules'
 
 // 🪙 Gold coins (pure, unit-tested). One coin the first time a player masters an item (5/5), once
-// per item ever. The database enforces the same rule atomically (award_mastery_coin, migration
-// 20260928000300_user_coins); this decides whether the server should ask it at all.
+// per item ever. The database decides and pays (record_practice_answer → award_mastery_coin); this is
+// the same rule in TypeScript, for tests.
 export const COINS_PER_MASTERED_ITEM = 1
 
 export function shouldAwardMasteryCoin({ next, alreadyAwarded }: { previous: number; next: number; alreadyAwarded: boolean }): boolean {

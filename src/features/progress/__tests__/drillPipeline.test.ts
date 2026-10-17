@@ -36,14 +36,20 @@ describe('what the client sends for an answer', () => {
 })
 
 describe('what the server stores for an answer', () => {
-  const sources = ['recordDrillResult.ts', 'streak.ts', 'fruit.ts', 'coins.ts', 'grading.ts'].map((f) => [f, read('src', 'features', 'progress', 'services', f)] as const)
+  const sources = ['recordDrillResult.ts', 'practice.ts', 'streak.ts', 'fruit.ts', 'coins.ts', 'grading.ts'].map((f) => [f, read('src', 'features', 'progress', 'services', f)] as const)
 
   it('updates the item in place with its level and review time, and nothing else', () => {
     const record = sources.find(([f]) => f === 'recordDrillResult.ts')![1]
-    expect(record).toContain('const values = { mastery_level: masteryLevel, last_practiced_at: new Date().toISOString() }')
-    expect(record).not.toMatch(/mistake_count|mistakeCount/)
-    // The only table it writes itself is user_progress.
-    expect([...record.matchAll(/\.from\('([a-z_]+)'\)/g)].map((m) => m[1])).toEqual(['user_progress', 'user_progress', 'user_progress'])
+    const practice = sources.find(([f]) => f === 'practice.ts')![1]
+    // No table is written from the app: the answer goes through one database function.
+    expect(record).not.toMatch(/\.from\(|\.rpc\(/)
+    expect(practice).not.toMatch(/\.from\(/)
+    expect([...practice.matchAll(/\.rpc\('([a-z_]+)'/g)].map((m) => m[1])).toEqual(['record_practice_answer', 'touch_practised'])
+    expect(practice).toContain("admin.rpc('record_practice_answer', { p_user_id: userId, p_item_id: itemId, p_correct: isCorrect })")
+    // And that function writes the level and the review time only.
+    const sql = read('supabase', 'migrations', '20261020000000_progress_rpc.sql').split('-- Verify')[0].replace(/--[^\n]*/g, '')
+    expect([...sql.matchAll(/update public\.user_progress p\s+set ([^\n]+)/g)].map((m) => m[1].trim())).toEqual(['mastery_level = v_next, last_practiced_at = now()', 'last_practiced_at = now()'])
+    expect(sql).not.toMatch(/mistake_count|create table/)
   })
 
   it('writes at most one row per player per day (and per tree per day), never one per answer', () => {

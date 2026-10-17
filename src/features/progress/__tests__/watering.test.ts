@@ -23,7 +23,9 @@ vi.mock('../services/grading', () => ({
   gradeWithTree: vi.fn(async () => ({ success: true, data: { answer: { isCorrect: true, correctTag: 'A' }, deckId: DECK } })),
 }))
 
-// Service role: the once-a-day upserts (practice_days, deck_practice_days); no coin RPCs needed here.
+// Service role: the once-a-day upserts (practice_days, deck_practice_days) and the two progress
+// functions with their SQL semantics (the real ones run on PostgreSQL in practiceRpc.test.ts).
+const NOW = '2026-10-02T09:00:00.000Z'
 vi.mock('@/shared/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => ({
@@ -33,74 +35,46 @@ vi.mock('@/shared/lib/supabase/admin', () => ({
         return { error: null }
       },
     }),
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn: string, args: { p_user_id: string; p_item_id?: string; p_correct?: boolean; p_item_ids?: string[] }) => {
+      rpcCalls.push({ fn, args })
+      const rowOf = (id: string) => {
+        let row = db.progress.find((r) => r.user_id === args.p_user_id && r.knowledge_item_id === id)
+        if (!row) db.progress.push((row = { user_id: args.p_user_id, knowledge_item_id: id, mastery_level: 0, last_practiced_at: null }))
+        return row
+      }
+      if (fn === 'touch_practised') {
+        for (const id of args.p_item_ids ?? []) rowOf(id).last_practiced_at = NOW
+        return { data: args.p_item_ids?.length ?? 0, error: null }
+      }
+      if (fn === 'record_practice_answer') {
+        const row = rowOf(args.p_item_id!)
+        const previous = row.mastery_level
+        row.mastery_level = args.p_correct ? Math.min(previous + 1, 5) : Math.max(previous - 1, 0)
+        row.last_practiced_at = NOW
+        return { data: [{ previous_level: previous, new_level: row.mastery_level, coins_earned: 0, total_coins: 100 }], error: null }
+      }
+      return { data: null, error: null }
+    },
   }),
 }))
+const rpcCalls: { fn: string; args: Record<string, unknown> }[] = []
 
+import { touchPractised } from '../services/practice'
 import { recordDrillResult } from '../services/recordDrillResult'
-import { touchPractised, waterTree } from '../services/watering'
+import { waterTree } from '../services/watering'
 
-// The player's own client over the in-memory rows: just the queries watering and a drill answer make.
+// The player's own client: only the streak's read of practice_days. Progress is never written with it.
 function client() {
   return {
-    rpc: async () => ({ data: null, error: null }),
     from: (table: string) => {
-      const f: Record<string, unknown> = {}
-      let ins: string[] | null = null
-      let patch: Partial<Progress> | null = null
-      const rows = () =>
-        db.progress.filter((r) => r.user_id === f.user_id && (f.knowledge_item_id === undefined || r.knowledge_item_id === f.knowledge_item_id) && (!ins || ins.includes(r.knowledge_item_id)))
+      if (table !== 'practice_days') throw new Error(`the player client must not touch ${table}`)
       const q = {
         select: () => q,
-        eq: (k: string, v: unknown) => {
-          f[k] = v
-          return patch ? q.then : q
-        },
-        in: (_k: string, v: string[]) => {
-          ins = v
-          if (patch) {
-            rows().forEach((r) => Object.assign(r, patch))
-            return Promise.resolve({ error: null })
-          }
-          return Promise.resolve({ data: rows().map((r) => ({ knowledge_item_id: r.knowledge_item_id })), error: null })
-        },
+        eq: () => q,
         order: async () => {
-          if (table !== 'practice_days') return { data: [], error: null }
           const mine = db.practiceDays.filter((r) => r.user_id === USER).sort((a, b) => b.day.localeCompare(a.day))
           return { data: mine.map((r) => ({ day: r.day, time_zone: r.time_zone })), error: null }
         },
-        maybeSingle: async () => {
-          if (table === 'users') return { data: { coins: 100 }, error: null }
-          const r = rows()[0]
-          return { data: r ? { mastery_level: r.mastery_level, coin_awarded_at: null } : null, error: null }
-        },
-        update: (values: Partial<Progress>) => {
-          patch = values
-          return q
-        },
-        insert: async (values: Progress | Progress[]) => {
-          for (const v of Array.isArray(values) ? values : [values]) db.progress.push({ ...v })
-          return { error: null }
-        },
-        // update(...).eq(...).eq(...) resolves as a promise.
-        then: undefined as unknown,
-      }
-      // The drill's update chain: update(values).eq(user).eq(item) → apply.
-      q.then = undefined
-      const updateChain = {
-        eq: (k: string, v: unknown) => {
-          f[k] = v
-          return f.knowledge_item_id !== undefined ? Promise.resolve(apply()) : updateChain
-        },
-        in: q.in,
-      }
-      const apply = () => {
-        rows().forEach((r) => Object.assign(r, patch))
-        return { error: null }
-      }
-      q.update = (values: Partial<Progress>) => {
-        patch = values
-        return updateChain as never
       }
       return q
     },
@@ -117,6 +91,7 @@ beforeEach(() => {
   db.practiceDays = []
   db.deckDays = []
   db.progress = []
+  rpcCalls.length = 0
 })
 
 describe('watering a tree', () => {
@@ -132,16 +107,17 @@ describe('watering a tree', () => {
     expect(db.deckDays).toHaveLength(1)
   })
 
-  it('touchPractised: freshens existing statements, adds missing ones at 0/5, never changes mastery', async () => {
+  it('touchPractised: one touch_practised call with each statement once, mastery untouched', async () => {
     db.progress.push({ user_id: USER, knowledge_item_id: ITEM(1), mastery_level: 4, last_practiced_at: '2026-09-01T00:00:00Z' })
-    await touchPractised(client(), USER, [ITEM(1), ITEM(2), ITEM(2)], new Date('2026-10-02T09:00:00Z'))
+    await touchPractised(client(), USER, [ITEM(1), ITEM(2), ITEM(2)])
+    expect(rpcCalls).toEqual([{ fn: 'touch_practised', args: { p_user_id: USER, p_item_ids: [ITEM(1), ITEM(2)] } }])
     expect(db.progress).toEqual([
-      { user_id: USER, knowledge_item_id: ITEM(1), mastery_level: 4, last_practiced_at: '2026-10-02T09:00:00.000Z' },
-      { user_id: USER, knowledge_item_id: ITEM(2), mastery_level: 0, last_practiced_at: '2026-10-02T09:00:00.000Z' },
+      { user_id: USER, knowledge_item_id: ITEM(1), mastery_level: 4, last_practiced_at: NOW },
+      { user_id: USER, knowledge_item_id: ITEM(2), mastery_level: 0, last_practiced_at: NOW },
     ])
-    // Nothing to touch: nothing written.
+    // Nothing to touch: no call at all.
     await touchPractised(client(), USER, [])
-    expect(db.progress).toHaveLength(2)
+    expect(rpcCalls).toHaveLength(1)
   })
 })
 

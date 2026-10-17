@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-06.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-08.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -194,6 +194,24 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   at the Candy Factory; water ripples, diagonal hazard curbs, bright containers and a ship's wake at the
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
+
+### Progress is server-written
+
+- **The gap**: the app saved answers with the player's own session, so players held INSERT / UPDATE on
+  `user_progress.mastery_level`. Anyone could set a statement to 4/5 through the API and collect its
+  mastery coin with one answer (DATABASE.md had flagged it: "close this before coins buy anything").
+- **Now**: an answer is saved by one database function, `record_practice_answer()` (service role only;
+  `progress/services/practice.ts`): the level moves ±1 under a row lock and the first 5/5 pays its coin
+  in the same transaction. It refuses anything but a statement of the player's own tree. The Daily
+  Rush marks its cards practised through `touch_practised()` (mastery untouched).
+- **Locked**: migration 32 takes INSERT / UPDATE / DELETE on `user_progress` away from players; they
+  still read their own rows. Two answers at once no longer lose a step.
+- **Deploy**: migration 31 → deploy → migration 32. Neither is applied to the hosted project yet
+  (checked 2026-10-08: `record_practice_answer` answers PGRST202 there).
+- **Fallback**: until migration 31 is applied (or without a service role key) answers are saved with
+  the player session as before (`progress/services/practiceFallback.ts`), so the order of deploy and
+  migration can never break practice. Without this, every answer showed "We couldn't check that
+  answer. Could not save progress." (fixed).
 
 ### 8-type conceptual drill
 
@@ -902,6 +920,8 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 32 | `20261020000100_lock_progress_writes.sql` | Players lose INSERT / UPDATE / DELETE on `user_progress` (own-row SELECT stays). Only **after** the deploy |
+| 31 | `20261020000000_progress_rpc.sql` | `record_practice_answer()` (graded answer: ±1 under a row lock + mastery coin, owner only), `touch_practised()` (Daily Rush watering); service role only. **Before or with** the deploy |
 | 30 | `20261019000000_clone_rewards.sql` | Clone gate (50 statements), +50 🪙 creator reward, `plant_clones`, `notifications`. With the deploy |
 | 29 | `20261018000000_road_logistics.sql` | Roads replace the railway: tracks become roads, trains are refunded 30 🪙, candy exports over a road link. With the deploy |
 | 28 | `20261017000000_unified_windmill.sql` | One Windmill: 60 🪙, a 10×10 field; Grand Windmills become Windmills; `windmill_large` retired. With the deploy |
@@ -923,7 +943,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
+| (pending) | feat(progress): secure answer submissions via RPC with graceful client fallback (`record_practice_answer()` / `touch_practised()`, `progress/services/practice.ts`; players lose write access to `user_progress`, migrations 31–32; the player session is used while migration 31 is missing, `practiceFallback.ts`) |
+| 9d79121 | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
 | 9a56a4a | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |
 | 232b617 | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |
 | 9467a9b | feat(garden): add continuous placement mode for roads, water, and fences (`lib/buildMode.ts`; Esc / Done / sea click / hidden tab exit; stops when coins run out) |
