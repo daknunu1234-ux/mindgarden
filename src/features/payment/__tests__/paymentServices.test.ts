@@ -151,17 +151,17 @@ describe('POST /api/payment/create (startCheckout)', () => {
     const res = await startCheckout({ productId: 'coins-50', amount: 1 }, 'http://localhost:3000')
     expect(res.success).toBe(true)
     if (!res.success) return
-    expect(res.data).toMatchObject({ productId: 'coins-50', amount: 40_000, description: 'MG C50', accountName: 'MINDGARDEN', bin: '970422' })
+    expect(res.data).toMatchObject({ productId: 'coins-50', amount: 30_000, description: 'MG C50', accountName: 'MINDGARDEN', bin: '970422' })
     expect(res.data.checkoutUrl).toMatch(/^https:\/\/pay\.payos\.vn\//)
     expect(res.data.qrCode).toContain(String(res.data.orderCode))
-    expect(db.orders).toEqual([expect.objectContaining({ order_code: res.data.orderCode, user_id: BUYER, amount: 40_000, status: 'PENDING', plan_type: 'COIN_PACK', product_id: 'coins-50', coins: 50, payment_link_id: `link-${res.data.orderCode}` })])
+    expect(db.orders).toEqual([expect.objectContaining({ order_code: res.data.orderCode, user_id: BUYER, amount: 30_000, status: 'PENDING', plan_type: 'COIN_PACK', product_id: 'coins-50', coins: 50, payment_link_id: `link-${res.data.orderCode}` })])
     expect(payos.created[0]).toMatchObject({
       orderCode: res.data.orderCode,
-      amount: 40_000,
+      amount: 30_000,
       description: 'MG C50',
       returnUrl: 'http://localhost:3000/payment/result',
       cancelUrl: 'http://localhost:3000/payment/result',
-      items: [{ name: '50 coins', quantity: 1, price: 40_000 }],
+      items: [{ name: '50 coins', quantity: 1, price: 30_000 }],
     })
     expect(httpStatusOf(res)).toBe(200)
   })
@@ -180,9 +180,9 @@ describe('POST /api/payment/create (startCheckout)', () => {
     for (const productId of ['coins-10', 'coins-20', 'coins-50', 'coins-100']) await startCheckout({ productId }, 'https://mindgarden.vn')
     expect(db.orders.map((o) => [o.plan_type, o.product_id, o.amount, o.coins])).toEqual([
       ['COIN_PACK', 'coins-10', 10_000, 10],
-      ['COIN_PACK', 'coins-20', 18_000, 20],
-      ['COIN_PACK', 'coins-50', 40_000, 50],
-      ['COIN_PACK', 'coins-100', 68_000, 100],
+      ['COIN_PACK', 'coins-20', 15_000, 20],
+      ['COIN_PACK', 'coins-50', 30_000, 50],
+      ['COIN_PACK', 'coins-100', 45_000, 100],
     ])
   })
 
@@ -226,9 +226,9 @@ describe('POST /api/payment/webhook (handlePayOSWebhook)', () => {
 
   it('a signed successful payment fulfils the order once; PayOS retries add nothing', async () => {
     const code = await pendingOrder()
-    expect(await handlePayOSWebhook(webhook(code, 40_000))).toEqual({ status: 200, body: { success: true, message: 'Order fulfilled' } })
+    expect(await handlePayOSWebhook(webhook(code, 30_000))).toEqual({ status: 200, body: { success: true, message: 'Order fulfilled' } })
     expect(db.users.get(BUYER)!.coins).toBe(350)
-    expect(await handlePayOSWebhook(webhook(code, 40_000))).toEqual({ status: 200, body: { success: true, message: 'Order already fulfilled' } })
+    expect(await handlePayOSWebhook(webhook(code, 30_000))).toEqual({ status: 200, body: { success: true, message: 'Order already fulfilled' } })
     expect(db.users.get(BUYER)!.coins).toBe(350)
   })
 
@@ -240,7 +240,7 @@ describe('POST /api/payment/webhook (handlePayOSWebhook)', () => {
 
   it('an unsigned or tampered call is refused with 400 and changes nothing', async () => {
     const code = await pendingOrder()
-    expect(await handlePayOSWebhook(webhook(code, 40_000, { signature: 'forged' }))).toMatchObject({ status: 400, body: { message: 'Invalid signature' } })
+    expect(await handlePayOSWebhook(webhook(code, 30_000, { signature: 'forged' }))).toMatchObject({ status: 400, body: { message: 'Invalid signature' } })
     expect(await handlePayOSWebhook({ hello: 'world' })).toMatchObject({ status: 400 })
     expect(db.orders[0].status).toBe('PENDING')
     expect(db.users.get(BUYER)!.coins).toBe(300)
@@ -249,7 +249,7 @@ describe('POST /api/payment/webhook (handlePayOSWebhook)', () => {
 
   it('only code 00 counts: a failed payment notice is acknowledged and ignored', async () => {
     const code = await pendingOrder()
-    expect(await handlePayOSWebhook(webhook(code, 40_000, { code: '01' }))).toMatchObject({ status: 200, body: { message: 'Ignored: not a successful payment' } })
+    expect(await handlePayOSWebhook(webhook(code, 30_000, { code: '01' }))).toMatchObject({ status: 200, body: { message: 'Ignored: not a successful payment' } })
     expect(db.orders[0].status).toBe('PENDING')
   })
 
@@ -273,9 +273,9 @@ describe('the return page settles a pending order from PayOS (readPaymentStatus)
   it('PayOS says paid: the order is fulfilled and the buyer sees their new purse', async () => {
     const res = await startCheckout({ productId: 'coins-100' }, 'http://x')
     if (!res.success) throw new Error()
-    payos.linkStatus.set(res.data.orderCode, { status: 'PAID', amountPaid: 68_000 })
+    payos.linkStatus.set(res.data.orderCode, { status: 'PAID', amountPaid: 45_000 })
     const status = await readPaymentStatus(userClient(), BUYER, res.data.orderCode)
-    expect(status).toEqual({ success: true, data: { orderCode: res.data.orderCode, status: 'PAID', productId: 'coins-100', amount: 68_000, coins: 100, totalCoins: 400 } })
+    expect(status).toEqual({ success: true, data: { orderCode: res.data.orderCode, status: 'PAID', productId: 'coins-100', amount: 45_000, coins: 100, totalCoins: 400 } })
   })
 
   it('PayOS says cancelled or expired: the order is cancelled; still pending: left pending', async () => {
@@ -291,7 +291,7 @@ describe('the return page settles a pending order from PayOS (readPaymentStatus)
   it('a paid coin pack reads back the new purse; someone else’s order is not found', async () => {
     const res = await startCheckout({ productId: 'coins-20' }, 'http://x')
     if (!res.success) throw new Error()
-    await handlePayOSWebhook(webhook(res.data.orderCode, 18_000))
+    await handlePayOSWebhook(webhook(res.data.orderCode, 15_000))
     expect(await readPaymentStatus(userClient(), BUYER, res.data.orderCode)).toMatchObject({ data: { status: 'PAID', coins: 20, totalCoins: 320 } })
     expect(await readPaymentStatus(userClient(), '99999999-9999-4999-8999-999999999999', res.data.orderCode)).toMatchObject({ success: false, error: { code: 'ORDER_NOT_FOUND' } })
   })

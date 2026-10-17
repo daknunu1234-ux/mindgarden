@@ -46,7 +46,7 @@ describe('the catalogue: coin packs only', () => {
   it('the browser can only name a coin pack; amounts are never accepted', () => {
     expect(CreatePaymentDto.parse({ productId: 'coins-50', amount: 1, coins: 999999 })).toEqual({ productId: 'coins-50' })
     expect(CreatePaymentDto.safeParse({ productId: 'free-stuff' }).success).toBe(false)
-    expect(findProduct('coins-50')).toMatchObject({ planType: 'COIN_PACK', coins: 50, amountVnd: 40_000 })
+    expect(findProduct('coins-50')).toMatchObject({ planType: 'COIN_PACK', coins: 50, amountVnd: 30_000 })
     expect(PaymentStatusDto.parse({ orderCode: '1760000000000123' })).toEqual({ orderCode: 1760000000000123 })
     expect(PaymentStatusDto.safeParse({ orderCode: '-5' }).success).toBe(false)
     expect(PaymentStatusDto.safeParse({ orderCode: '99999999999999999999' }).success).toBe(false)

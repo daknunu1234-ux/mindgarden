@@ -198,7 +198,7 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 ### Buying coins with PayOS (VietQR) 🪙
 
 - **What can be bought** (`src/features/payment`, prices in `lib/plans.ts`): the Coin Shop's four coin
-  packs at their shop prices (10 🪙 10.000 ₫, 20 🪙 18.000 ₫, 50 🪙 40.000 ₫, 100 🪙 68.000 ₫). Nothing
+  packs at their shop prices (10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫). Nothing
   else: the ⭐ Pro membership (month / lifetime) and the header's ⭐ Upgrade button were removed
   (migration 34) before anyone bought Pro.
 - **Flow**: Coin Shop → pick a pack → "Buy Coins via VietQR" → the "🪙 Nạp Xu" dialog → `POST
@@ -993,7 +993,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(payment): sell coin packs only: remove the ⭐ Pro membership and the header's Upgrade button; the Coin Shop's "Buy Coins via VietQR" is the only entry point (migration 34: `plan_type` 'COIN_PACK' only, `fulfill_order()` credits coins only, `users.pro_until` dropped) |
+| (pending) | feat(payment): update coin pack pricing to 10k, 15k, 30k, and 45k VND (`shared/lib/economy` `COIN_PACKAGES`: 10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫; the Coin Shop now shows Save 25 / 40 / 55%) |
+| 2456b48 | feat(payment): sell coin packs only: remove the ⭐ Pro membership and the header's Upgrade button; the Coin Shop's "Buy Coins via VietQR" is the only entry point (migration 34: `plan_type` 'COIN_PACK' only, `fulfill_order()` credits coins only, `users.pro_until` dropped) |
 | 185d261 | feat(payment): implement PayOS VietQR payments for Pro tiers and Coin packs (⭐ Pro month / lifetime and coin packs; `orders` + `users.pro_until`, migration 33; `POST /api/payment/create`, signed `POST /api/payment/webhook`, `getPaymentStatus` reconcile with PayOS, `PaymentModal`, `UpgradeButton`, `/payment/result`; Coin Shop "Buy with VietQR"). Also carries: an explicit `display: swap` on the Baloo 2 font |
 | b233303 | feat(mindmap): redesign root cards with minimalist idle state and hover-to-reveal controls (`RootChart`: larger, darker titles; status, statement count, practice and owner tools revealed on hover / focus / selection; card 208 × 104) |
 | c92035f | feat(drill): dynamic scenarios, element decomposition, and context inheritance for terse notes (subject / action / object split `conceptPatterns` `decompose`, scenarios and type 7 element questions without markers, same-depth sibling swaps, changed-property least-likely, ~250 opposite pairs; terse bullets inherit their root, `Term: explanation` shorthand, loose opposites on fragments, the "lần đầu ra" phrase guard; drill tests `declarativeEligibility`, `wateringSchedule`) |

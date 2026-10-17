@@ -32,16 +32,16 @@ describe('Coin Shop packages', () => {
   it('lists the four packages with their VND prices', () => {
     expect(COIN_PACKAGES.map((p) => [p.coins, p.priceVnd])).toEqual([
       [10, 10_000],
-      [20, 18_000],
-      [50, 40_000],
-      [100, 68_000],
+      [20, 15_000],
+      [50, 30_000],
+      [100, 45_000],
     ])
     expect(findCoinPackage('coins-100')).toMatchObject({ bonus: '1 Tree Seed 🌱', bestValue: true })
     expect(findCoinPackage('coins-7')).toBeUndefined()
   })
 
   it('advertises the savings the prices really give', () => {
-    expect(COIN_PACKAGES.map(packageSavingsPercent)).toEqual([0, 10, 20, 32])
+    expect(COIN_PACKAGES.map(packageSavingsPercent)).toEqual([0, 25, 40, 55])
   })
 
   it('formats VND with dot grouping', () => {

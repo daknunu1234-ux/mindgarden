@@ -32,12 +32,12 @@ beforeAll(async () => {
 describe('fulfill_order credits coin packs', () => {
   it('adds the pack’s coins once, however many times PayOS calls back', async () => {
     const before = await coinsOf()
-    const code = await order(40_000, 50)
-    expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: true, status: 'PAID', coins_added: 50, total_coins: before + 50 })
+    const code = await order(30_000, 50)
+    expect(await fulfill(code, 30_000)).toMatchObject({ fulfilled: true, status: 'PAID', coins_added: 50, total_coins: before + 50 })
     expect((await statusOf(code)).paid_at).not.toBeNull()
     // A repeated webhook, then the return page: nothing more.
-    expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: false, coins_added: 0, total_coins: before + 50 })
-    expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: false })
+    expect(await fulfill(code, 30_000)).toMatchObject({ fulfilled: false, coins_added: 0, total_coins: before + 50 })
+    expect(await fulfill(code, 30_000)).toMatchObject({ fulfilled: false })
     expect(await coinsOf()).toBe(before + 50)
   })
 
@@ -48,7 +48,7 @@ describe('fulfill_order credits coin packs', () => {
 
   it('refuses an underpayment and an unknown order, crediting nothing', async () => {
     const before = await coinsOf(OTHER)
-    const code = await order(68_000, 100, OTHER)
+    const code = await order(45_000, 100, OTHER)
     await expect(fulfill(code, 10_000)).rejects.toThrow(/AMOUNT_MISMATCH/)
     expect(await statusOf(code)).toMatchObject({ status: 'PENDING' })
     expect(await coinsOf(OTHER)).toBe(before)

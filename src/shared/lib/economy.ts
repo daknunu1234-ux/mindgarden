@@ -77,8 +77,8 @@ export function seedPriceTag(price: number, coins: number | null | undefined): S
 // How many seeds a purse buys.
 export const seedsAffordable = (coins: number | null | undefined): number => (coins == null || coins < 0 ? 0 : Math.floor(coins / SEED_PRICE_COINS))
 
-// Coin Shop packages. Prices in VND; the base rate is 1,000 VND per coin.
-// Real payments come later: for now the shop only simulates top-ups in development.
+// Coin Shop packages, sold with PayOS (features/payment, which prices every order from this list).
+// Prices in VND; the base rate is 1,000 VND per coin, so bigger packs save 25%, 40% and 55%.
 export const VND_PER_COIN = 1_000
 
 export type CoinPackage = {
@@ -92,9 +92,9 @@ export type CoinPackage = {
 
 export const COIN_PACKAGES: readonly CoinPackage[] = [
   { id: 'coins-10', coins: 10, priceVnd: 10_000 },
-  { id: 'coins-20', coins: 20, priceVnd: 18_000 },
-  { id: 'coins-50', coins: 50, priceVnd: 40_000 },
-  { id: 'coins-100', coins: 100, priceVnd: 68_000, bonus: '1 Tree Seed 🌱', bestValue: true },
+  { id: 'coins-20', coins: 20, priceVnd: 15_000 },
+  { id: 'coins-50', coins: 50, priceVnd: 30_000 },
+  { id: 'coins-100', coins: 100, priceVnd: 45_000, bonus: '1 Tree Seed 🌱', bestValue: true },
 ]
 
 export const COIN_PACKAGE_IDS = COIN_PACKAGES.map((p) => p.id) as [CoinPackage['id'], ...CoinPackage['id'][]]
@@ -105,5 +105,5 @@ export const findCoinPackage = (id: string): CoinPackage | undefined => COIN_PAC
 export const packageSavingsPercent = (p: Pick<CoinPackage, 'coins' | 'priceVnd'>): number =>
   Math.max(0, Math.round((1 - p.priceVnd / (p.coins * VND_PER_COIN)) * 100))
 
-// "68.000 ₫" (Vietnamese grouping, same output on server and client).
+// "45.000 ₫" (Vietnamese grouping, same output on server and client).
 export const formatVnd = (amount: number): string => `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} ₫`
