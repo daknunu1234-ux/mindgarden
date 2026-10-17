@@ -30,4 +30,10 @@ export type ErrorCode =
   | 'RUSH_ALREADY_PLAYED'
   // Daily Rush: the run is over (answered wrong, timed out, finished) or was never started.
   | 'RUSH_NOT_ACTIVE'
+  // Payments: PayOS credentials are not configured on this server (or the orders migration is missing).
+  | 'PAYMENT_UNAVAILABLE'
+  // Payments: PayOS refused or failed to create the payment link.
+  | 'PAYMENT_FAILED'
+  // Payments: no order with that code for this gardener.
+  | 'ORDER_NOT_FOUND'
   | 'INTERNAL_ERROR'

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { COIN_PACKAGES, formatVnd, packageSavingsPercent, SEED_PRICE_COINS, type CoinPackage } from '@/shared/lib/economy'
 import { useCoinShop } from '@/shared/stores/CoinShopProvider'
 import { useCoins } from '@/shared/stores/CoinsProvider'
+import { usePaymentDialog } from '@/shared/stores/PaymentDialogProvider'
 import { useLoginDialog } from '@/shared/stores/LoginDialogProvider'
 import type { ActionResult } from '@/shared/types/result'
 import { cn } from '@/shared/utils/cn'
@@ -18,23 +19,27 @@ type CoinShopModalProps = {
   signedIn: boolean
   // Development only: a Server Action that credits the package without payment. Null in production.
   simulateTopUp: TopUp | null
+  // PayOS is configured: the picked package can be bought for real (opens the payment dialog).
+  paymentsEnabled?: boolean
 }
 
-// 🪙 Coin Shop: four packages priced in VND. Real payments are a later milestone; until then a
-// dev-only "Simulate Top-up" credits the picked package, bursts gold and updates the HUD live.
-function CoinShopModal({ signedIn, simulateTopUp }: CoinShopModalProps) {
+// 🪙 Coin Shop: four packages priced in VND, bought with PayOS (VietQR) when the server is set up for
+// it ("Buy with VietQR" opens the payment dialog on the picked package). In development a
+// "Simulate Top-up" also credits the package without payment, bursts gold and updates the HUD live.
+function CoinShopModal({ signedIn, simulateTopUp, paymentsEnabled = false }: CoinShopModalProps) {
   const { isOpen, setOpen } = useCoinShop()
   return (
     <GameDialog open={isOpen} onOpenChange={setOpen}>
       <GameDialogContent title="🪙 Coin Shop" ribbon="gold" tone="parchment" size="lg" description={`Coins buy tree seeds: from ${SEED_PRICE_COINS} 🪙 for a new tree.`}>
-        {isOpen && <ShopBody signedIn={signedIn} simulateTopUp={simulateTopUp} onDone={() => setOpen(false)} />}
+        {isOpen && <ShopBody signedIn={signedIn} simulateTopUp={simulateTopUp} paymentsEnabled={paymentsEnabled} onDone={() => setOpen(false)} />}
       </GameDialogContent>
     </GameDialog>
   )
 }
 
-function ShopBody({ signedIn, simulateTopUp, onDone }: CoinShopModalProps & { onDone: () => void }) {
+function ShopBody({ signedIn, simulateTopUp, paymentsEnabled, onDone }: CoinShopModalProps & { onDone: () => void }) {
   const { setCoins } = useCoins()
+  const { open: openPayment } = usePaymentDialog()
   const { open: openLogin } = useLoginDialog()
   const onSignIn = () => {
     onDone()
@@ -117,10 +122,27 @@ function ShopBody({ signedIn, simulateTopUp, onDone }: CoinShopModalProps & { on
           <GameButton tone="leaf" size="lg" className="flex-1" onClick={onSignIn}>
             Sign in to top up
           </GameButton>
-        ) : simulateTopUp ? (
-          <GameButton tone="sun" size="lg" className="flex-1" onClick={topUp} disabled={isPending}>
-            {isPending ? 'Adding coins…' : `Simulate Top-up (Dev Mode) · +${pack.coins} 🪙`}
-          </GameButton>
+        ) : paymentsEnabled || simulateTopUp ? (
+          <>
+            {paymentsEnabled && (
+              <GameButton
+                tone="sun"
+                size="lg"
+                className="flex-1"
+                onClick={() => {
+                  onDone()
+                  openPayment(pack.id)
+                }}
+              >
+                Buy with VietQR · {formatVnd(pack.priceVnd)}
+              </GameButton>
+            )}
+            {simulateTopUp && (
+              <GameButton tone={paymentsEnabled ? 'cream' : 'sun'} size="lg" className="flex-1" onClick={topUp} disabled={isPending}>
+                {isPending ? 'Adding coins…' : `Simulate Top-up (Dev Mode) · +${pack.coins} 🪙`}
+              </GameButton>
+            )}
+          </>
         ) : (
           <GameButton tone="sun" size="lg" className="flex-1" disabled>
             Payments coming soon · {formatVnd(pack.priceVnd)}

@@ -75,6 +75,9 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | `TILE_UNAVAILABLE` | 409 | Farm grid: the spot is taken or off the 16 × 16 grid, or the tree is already planted (`placeFarmItem`) |
 | `RUSH_ALREADY_PLAYED` | 409 | Daily Rush: today's one run is already used, on this or any other tree (`startDailyRush`) |
 | `RUSH_NOT_ACTIVE` | 409 | Daily Rush: the run is over (wrong answer, timeout, finished) or was never started (`answerDailyRush`) |
+| `PAYMENT_UNAVAILABLE` | 503 | Payments: PayOS keys (or the service role key) are not set, or the orders migration is missing (`POST /api/payment/create`, `getPaymentStatus`) |
+| `PAYMENT_FAILED` | 502 | Payments: PayOS refused to create the payment link (the order is cancelled); also an underpayment when fulfilling |
+| `ORDER_NOT_FOUND` | 404 | Payments: no order with that code for this buyer (`getPaymentStatus`) |
 | `FRUIT_NOT_READY` | 409 | Tree fruit: the tree wasn't practised yesterday, or today's fruit is already harvested (`harvestTreeFruit`) |
 | `INTERNAL_ERROR` | 500 | Unexpected Supabase / server error (logged, details not returned) |
 
@@ -669,6 +672,29 @@ Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × i
 - Item ids come from `decks/server` `listDeckItemIds`; `user_progress` is queried in chunks of 150 ids
 
 ---
+
+### Payments with PayOS (payment)
+```typescript
+// POST /api/payment/create   (Route Handler, Auth: Required, session cookie)
+// Body (CreatePaymentDto): { productId: 'pro-1m' | 'pro-lifetime' | 'coins-10' | 'coins-20' | 'coins-50' | 'coins-100' }
+// 200 → ActionResult<{ orderCode: number; productId; amount: number; description: string; checkoutUrl: string;
+//                      qrCode: string /* VietQR payload */; accountName; accountNumber; bin; expiresAt: string | null }>
+// Errors: 400 VALIDATION_FAILED, 401 AUTH_UNAUTHORIZED, 503 PAYMENT_UNAVAILABLE, 502 PAYMENT_FAILED, 500 INTERNAL_ERROR
+
+// POST /api/payment/webhook  (Route Handler, no session: PayOS calls it; the body's signature is trusted)
+// Body: PayOS webhook { code, desc, success, data: { orderCode, amount, …, code, desc }, signature }
+// 200 { success: true, message } handled / already fulfilled / ignored (code ≠ '00') / unknown order / underpaid
+// 400 invalid body or signature · 500 database failure (PayOS retries) · 503 PayOS not configured
+
+// getPaymentStatus({ orderCode })  (Server Action, Auth: Required) → { orderCode, status: 'PENDING' | 'PAID' | 'CANCELLED',
+//   productId, planType, amount, coins, totalCoins: number | null, membership: { isPro, lifetime, proUntil } }
+//   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ORDER_NOT_FOUND, PAYMENT_UNAVAILABLE, INTERNAL_ERROR
+// getMembership()  (Server Action, Auth: Optional) → { isPro, lifetime, proUntil, paymentsEnabled }
+```
+- **Prices**: from `payment/lib/plans.ts` only (Pro 1 month 49.000 ₫, Pro lifetime 499.000 ₫, the Coin Shop packages at their shop prices). The browser names a product; extra fields are dropped by Zod
+- **Checkout**: a PENDING `orders` row (service role; the order code is retried on a collision), then `payOS.paymentRequests.create({ orderCode, amount, description, items, returnUrl, cancelUrl, expiredAt })` (`@payos/node` 2.x; the link stays open 15 minutes; return and cancel URL `/payment/result`, `APP_URL` overrides the origin). PayOS failure cancels the order
+- **Webhook**: shape (Zod), then `payOS.webhooks.verify` (HMAC, `PAYOS_CHECKSUM_KEY`). Only `code === '00'` (top level and data) is fulfilled, through `fulfill_order()` (idempotent; DATABASE.md "Payments Feature")
+- **Return page** `/payment/result` (PayOS appends `?code&id&cancel&status&orderCode`): only `orderCode` is read; `getPaymentStatus` settles a PENDING order with PayOS (`paymentRequests.get`: PAID → fulfil, CANCELLED / EXPIRED / FAILED → cancel), so payments complete even where the webhook can't reach (localhost). The page and the modal poll every 3 s, then update the purse and `router.refresh()` the header (⭐ Pro)
 
 ## 7. Adding a New Endpoint
 

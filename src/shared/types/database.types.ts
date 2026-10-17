@@ -40,6 +40,8 @@ export type Database = {
           coin_carry: number
           avatar_url: string | null
           coins: number
+          // Migration 20261021000000: end of the Pro membership (ISO time, 'infinity' = lifetime, null = never).
+          pro_until: string | null
           created_at: string
         }
         Insert: {
@@ -610,6 +612,41 @@ export type Database = {
         }
         Relationships: []
       }
+      // Migration 20261021000000: PayOS checkouts. The buyer reads their own; the server writes them.
+      orders: {
+        Row: {
+          id: string
+          order_code: number
+          user_id: string
+          amount: number
+          status: 'PENDING' | 'PAID' | 'CANCELLED'
+          plan_type: 'PRO_1M' | 'PRO_LIFETIME' | 'COIN_PACK'
+          product_id: string
+          coins: number
+          payment_link_id: string | null
+          paid_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_code: number
+          user_id: string
+          amount: number
+          status?: 'PENDING' | 'PAID' | 'CANCELLED'
+          plan_type: 'PRO_1M' | 'PRO_LIFETIME' | 'COIN_PACK'
+          product_id: string
+          coins?: number
+          payment_link_id?: string | null
+          paid_at?: string | null
+        }
+        Update: {
+          status?: 'PENDING' | 'PAID' | 'CANCELLED'
+          payment_link_id?: string | null
+          paid_at?: string | null
+        }
+        Relationships: []
+      }
       tree_visits: {
         Row: {
           user_id: string
@@ -699,6 +736,16 @@ export type Database = {
       award_mastery_coin: {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]
+      }
+      // Migration 20261021000000_payments.sql. Service role only: grant a paid order once; cancel a
+      // pending one (returns the order's status, null for an unknown order).
+      fulfill_order: {
+        Args: { p_order_code: number; p_amount_paid: number }
+        Returns: { fulfilled: boolean; status: string; user_id: string; plan_type: string; coins_added: number; total_coins: number; pro_until: string | null }[]
+      }
+      cancel_order: {
+        Args: { p_order_code: number }
+        Returns: string | null
       }
       // Migration 20261020000000_progress_rpc.sql. Service role only: the only writers of
       // user_progress (players have no INSERT / UPDATE on it since 20261020000100).

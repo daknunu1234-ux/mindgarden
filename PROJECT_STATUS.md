@@ -195,6 +195,25 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### Payments with PayOS (VietQR) ⭐
+
+- **What can be bought** (`src/features/payment`, prices in `lib/plans.ts`): ⭐ Pro for a month (49.000 ₫,
+  30 days added from today or from the current end), ⭐ Pro for life (499.000 ₫), and the Coin Shop's
+  four coin packs at their shop prices. **Pro has no gameplay benefit yet**: a supporter membership with
+  a header badge, until we decide what it unlocks.
+- **Flow**: header "⭐ Upgrade" (or the Coin Shop's "Buy with VietQR") → pick → `POST
+  /api/payment/create` (a PENDING order priced on the server, then a PayOS payment link) → the modal shows
+  the VietQR code and bank details, or opens PayOS's checkout page → the transfer arrives → PayOS calls
+  `POST /api/payment/webhook` (signature checked) → `fulfill_order()` grants Pro or coins once → the
+  modal (polling every 3 s) or `/payment/result` celebrates, updates the purse and the ⭐ Pro badge.
+- **Without a reachable webhook** (localhost), the modal and the return page ask PayOS for the order's
+  status and settle it from there.
+- **Security**: the browser sends only a product id; players can't write `orders`, coins or
+  `pro_until`; webhooks without a valid signature change nothing; an underpayment isn't granted.
+- **Setup**: `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` in the environment, migration 33,
+  and the webhook URL `https://<domain>/api/payment/webhook` registered in the PayOS dashboard. Not
+  configured locally yet (the Upgrade button stays hidden until the keys are set).
+
 ### Progress is server-written
 
 - **The gap**: the app saved answers with the player's own session, so players held INSERT / UPDATE on
@@ -949,6 +968,7 @@ price or buff changed). All art is inline SVG / CSS, so there are no image asset
 | 19 | `20261007000000_drop_unused_progress_columns.sql` | Drops `user_progress.mistake_count`, `users.streak_count`, `users.last_active_at` (written per answer, read by nothing). Destructive, optional; run only **after** the deploy |
 | 20 | `20261008000000_daily_rush.sql` | `daily_rush_runs`, `start_daily_rush()`, `answer_daily_rush()`, `settle_daily_rush()` (service role: one Daily Rush a day, database-timed answers, coins = streak) |
 | 21 | `20261009000000_special_tree_coin_bonus.sql` | `species_coin_multiplier()` (1.5 for a species priced at 180, else 1); `award_mastery_coin()` pays 1 × farm buff × species bonus. Run **with or after** the deploy |
+| 33 | `20261021000000_payments.sql` | PayOS: `orders`, `users.pro_until`, `fulfill_order()` / `cancel_order()` (service role). Before or with the deploy |
 | 32 | `20261020000100_lock_progress_writes.sql` | Players lose INSERT / UPDATE / DELETE on `user_progress` (own-row SELECT stays). Only **after** the deploy |
 | 31 | `20261020000000_progress_rpc.sql` | `record_practice_answer()` (graded answer: ±1 under a row lock + mastery coin, owner only), `touch_practised()` (Daily Rush watering); service role only. **Before or with** the deploy |
 | 30 | `20261019000000_clone_rewards.sql` | Clone gate (50 statements), +50 🪙 creator reward, `plant_clones`, `notifications`. With the deploy |
@@ -972,7 +992,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(mindmap): redesign root cards with minimalist idle state and hover-to-reveal controls (`RootChart`: larger, darker titles; status, statement count, practice and owner tools revealed on hover / focus / selection; card 208 × 104) |
+| (pending) | feat(payment): implement PayOS VietQR payments for Pro tiers and Coin packs (⭐ Pro month / lifetime and coin packs; `orders` + `users.pro_until`, migration 33; `POST /api/payment/create`, signed `POST /api/payment/webhook`, `getPaymentStatus` reconcile with PayOS, `PaymentModal`, `UpgradeButton`, `/payment/result`; Coin Shop "Buy with VietQR"). Also carries: an explicit `display: swap` on the Baloo 2 font |
+| b233303 | feat(mindmap): redesign root cards with minimalist idle state and hover-to-reveal controls (`RootChart`: larger, darker titles; status, statement count, practice and owner tools revealed on hover / focus / selection; card 208 × 104) |
 | c92035f | feat(drill): dynamic scenarios, element decomposition, and context inheritance for terse notes (subject / action / object split `conceptPatterns` `decompose`, scenarios and type 7 element questions without markers, same-depth sibling swaps, changed-property least-likely, ~250 opposite pairs; terse bullets inherit their root, `Term: explanation` shorthand, loose opposites on fragments, the "lần đầu ra" phrase guard; drill tests `declarativeEligibility`, `wateringSchedule`) |
 | 9237707 | feat(progress): secure answer submissions via RPC with graceful client fallback (`record_practice_answer()` / `touch_practised()`, `progress/services/practice.ts`; players lose write access to `user_progress`, migrations 31–32; the player session is used while migration 31 is missing, `practiceFallback.ts`) |
 | 9d79121 | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
@@ -1035,7 +1056,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 108 files, 1076 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 115 files, 1174 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

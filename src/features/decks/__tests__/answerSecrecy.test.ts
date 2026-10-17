@@ -22,6 +22,8 @@ const ADMIN_USERS = [
   ['features', 'tournament', 'services', 'answers.ts'].join(sep),
   // rush: start / answer / settle the Daily Rush run (the only writer of daily_rush_runs; pays the streak).
   ['features', 'rush', 'services', 'rush.ts'].join(sep),
+  // payment: insert PayOS orders, call fulfill_order / cancel_order (the only writers of orders and users.pro_until).
+  ['features', 'payment', 'services', 'orders.ts'].join(sep),
 ]
 
 function sourceFiles(dir: string): string[] {

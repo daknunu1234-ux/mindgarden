@@ -12,6 +12,7 @@
     "sprites": "node scripts/prepare-building-sprites.mjs"
   },
   "dependencies": {
+    "@payos/node": "^2.0.5",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.1",
     "canvas-confetti": "^1.9.4",
@@ -23,6 +24,7 @@
     "radix-ui": "^1.6.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-qr-code": "^2.2.0",
     "server-only": "^0.0.1",
     "shadcn": "^4.21.0",
     "tailwind-merge": "^3.7.0",

@@ -87,6 +87,8 @@ describe('the schema has no per-answer log', () => {
         // earned) and the creator's notices. Neither records answers or practice.
         'plant_clones',
         'notifications',
+        // Payments (20261021000000): one row per PayOS checkout, its status updated in place.
+        'orders',
       ].sort(),
     )
     for (const name of tables) expect(name).not.toMatch(/log|attempt|answer|event|history|telemetry/)
