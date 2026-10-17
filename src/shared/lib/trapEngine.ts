@@ -4,10 +4,13 @@
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
 import {
   CLAUSE_STARTERS,
+  GUARDED_PHRASES,
+  LOOSE_OPPOSITE_PAIRS,
   NEGATION_PAIRS,
   OPERATOR_SWAPS,
   OPPOSITE_PAIRS,
   PREDICATE_MARKERS,
+  ROLE_PAIRS,
   type WordPair,
 } from './trapDictionary'
 
@@ -34,11 +37,16 @@ const DIGIT = /\p{N}/u
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+// Compiled once per phrase (the dictionary is tried on every statement). The regexes are global:
+// use them with matchAll / search / replace only, never test() or exec(), which keep a position.
+const PHRASE_REGEXES = new Map<string, RegExp | null>()
 function phraseRegex(phrase: string): RegExp | null {
+  const cached = PHRASE_REGEXES.get(phrase)
+  if (cached !== undefined) return cached
   const words = phrase.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return null
-  const body = words.map(escapeRegExp).join('\\s+')
-  return new RegExp(`(?<!${WORD_CHAR})${body}(?!${WORD_CHAR})`, 'giu')
+  const regex = words.length === 0 ? null : new RegExp(`(?<!${WORD_CHAR})${words.map(escapeRegExp).join('\\s+')}(?!${WORD_CHAR})`, 'giu')
+  PHRASE_REGEXES.set(phrase, regex)
+  return regex
 }
 
 // Keep a leading capital: "Tăng" → "Giảm", not "giảm".
@@ -50,34 +58,98 @@ function matchCase(matched: string, replacement: string): string {
   return replacement
 }
 
-type Replacement = { from: string; to: string }
+// `exchange`: when the statement names both words, they trade places instead of one being replaced.
+// `allow`: a match is used only where it says so (loose opposites: not inside a set phrase).
+type Replacement = { from: string; to: string; exchange?: boolean; allow?: (text: string, start: number, end: number) => boolean }
+
+// Whether the word at [start, end) is joined to `other` by a hyphen, a slash or a conjunction.
+const JOINER = '\\s*(?:[-/–&]|and|or|vs\\.?|và|hoặc)\\s*'
+function joinedWith(text: string, start: number, end: number, other: string): boolean {
+  const body = other.trim().split(/\s+/).map(escapeRegExp).join('\\s+')
+  if (!body) return false
+  return new RegExp(`^${JOINER}${body}(?!${WORD_CHAR})`, 'iu').test(text.slice(end)) || new RegExp(`(?<!${WORD_CHAR})${body}${JOINER}$`, 'iu').test(text.slice(0, start))
+}
+
+// "a synchronous call" → "an asynchronous call": the article follows the new word.
+function withArticle(before: string, word: string): string {
+  const m = /(?<![\p{L}\p{M}\p{N}])(a|an)(\s+)$/iu.exec(before)
+  if (!m || !/^[a-z]/i.test(word)) return before
+  const article = /^[aeiou]/i.test(word) ? 'an' : 'a'
+  if (m[1].toLowerCase() === article) return before
+  return before.slice(0, m.index) + (m[1][0] === 'A' ? 'A' + article.slice(1) : article) + m[2]
+}
+
+// Both words of a pair trade places everywhere in the text.
+function exchanged(text: string, a: string, b: string): string {
+  const [ra, rb] = [phraseRegex(a), phraseRegex(b)]
+  if (!ra || !rb) return text
+  const both = new RegExp(`${ra.source}|${rb.source}`, 'giu')
+  return text.replace(both, (m) => matchCase(m, comparable(m) === comparable(a) ? b : a))
+}
 
 // One candidate per match. Longer phrases claim their span first; shorter phrases
 // can't match inside a claimed span, so each candidate differs in exactly one place.
-function replaceEachMatch(text: string, rules: Replacement[]): string[] {
-  const ordered = [...rules].sort((a, b) => b.from.length - a.from.length)
+// Whether the match of `word` at [start, end) sits inside a phrase where it is no pair word at all
+// (trapDictionary GUARDED_PHRASES: "lần đầu ra công chúng" holds no "đầu ra").
+function guardedPhrase(text: string, word: string, start: number, end: number): boolean {
+  const key = comparable(word)
+  return GUARDED_PHRASES.some(({ phrase, word: guarded }) => {
+    if (guarded !== key) return false
+    const regex = phraseRegex(phrase)
+    return regex !== null && [...text.matchAll(regex)].some((m) => m.index <= start && m.index + m[0].length >= end)
+  })
+}
+
+const LONGEST_FIRST = new WeakMap<readonly Replacement[], Replacement[]>()
+function longestFirst(rules: readonly Replacement[]): Replacement[] {
+  let ordered = LONGEST_FIRST.get(rules)
+  if (!ordered) LONGEST_FIRST.set(rules, (ordered = [...rules].sort((a, b) => b.from.length - a.from.length)))
+  return ordered
+}
+const firstWord = (phrase: string) => phrase.trim().split(/\s+/)[0]?.toLocaleLowerCase() ?? ''
+
+function replaceEachMatch(text: string, rules: readonly Replacement[]): string[] {
   const claimed: [number, number][] = []
   const out: string[] = []
+  const lower = text.toLocaleLowerCase()
 
-  for (const { from, to } of ordered) {
+  for (const { from, to, exchange, allow } of longestFirst(rules)) {
+    // Most of the dictionary is not in the statement: skip it without running a regex.
+    if (!lower.includes(firstWord(from))) continue
     const regex = phraseRegex(from)
     if (!regex) continue
+    const other = exchange ? phraseRegex(to) : null
+    if (other && text.search(other) >= 0) {
+      const named = [...text.matchAll(regex)].filter((m) => !guardedPhrase(text, from, m.index, m.index + m[0].length))
+      // Named as a whole ("client-server", "supply and demand"): nothing to exchange.
+      if (named.length > 0 && !named.some((m) => joinedWith(text, m.index, m.index + m[0].length, to))) out.push(exchanged(text, from, to))
+      continue
+    }
     for (const m of text.matchAll(regex)) {
       const start = m.index
       const end = start + m[0].length
       if (claimed.some(([s, e]) => start < e && end > s)) continue
       claimed.push([start, end])
-      out.push(text.slice(0, start) + matchCase(m[0], to) + text.slice(end))
+      // "client-server", "supply and demand": the pair is named as a whole there, and swapping one
+      // half would say "server-server".
+      if (joinedWith(text, start, end, to)) continue
+      if (guardedPhrase(text, from, start, end)) continue
+      if (allow && !allow(text, start, end)) continue
+      out.push(withArticle(text.slice(0, start), to) + matchCase(m[0], to) + text.slice(end))
     }
   }
   return out
 }
 
+const ROLES = new Set(ROLE_PAIRS.map(([a, b]) => `${a}|${b}`))
 const bothWays = (pairs: readonly WordPair[]): Replacement[] =>
-  pairs.flatMap(([a, b]) => [
-    { from: a, to: b },
-    { from: b, to: a },
-  ])
+  pairs.flatMap(([a, b]) => {
+    const exchange = ROLES.has(`${a}|${b}`)
+    return [
+      { from: a, to: b, exchange },
+      { from: b, to: a, exchange },
+    ]
+  })
 
 // An operator counts only between two operands, either spaced on both sides ("m * a")
 // or tight on both sides ("a+b"). Tight "-" and "/" also need digits on both sides,
@@ -104,6 +176,25 @@ function operatorMutations(text: string): string[] {
   }
   return out
 }
+
+const OPPOSITES = bothWays(OPPOSITE_PAIRS)
+const NEGATIONS = bothWays(NEGATION_PAIRS)
+// The loose opposites (trapDictionary LOOSE_OPPOSITE_PAIRS), each with its guard: not inside a set
+// phrase ("trong khi"), or only as the note's last word ("cash in").
+const nextWord = (text: string, end: number) => /^\s+([\p{L}\p{M}\p{N}]+)/u.exec(text.slice(end))?.[1]?.toLocaleLowerCase() ?? null
+const LOOSE: readonly Replacement[] = LOOSE_OPPOSITE_PAIRS.flatMap(({ pair: [a, b], notBefore, atEnd }) => {
+  const allow = (text: string, _start: number, end: number) => {
+    const next = nextWord(text, end)
+    if (atEnd) return next === null
+    return !(next !== null && notBefore?.includes(next))
+  }
+  return [
+    { from: a, to: b, allow },
+    { from: b, to: a, allow },
+  ]
+})
+const OPPOSITES_AND_LOOSE: readonly Replacement[] = [...OPPOSITES, ...LOOSE]
+const NEGATIONS_ONE_WAY: readonly Replacement[] = NEGATION_PAIRS.map(([from, to]) => ({ from, to }))
 
 const comparable = (s: string) => s.toLocaleLowerCase().replace(/\s+/g, ' ').trim()
 
@@ -176,8 +267,8 @@ export function collectTrapTiers(correctStmt: string, rules: TrapRules, siblings
 
   const tiers = [
     [...siblingSwaps(text, sibs), ...replaceEachMatch(text, swaps)],
-    [...replaceEachMatch(text, bothWays(OPPOSITE_PAIRS)), ...operatorMutations(text)],
-    rules.negate ? replaceEachMatch(text, bothWays(NEGATION_PAIRS)) : [],
+    [...replaceEachMatch(text, OPPOSITES), ...operatorMutations(text)],
+    rules.negate ? replaceEachMatch(text, NEGATIONS) : [],
   ]
 
   const seen = new Set([comparable(text), ...sibs.map(comparable)])
@@ -201,13 +292,15 @@ const negations = (s: string) => [...s.matchAll(NEGATION_WORD)].length
 // (dictionary opposites and the author's own trap_rules.swaps first). Only when the tree allows it
 // (trap_rules.negate) and the statement has no negation of its own, the predicate itself negated as
 // the last resort ("is" → "is not"): the direct opposite of the claim, never a double negative.
-export function antonymVariants(statement: string, rules: TrapRules): string[] {
+// `loose`: the statement is a terse note, so everyday opposites count too ("ngoài" ↔ "trong", a
+// final "in" ↔ "out"), which a full sentence uses far too freely to swap.
+export function antonymVariants(statement: string, rules: TrapRules, { loose = false }: { loose?: boolean } = {}): string[] {
   const text = statement.normalize('NFC')
   const swaps = (rules.swaps ?? []).map((s) => ({ from: s.from.normalize('NFC'), to: s.to.normalize('NFC') }))
   const own = comparable(text)
   const out = new Map<string, string>()
-  const negated = rules.negate && negations(text) === 0 ? replaceEachMatch(text, NEGATION_PAIRS.map(([from, to]) => ({ from, to }))) : []
-  for (const v of [...replaceEachMatch(text, swaps), ...replaceEachMatch(text, bothWays(OPPOSITE_PAIRS)), ...negated]) {
+  const negated = rules.negate && negations(text) === 0 ? replaceEachMatch(text, NEGATIONS_ONE_WAY) : []
+  for (const v of [...replaceEachMatch(text, swaps), ...replaceEachMatch(text, loose ? OPPOSITES_AND_LOOSE : OPPOSITES), ...negated]) {
     const key = comparable(v)
     if (key !== own && negations(v) < 2 && !out.has(key)) out.set(key, v)
   }
@@ -233,7 +326,8 @@ export const operatorVariants = (statement: string): string[] => operatorMutatio
 
 // One-word replacements of the given pairs, both ways, each match on its own (used for conditional
 // clauses: an intensity or direction shift).
-export const oppositeVariants = (text: string): string[] => replaceEachMatch(text.normalize('NFC'), bothWays(OPPOSITE_PAIRS)).filter((v) => negations(v) < 2)
+export const oppositeVariants = (text: string, { loose = false }: { loose?: boolean } = {}): string[] =>
+  replaceEachMatch(text.normalize('NFC'), loose ? OPPOSITES_AND_LOOSE : OPPOSITES).filter((v) => negations(v) < 2)
 
 // All candidates in tier order (used for "is this drillable?" checks and tests).
 export function collectTrapCandidates(correctStmt: string, rules: TrapRules, siblings: readonly string[] = []): string[] {

@@ -220,7 +220,33 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   about a sibling concept), **scenario** (the note's worked example: which concept?), **least likely** (3
   characteristics + 1 alien), **condition** (A does B when C, asked both ways) and **formula** (index, compounding,
   sign and fraction mutations). No typo, lookalike or double-negative tricks.
-- Types 5, 7 and 8 need an example, a condition or a formula; other notes fall back to the rest.
+- Only type 8 needs special content (a formula). Types 5 and 7 no longer need "e.g." or "if / when":
+  any plain statement is split into subject, action and object (`conceptPatterns` `decompose`).
+- **Scenario** frames what the subject does as an observed case ("in a system, you observe something
+  that “…”: which underlying concept is being observed?"); a note with its own example still shows it.
+- **Type 7 by element** for statements without a condition: which component is responsible, what
+  its effect on the object is, what it acts on, or what is true of it.
+- **Antonym**: about 250 opposite pairs (was about 45), verbs in every form (inhibits / inhibited /
+  inhibiting), technical pairs (sync / async, linear / exponential, client / server, compress /
+  decompress, permanent / transient) in English and Vietnamese.
+- **Sibling swap** takes peers from the same depth across the tree, nearest first.
+- **Least likely**: the odd one out is a property of the topic with one detail changed, or a
+  statement of a sibling topic, instead of an unrelated one.
+- On plain statements with no special formatting, every one is eligible for types 4–7 and each has
+  at least 5 types (tested). Known limit: a subject containing a noun that is also a verb ("Blood
+  flow to the brain…") is split too early.
+- **Terse notes** (bullets and shorthand) are asked like full statements:
+  - A bullet with no subject ("- Consumes ATP", "used for background tasks", "increases by 15%") takes
+    its root's title as subject: "Active transport consumes ATP".
+  - Shorthand ("MBIs: người ngoài mua lại", "LBO - …", "IPO (…)") reads as term and explanation.
+  - Both get sibling swaps (the root or term against the ones beside it), scenarios, and element
+    questions ("What does “Active transport” do?", "Which term matches “…”?"): at least 5 trap types
+    each on a 19-note sample (tested).
+  - In a note of at most 7 words, everyday words count as opposites: trong / ngoài, a final in / out,
+    vào / ra, cao / thấp… ("người ngoài mua lại" → "người trong mua lại"). Full sentences never use them.
+  - A subject swap or topic choice stays inside the note's own subject when it has a peer there.
+  - Phrase guard: "lần đầu ra công chúng" (an IPO) is not read as "đầu ra" and is never turned into
+    "đầu vào" (`GUARDED_PHRASES`).
 - A round spreads its questions evenly over the types each statement supports and never repeats a type
   within 2 questions; the type travels in the question's seed, so grading rebuilds it exactly.
 
@@ -943,7 +969,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(progress): secure answer submissions via RPC with graceful client fallback (`record_practice_answer()` / `touch_practised()`, `progress/services/practice.ts`; players lose write access to `user_progress`, migrations 31–32; the player session is used while migration 31 is missing, `practiceFallback.ts`) |
+| (pending) | feat(drill): dynamic scenarios, element decomposition, and context inheritance for terse notes (subject / action / object split `conceptPatterns` `decompose`, scenarios and type 7 element questions without markers, same-depth sibling swaps, changed-property least-likely, ~250 opposite pairs; terse bullets inherit their root, `Term: explanation` shorthand, loose opposites on fragments, the "lần đầu ra" phrase guard; drill tests `declarativeEligibility`, `wateringSchedule`) |
+| 9237707 | feat(progress): secure answer submissions via RPC with graceful client fallback (`record_practice_answer()` / `touch_practised()`, `progress/services/practice.ts`; players lose write access to `user_progress`, migrations 31–32; the player session is used while migration 31 is missing, `practiceFallback.ts`) |
 | 9d79121 | feat(drill): implement 8-type conceptual trap engine with balanced scheduler (`questionEngine` types 1–8, `conceptPatterns`, `trapEngine` typed variants, `drill/lib/trapSchedule`; the type carried in the seed) |
 | 9a56a4a | feat(daily-rush): hook daily rush question completions into plant watering (progress `waterTree` / `touchPractised` shared with `recordDrillResult`; "💧 Watered" on the result screen) |
 | 232b617 | feat(garden): implement tree clone creator reward and 50-statement threshold (migration 30: gate, +50 🪙 creator reward, `plant_clones`; new `notifications` feature with layout toasts) |

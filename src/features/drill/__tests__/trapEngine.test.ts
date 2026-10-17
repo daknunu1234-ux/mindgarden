@@ -174,7 +174,8 @@ describe('collectTrapCandidates: opposite pairs', () => {
 
   it('no longer swaps "trong" ↔ "ngoài" (too common in Vietnamese)', () => {
     expect(collectTrapCandidates('Nước ở trong tế bào.', {})).toEqual([])
-    expect(collectTrapCandidates('Trong khi ngủ, tim đập chậm.', {})).toEqual([])
+    // "Trong" stays; only the real opposite pair (chậm ↔ nhanh) is swapped.
+    expect(collectTrapCandidates('Trong khi ngủ, tim đập chậm.', {})).toEqual(['Trong khi ngủ, tim đập nhanh.'])
   })
 
   it('does not match inside English words', () => {

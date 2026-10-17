@@ -13,21 +13,29 @@
 //                   of a key–value or definition note
 //   3 category      which topic a statement belongs to (its root against unrelated roots);
 //                   recognize: which short item is filed under the root
-//   4 sibling       which statement is true: the subject swapped for a sibling concept's
-//   5 scenario      the note's worked example ("…, e.g. …", "Ví dụ: …") as a scenario: which concept
-//                   is demonstrated?
-//   6 least-likely  three characteristics of the root and one of another concept: which is least
-//                   likely a characteristic?
+//   4 sibling       which statement is true: the subject swapped for a peer concept's (the same
+//                   root first, then sibling roots, then any statement at the same depth)
+//   5 scenario      an observed case: which concept is at work? The note's own example when it gives
+//                   one ("…, e.g. …"), otherwise its mechanism framed as an observation
+//   6 least-likely  true characteristics of the root and one that is not: a property of the topic
+//                   with one detail changed, or a statement of a sibling topic
 //   7 conditional   "A does B when C": under C, what happens? / under which condition does A do B?
-//                   with near-miss clauses (opposite words, adjacent thresholds, sibling mechanisms)
+//     element       any other declarative statement, asked by element: the subject responsible, the
+//                   effect (the action), the object acted on, or the whole predicate
 //   8 formula       which formula is correct: one index, compounding factor, sign or fraction changed
+// No marker ("if", "when", "e.g.") is needed for types 5 and 7: a plain statement is split into
+// subject, action and object (conceptPatterns decompose). Terse notes work too: a bullet with no
+// subject ("- Consumes ATP", "used for background tasks") takes its root's title as subject, and
+// shorthand ("Term: explanation", "Term - explanation", "Term (details)") reads as subject and
+// mechanism (parseShorthand). A terse note (at most TERSE_WORDS words) also swaps everyday opposites
+// in type 1 ("ngoài" ↔ "trong", a final "in" ↔ "out").
 // A session spreads its questions evenly over the types (drill lib/trapSchedule) and passes the type
 // in the seed (typedSeed). Only when no type fits: `recognize` across the deck, then `exact` (spot
 // the note among copies with two words swapped or one dropped), the last resort outside the 8 types.
 // Every question is multiple choice and graded on the server: no self-graded cards.
 
 import { seededRandom, seededShuffle } from '@/shared/utils/seededRandom'
-import { conceptOf, conditionClause, formulaVariants, mainSentence, parseConditional, parseScenario, type Conditional, type Scenario } from './conceptPatterns'
+import { conceptOf, conditionClause, decompose, formulaVariants, mainSentence, parseConditional, parseScenario, parseShorthand, type Conditional, type Parts, type Scenario } from './conceptPatterns'
 import {
   clozeTargets,
   comparable,
@@ -42,7 +50,7 @@ import {
   type Pair,
 } from './notePatterns'
 import { PREDICATE_MARKERS } from './trapDictionary'
-import { antonymVariants, oppositeVariants, siblingSwapVariants, type DrillChoice, type DrillTag, type TrapRules } from './trapEngine'
+import { antonymVariants, extractSubject, oppositeVariants, type DrillChoice, type DrillTag, type TrapRules } from './trapEngine'
 
 // One knowledge item with its place in the mindmap. `path` = root titles from the top-level root
 // down to the item's own root (the breadcrumb); `ancestry` = the same roots' ids.
@@ -67,6 +75,10 @@ export type QuestionKind =
   | 'least-likely'
   | 'conditional-outcome'
   | 'conditional-condition'
+  | 'element-subject'
+  | 'element-action'
+  | 'element-object'
+  | 'element-predicate'
   | 'formula'
   | 'exact'
 
@@ -89,6 +101,9 @@ const TAGS: readonly DrillTag[] = ['A', 'B', 'C', 'D']
 const MAX_DISTRACTORS = 3
 // Distractors come from the closest notes; a small window keeps them plausible yet varied.
 const DISTRACTOR_WINDOW = 6
+const KEY_VALUE_JOINERS: ReadonlySet<string> = new Set([':', '=', '–'])
+// A terse note: short enough that everyday words ("trong", "in", "cao") carry its meaning.
+export const TERSE_WORDS = 7
 
 // ── Deck analysis (once per deck, then reused for every question) ─────────────
 
@@ -103,6 +118,10 @@ type Analyzed = DeckNote & {
   short: boolean
   conditional: Conditional | null
   scenario: Scenario | null
+  // A short fragment or bullet (at most TERSE_WORDS words): loose opposites apply.
+  terse: boolean
+  // Subject, action and object of a plain declarative statement (null for any other shape).
+  parts: Parts | null
 }
 
 export type PreparedDeck = { notes: readonly Analyzed[]; byId: ReadonlyMap<string, Analyzed> }
@@ -111,18 +130,25 @@ export function prepareDeck(notes: readonly DeckNote[]): PreparedDeck {
   const analyzed = notes.map((note): Analyzed => {
     const { text, targets } = clozeTargets(note.statement)
     const proposition = synthesizeProposition(note.statement, note.path)
+    const pair = parsePair(text)
+    // A "Key: Value" line is a pair, not a sentence; a definition ("X is Y") is both.
+    const sentence = !pair || !KEY_VALUE_JOINERS.has(pair.joiner)
     return {
       ...note,
       text,
       key: comparable(text),
       proposition: proposition.text,
       inherited: proposition.inherited,
-      pair: parsePair(text),
+      pair,
       targets,
       marked: targets.some((t) => t.kind === 'marked'),
       short: isShortPhrase(text),
       conditional: parseConditional(proposition.text),
       scenario: parseScenario(text),
+      terse: text.split(' ').filter(Boolean).length <= TERSE_WORDS,
+      // Shorthand first ("Term: explanation"), then a sentence; a note that inherits its root is split
+      // after that root.
+      parts: proposition.inherited ? decompose(proposition.text, note.path.at(-1)) : (parseShorthand(text) ?? (sentence ? decompose(proposition.text) : null)),
     }
   })
   // Sorted, so nothing depends on the order rows came back from the database.
@@ -174,7 +200,7 @@ export const TRAP_TYPE_NAMES: Readonly<Record<TrapType, string>> = {
   4: 'Sibling swap',
   5: 'Scenario',
   6: 'Least likely',
-  7: 'Condition',
+  7: 'Condition and element',
   8: 'Formula',
 }
 const KIND_TYPE: Readonly<Record<QuestionKind, TrapType | null>> = {
@@ -189,6 +215,10 @@ const KIND_TYPE: Readonly<Record<QuestionKind, TrapType | null>> = {
   'least-likely': 6,
   'conditional-outcome': 7,
   'conditional-condition': 7,
+  'element-subject': 7,
+  'element-action': 7,
+  'element-object': 7,
+  'element-predicate': 7,
   formula: 8,
   exact: null,
 }
@@ -269,7 +299,7 @@ function truthPlan(deck: PreparedDeck, note: Analyzed, kind: QuestionKind, varia
 
 // Type 1: a defining keyword swapped for its opposite (dictionary opposites, the author's swaps).
 const antonymPlan = (deck: PreparedDeck, note: Analyzed) =>
-  truthPlan(deck, note, 'antonym', antonymVariants(note.proposition, note.rules), 'Which statement is true?', 'Mind what each one claims')
+  truthPlan(deck, note, 'antonym', antonymVariants(note.proposition, note.rules, { loose: note.terse }), 'Which statement is true?', 'Mind what each one claims')
 
 // Type 2: the cloze (a term, a number, the author's [marks]) …
 function clozePlan(deck: PreparedDeck, note: Analyzed): Plan | null {
@@ -367,81 +397,168 @@ function recognitionPlan(deck: PreparedDeck, note: Analyzed): Plan | null {
   }
 }
 
-// Type 4: the same claim made about a sibling concept (the subject swapped for one from the same
-// root; failing that, from a sibling root under the same parent).
+// The statements a note's peers are drawn from, nearest first: its own root, the sibling roots (same
+// parent, same depth), the rest of its subject at that depth, then any statement at that depth.
+function peerTiers(deck: PreparedDeck, note: Analyzed): Analyzed[][] {
+  const depth = note.ancestry.length
+  const rest = others(deck, note)
+  const sameDepth = rest.filter((n) => n.nodeId !== note.nodeId && n.ancestry.length === depth)
+  const shared = (n: Analyzed) => sharedPrefix(n.ancestry, note.ancestry)
+  return [
+    rest.filter((n) => n.nodeId === note.nodeId),
+    sameDepth.filter((n) => shared(n) === depth - 1),
+    sameDepth.filter((n) => shared(n) < depth - 1 && shared(n) >= 1),
+    sameDepth.filter((n) => shared(n) === 0 && depth > 1),
+  ]
+}
+
+// The roots beside a note's own root: the same depth, nearest first. `near` share its subject (its
+// top-level root; for a top-level root, every other one), `far` belong to another subject.
+function peerRoots(deck: PreparedDeck, note: Analyzed): { near: string[]; far: string[] } {
+  const depth = note.ancestry.length
+  const ranked = [...rootsOf(deck).entries()]
+    .filter(([id, r]) => id !== note.nodeId && r.ancestry.length === depth)
+    .map(([, r]) => ({ title: r.title, near: sharedPrefix(r.ancestry, note.ancestry) }))
+    .sort((a, b) => b.near - a.near || (comparable(a.title) < comparable(b.title) ? -1 : comparable(a.title) > comparable(b.title) ? 1 : 0))
+  const nearMin = depth === 1 ? 0 : 1
+  return { near: ranked.filter((r) => r.near >= nearMin).map((r) => r.title), far: ranked.filter((r) => r.near < nearMin).map((r) => r.title) }
+}
+
+// The topics a note that inherits its root is told apart from: the roots beside its own, topped up
+// with the next nearest topics until there are three.
+function rivalTopics(deck: PreparedDeck, note: Analyzed): string[] {
+  const { near, far } = peerRoots(deck, note)
+  const all = dedupe([...near, ...far, ...otherTopics(deck, note)], note.path).filter((t) => !note.key.includes(comparable(t)))
+  return all.slice(0, Math.max(MAX_DISTRACTORS, near.length))
+}
+
+// The entity a statement is about: its subject (decompose), or the trap dictionary's reading of it.
+// A fragment that merely sits under a root (no verb of its own) has none.
+const subjectOf = (note: Analyzed): string | null => note.parts?.subject ?? (note.inherited ? null : (extractSubject(note.proposition)?.trim() ?? null))
+const keepCase = (own: string, other: string) => (/^\p{Lu}/u.test(own) ? capitalize(other) : other)
+
+// Type 4: the same claim made about a peer entity: the subject swapped for the subject of another
+// statement at the same depth of the tree. The nearest peers come first (the note's own root, then
+// sibling roots, then the rest of the tree at that depth); a note that inherits its root as subject
+// is also swapped with the roots beside it.
 function siblingPlan(deck: PreparedDeck, note: Analyzed): Plan | null {
-  const sameRoot = others(deck, note).filter((n) => n.nodeId === note.nodeId)
-  const parent = note.ancestry.length >= 2 ? others(deck, note).filter((n) => n.nodeId !== note.nodeId && n.ancestry.length === note.ancestry.length && sharedPrefix(n.ancestry, note.ancestry) === note.ancestry.length - 1) : []
-  let variants = siblingSwapVariants(note.proposition, sameRoot.map((n) => n.proposition))
-  if (variants.length === 0) variants = siblingSwapVariants(note.proposition, parent.map((n) => n.proposition))
+  const own = subjectOf(note)
+  if (!own) return null
+  const rest = note.parts?.rest ?? note.proposition.slice(note.proposition.indexOf(own) + own.length)
+  const roots = note.inherited ? peerRoots(deck, note) : { near: [], far: [] }
+  const tiers = peerTiers(deck, note).map((tier) => tier.map(subjectOf).filter((x): x is string => x !== null))
+  const truths = deck.notes.map((n) => n.proposition)
+  const variants: string[] = []
+  const take = (subjects: readonly string[]) => {
+    const swapped = dedupe(subjects, [own]).map((other) => keepCase(own, other) + rest)
+    variants.push(...dedupe(swapped, [note.proposition, ...truths, ...variants]).slice(0, MAX_DISTRACTORS - variants.length))
+  }
+  for (const subjects of [tiers[0], roots.near, tiers[1], tiers[2]]) take(subjects)
+  // Another subject altogether ("Bond prices consume ATP") is too easy to rule out: only when the
+  // note's own subject offers no peer at all.
+  if (variants.length === 0) for (const subjects of [roots.far, tiers[3]]) take(subjects)
   return truthPlan(deck, note, 'sibling', variants, 'Which statement is true?', 'Mind which concept does what')
 }
 
-// Type 5: the note's worked example as a scenario, without naming the concept: which concept is
-// demonstrated? The concept is the claim's subject (or the root, when the note is an example of it).
+// Type 5: an observed case, without naming the concept: which concept is at work? A note that gives
+// its own example ("…, e.g. …") shows that example. Any other declarative statement is framed from
+// its mechanism (its predicate, as written) as something observed in a system. The concept is the
+// statement's subject; for a terse note that inherits its root (or an example of the root itself) it is
+// the root, against the topics beside it, and the badge shows only the parent breadcrumb.
+const SCENARIO_FRAMES: readonly ((mechanism: string) => string)[] = [
+  (m) => `Scenario: in a system, you observe something that “${m}”.`,
+  (m) => `Applied case: a component is at work that “${m}”.`,
+]
+// For a mechanism that is not a verb phrase (shorthand, a verbless fragment under a root).
+const NOTE_FRAMES: readonly ((mechanism: string) => string)[] = [
+  (m) => `Scenario: in a case, this is what you observe: “${m}”.`,
+  (m) => `Applied case: this is at work: “${m}”.`,
+]
 function scenarioPlan(deck: PreparedDeck, note: Analyzed): Plan | null {
-  const scenario = note.scenario
-  if (!scenario) return null
-  const subject = scenario.claim ? conceptOf(scenario.claim, PREDICATE_MARKERS) : null
+  const given = note.scenario
+  const parts = note.parts
+  if (!given && !parts) return null
+  const shown = given ? given.example : parts!.predicate
+  // A note that inherits its root is about that root: the root is the concept, against the topics beside it.
+  const subject = given ? (given.claim ? (decompose(given.claim)?.subject ?? conceptOf(given.claim, PREDICATE_MARKERS)) : null) : note.inherited ? null : parts!.subject
+  const frames = !given && (parts!.kind === 'note' || (note.inherited && parts!.kind === 'guess')) ? NOTE_FRAMES : SCENARIO_FRAMES
   const answer = subject?.trim() || rootOf(note)
-  if (!answer || comparable(scenario.example).includes(comparable(answer))) return null
+  if (!answer || comparable(shown).includes(comparable(answer))) return null
   const subjects = subject
     ? rankCandidates(
         note,
         others(deck, note).flatMap((n) => {
-          const s = conceptOf(n.proposition, PREDICATE_MARKERS)
-          return s ? [{ text: s.trim(), from: n }] : []
+          const s = n.inherited ? null : subjectOf(n)
+          return s ? [{ text: s, from: n }] : []
         }),
         answer,
       )
     : []
-  const ranked = dedupe([...subjects, ...otherTopics(deck, note)], [answer]).filter((t) => !comparable(scenario.example).includes(comparable(t)))
+  const topics = !given && note.inherited ? rivalTopics(deck, note) : otherTopics(deck, note)
+  const ranked = dedupe([...subjects, ...topics], [answer]).filter((t) => !comparable(shown).includes(comparable(t)))
   if (ranked.length === 0) return null
   return {
     kind: 'scenario',
-    build: (random) =>
-      question('scenario', {
+    build: (random) => {
+      const prompt = given ? `Scenario: ${capitalize(given.example)}.` : frames[Math.floor(random() * frames.length)](shown)
+      return question('scenario', {
         context: note.path.slice(0, -1),
-        prompt: `Scenario: ${capitalize(scenario.example)}.`,
-        instruction: 'Which concept is demonstrated in this scenario?',
+        prompt,
+        instruction: given ? 'Which concept is demonstrated in this scenario?' : 'Which underlying concept is being observed?',
         ...multipleChoice(answer, ranked, random),
-      }),
+      })
+    },
   }
 }
 
-// Type 6: three true characteristics of the note's root (the note and two of its siblings) and one
-// that belongs to another concept: which is LEAST LIKELY a characteristic of the root?
+// A statement with one detail changed (an opposite keyword, a shifted number). Never a negation:
+// "is not" stands out. Every statement of a root needs its siblings', so they are kept per note.
+const CHANGED = new WeakMap<Analyzed, string[]>()
+function changedProperties(source: Analyzed): string[] {
+  let changed = CHANGED.get(source)
+  if (!changed) CHANGED.set(source, (changed = clauseVariants(source.text, { swaps: source.rules.swaps }, source.terse)))
+  return changed
+}
+
+// Type 6: true characteristics of the note's root and one that is not: which is LEAST LIKELY a
+// characteristic of the root? The odd one out is built to be plausible: a real property of this
+// topic with one detail changed (an opposite keyword, a shifted number; its original is then left
+// out), or a true statement of a sibling topic. Only when the tree has neither: one from further away.
 function leastLikelyPlan(deck: PreparedDeck, note: Analyzed): Plan | null {
   const root = rootOf(note)
   if (!root) return null
-  const siblings = dedupe(
-    others(deck, note)
-      .filter((n) => n.nodeId === note.nodeId)
-      .map((n) => n.text),
-    [note.text],
-  )
-  if (siblings.length < 2) return null
-  const taken = [note.text, ...siblings]
-  const aliens = rankCandidates(
-    note,
-    others(deck, note)
-      .filter((n) => n.nodeId !== note.nodeId && !note.ancestry.includes(n.nodeId) && !n.ancestry.includes(note.nodeId))
-      .map((n) => ({ text: n.text, from: n })),
-    note.text,
-  ).filter((t) => !taken.some((x) => comparable(x) === comparable(t)))
-  if (aliens.length === 0) return null
+  const family = [note, ...others(deck, note).filter((n) => n.nodeId === note.nodeId)].filter((n, i, all) => all.findIndex((o) => o.key === n.key) === i)
+  if (family.length < 3) return null
+  const truths = deck.notes.flatMap((n) => [n.text, n.proposition])
+  const mutated = family.flatMap((source) => dedupe(changedProperties(source), truths).map((text) => ({ text, hide: source.id as string | null })))
+  const outside = others(deck, note).filter((n) => n.nodeId !== note.nodeId && !note.ancestry.includes(n.nodeId) && !n.ancestry.includes(note.nodeId))
+  const depth = note.ancestry.length
+  const siblingTopics = outside.filter((n) => n.ancestry.length === depth && sharedPrefix(n.ancestry, note.ancestry) === depth - 1)
+  const foreign = (from: readonly Analyzed[]) =>
+    rankCandidates(
+      note,
+      from.map((n) => ({ text: n.text, from: n })),
+      note.text,
+    )
+      .filter((t) => !family.some((x) => x.key === comparable(t)))
+      .map((text) => ({ text, hide: null as string | null }))
+  const near = [...mutated, ...foreign(siblingTopics)]
+  const pool = (near.length > 0 ? near : foreign(outside)).filter((c, i, all) => all.findIndex((o) => comparable(o.text) === comparable(c.text)) === i)
+  if (pool.length === 0) return null
   return {
     kind: 'least-likely',
     build: (random) => {
-      const alien = seededShuffle(aliens.slice(0, DISTRACTOR_WINDOW), random)[0]
-      const valid = [note.text, ...seededShuffle(siblings, random).slice(0, 2)]
-      const texts = seededShuffle([...valid, alien], random)
+      const alien = pool[Math.floor(random() * pool.length)]
+      // The note itself is always shown, unless it is the property that was changed.
+      const kept = family.filter((n) => n.id !== alien.hide)
+      const picked = alien.hide === note.id ? seededShuffle(kept, random) : [note, ...seededShuffle(kept.filter((n) => n.id !== note.id), random)]
+      const texts = seededShuffle([...picked.slice(0, 3).map((n) => n.text), alien.text], random)
       return question('least-likely', {
         context: [...note.path],
         prompt: `Which of the following is LEAST LIKELY a characteristic of “${root}”?`,
-        instruction: 'Three belong to it; one does not',
+        instruction: 'All but one belong to it',
         choices: texts.map((text, i) => ({ tag: TAGS[i], text })),
-        correctTag: TAGS[texts.indexOf(alien)],
+        correctTag: TAGS[texts.indexOf(alien.text)],
       })
     },
   }
@@ -449,12 +566,12 @@ function leastLikelyPlan(deck: PreparedDeck, note: Analyzed): Plan | null {
 
 // Plausible near-misses of a clause: one opposite word (an intensity or direction shift) or one
 // number moved to an adjacent value (a neighbouring threshold).
-function clauseVariants(clause: string, rules: TrapRules): string[] {
+function clauseVariants(clause: string, rules: TrapRules, loose = false): string[] {
   const shifted: string[] = []
   for (const m of clause.matchAll(/\d+(?:[.,]\d+)?%?/gu)) {
     for (const n of numberDistractors(m[0]).slice(0, 2)) shifted.push(clause.slice(0, m.index) + n + clause.slice(m.index + m[0].length))
   }
-  return dedupe([...antonymVariants(clause, rules), ...oppositeVariants(clause), ...shifted], [clause])
+  return dedupe([...antonymVariants(clause, rules, { loose }), ...oppositeVariants(clause, { loose }), ...shifted], [clause])
 }
 
 // Type 7: a conditional or causal statement (A does B when C), asked from both angles: under C, what
@@ -518,6 +635,86 @@ function conditionalPlans(deck: PreparedDeck, note: Analyzed): Plan[] {
   return plans
 }
 
+// Type 7 for every other declarative statement (no "if" / "when" needed): the statement is split
+// into subject, action and object and one element is asked for: which component is responsible, what
+// its effect on the object is, what it acts on, or what is true of it. Wrong answers are the same
+// element of the nearest statements (and the action's opposite), never one that makes a true
+// statement of the tree.
+function elementPlans(deck: PreparedDeck, note: Analyzed): Plan[] {
+  const parts = note.parts
+  // A definition ("X is Y") is asked both ways by type 2 already; shorthand is asked here as well.
+  if (!parts || note.conditional || (note.pair && parts.kind !== 'note')) return []
+  const truths = new Set(deck.notes.map((n) => comparable(n.proposition)))
+  const peers = others(deck, note).filter((n) => n.parts)
+  const element = (pick: (p: Parts, n: Analyzed) => string | null, answer: string, rebuild: (value: string) => string, extra: readonly string[] = []) =>
+    dedupe(
+      [
+        ...extra,
+        ...rankCandidates(
+          note,
+          peers.flatMap((n) => {
+            const text = pick(n.parts!, n)
+            return text ? [{ text, from: n }] : []
+          }),
+          answer,
+        ),
+      ],
+      [answer],
+    ).filter((value) => !truths.has(comparable(rebuild(value))))
+  const plan = (kind: QuestionKind, prompt: string, instruction: string, answer: string, ranked: readonly string[], context: readonly string[] = note.path): Plan[] =>
+    ranked.length === 0 ? [] : [{ kind, build: (random) => question(kind, { context: [...context], prompt, instruction, ...multipleChoice(answer, ranked, random) }) }]
+
+  const plans: Plan[] = []
+  // The subject, from what is said about it. A note that inherits its root is asked for that root,
+  // against the topics beside it, with only the parent breadcrumb on the badge.
+  const subjects = note.inherited
+    ? rivalTopics(deck, note).filter((topic) => !truths.has(comparable(topic + parts.rest)))
+    : element((p, n) => (n.inherited ? null : p.subject), parts.subject, (v) => v + parts.rest)
+  plans.push(
+    ...plan(
+      'element-subject',
+      parts.kind === 'action'
+        ? `Which component is responsible for “${parts.predicate}”?`
+        : parts.kind === 'note'
+          ? `Which term matches “${parts.predicate}”?`
+          : `Which concept does this describe: “____ ${parts.predicate}”?`,
+      'Name the one this is about',
+      parts.subject,
+      subjects,
+      note.inherited ? note.path.slice(0, -1) : note.path,
+    ),
+  )
+  if (parts.kind === 'action' && parts.object) {
+    // The same grammatical form as the answer, when the tree has any: "consumes" against "produces".
+    const sameForm = (a: string) => a.endsWith('s') === parts.action.endsWith('s')
+    const all = element((p) => (p.kind === 'action' ? p.action : null), parts.action, (v) => `${parts.subject} ${v} ${parts.object}`, oppositeVariants(parts.action))
+    const actions = all.some(sameForm) ? all.filter(sameForm) : all
+    plans.push(...plan('element-action', `What is the primary effect of “${parts.subject}” on “${parts.object}”?`, 'Pick what it does to it', parts.action, actions))
+    const objects = element((p) => (p.kind === 'action' && p.object ? p.object : null), parts.object, (v) => `${parts.subject} ${parts.action} ${v}`)
+    plans.push(...plan('element-object', `${parts.subject} ${parts.action} ____.`, 'Which object or property completes it?', parts.object, objects))
+  }
+  // The whole predicate: for a statement whose verb can't be asked alone, and for every terse note
+  // under a root ("What does “Active transport” do?").
+  if (parts.kind !== 'action' || !parts.object || note.inherited) {
+    // Like with like when the tree has it: explanations against explanations, verb phrases against verb phrases.
+    const alike = (p: Parts) => (p.kind === 'note') === (parts.kind === 'note')
+    const rebuild = (v: string) => (parts.kind === 'note' ? parts.subject + parts.rest.replace(parts.predicate, v) : `${parts.subject} ${v}`)
+    const near = clauseVariants(parts.predicate, { swaps: note.rules.swaps }, note.terse)
+    const same = element((p) => (alike(p) ? p.predicate : null), parts.predicate, rebuild, near)
+    const predicates = same.length > near.length ? same : element((p) => p.predicate, parts.predicate, rebuild, near)
+    plans.push(
+      ...plan(
+        'element-predicate',
+        parts.kind === 'action' ? `What does “${parts.subject}” do?` : parts.kind === 'note' ? `What describes “${parts.subject}”?` : `What is true of “${parts.subject}”?`,
+        'Pick its role or property',
+        parts.predicate,
+        predicates,
+      ),
+    )
+  }
+  return plans
+}
+
 // Type 8: a formula or indexed statement, against copies with one index, compounding factor, sign
 // or fraction changed.
 const formulaPlan = (deck: PreparedDeck, note: Analyzed) =>
@@ -562,10 +759,21 @@ function exactPlan(note: Analyzed): Plan | null {
 }
 
 // The questions a note supports (the eligible pool). Author [marks] → only that cloze. A formula
-// enables type 8, a condition type 7, an example type 5; without them the note is asked by the other
-// types (cloze, concept mapping, …). Only when no type fits: recognition across the deck, then the
+// enables type 8; a plain declarative statement is eligible for types 4, 5 and 7 as it is (no
+// connector or example marker needed), and for the rest by what it holds (cloze, concept mapping, …). Only when no type fits: recognition across the deck, then the
 // last-resort exact card.
+// Plans are pure (the same deck and note always give the same ones), so a deck builds each note's
+// once: a round asks for them three times a statement (drillable? which types? the question).
+const PLANS = new WeakMap<PreparedDeck, Map<string, Plan[]>>()
 function plansFor(deck: PreparedDeck, note: Analyzed): Plan[] {
+  let byNote = PLANS.get(deck)
+  if (!byNote) PLANS.set(deck, (byNote = new Map()))
+  let plans = byNote.get(note.id)
+  if (!plans) byNote.set(note.id, (plans = buildPlans(deck, note)))
+  return plans
+}
+
+function buildPlans(deck: PreparedDeck, note: Analyzed): Plan[] {
   if (note.marked) {
     const cloze = clozePlan(deck, note)
     if (cloze) return [cloze]
@@ -580,6 +788,7 @@ function plansFor(deck: PreparedDeck, note: Analyzed): Plan[] {
     scenarioPlan(deck, note),
     leastLikelyPlan(deck, note),
     ...conditionalPlans(deck, note),
+    ...elementPlans(deck, note),
     formulaPlan(deck, note),
   ].filter((p): p is Plan => p !== null)
   if (primary.length > 0) return primary

@@ -53,6 +53,7 @@ const VOCAB = new Set([
   ...[...OPPOSITE_PAIRS, ...NEGATION_PAIRS].flat().flatMap(tokens),
   // The engine's own question words.
   ...tokens('Which statement is true formula is correct topic does this belong to scenario concept demonstrated in least likely a characteristic of the following under condition what happens when'),
+  ...tokens('Applied case a component is at work that in a system you observe something which is responsible for what is the primary effect of on which concept does this describe what is true of'),
 ])
 // (Plus the cloze blank "____".)
 const known = (word: string) => VOCAB.has(word) || /^[a-z]{1,3}_?\d+$/.test(word) || /^\d+$/.test(word) || /^_+$/.test(word)
@@ -88,10 +89,32 @@ describe('the 8 trap types, one by one', () => {
     const q = ask('m2', 4)
     expect(q).toMatchObject({ kind: 'sibling', trapType: 4, prompt: 'Which statement is true?' })
     expect(answerOf(q)).toBe('Ribosomes synthesize proteins.')
-    for (const w of wrongOf(q)) {
+    const subjects = wrongOf(q).map((w) => {
       expect(w.endsWith(' synthesize proteins.')).toBe(true)
-      expect(['Mitochondria', 'Chloroplasts']).toContain(w.replace(' synthesize proteins.', ''))
-    }
+      return w.replace(' synthesize proteins.', '')
+    })
+    // The peers of its own root first, then one from the sibling root at the same depth.
+    expect(subjects).toEqual(expect.arrayContaining(['Mitochondria', 'Chloroplasts']))
+    expect(subjects).toHaveLength(3)
+    expect(['Diffusion', 'Osmosis', 'Active transport']).toContain(subjects.find((s) => s !== 'Mitochondria' && s !== 'Chloroplasts'))
+  })
+
+  it('Type 4 reaches across the tree: a statement alone under its root is swapped with peers at the same depth', () => {
+    const tree = prepareDeck([
+      note('a', 'Ribosomes synthesize proteins.', ['Biology', 'Organelles'], ['bio', 'org']),
+      note('b', 'Osmosis moves water across a membrane.', ['Biology', 'Transport'], ['bio', 'tra']),
+      note('c', 'Bonds pay a fixed coupon.', ['Finance', 'Debt'], ['fin', 'debt']),
+      note('deep', 'Zero-coupon bonds pay no coupon.', ['Finance', 'Debt', 'Kinds'], ['fin', 'debt', 'kinds']),
+    ])
+    expect(trapTypes(tree, 'a')).toContain(4)
+    const res = buildQuestion(tree, 'a', typedSeed(4, 'abc'))
+    const wrong = res.ok ? wrongOf(res.question) : []
+    // The sibling root's subject. Its own subject (Biology) has a peer, so Finance is left out (a
+    // claim about bonds is too easy to rule out); never a deeper statement's.
+    expect(wrong).toEqual(['Osmosis synthesize proteins.'])
+    // With no peer in its own subject, the same depth of another subject is used.
+    const far = buildQuestion(tree, 'c', typedSeed(4, 'abc'))
+    expect(far.ok ? wrongOf(far.question).sort() : []).toEqual(['Osmosis pay a fixed coupon.', 'Ribosomes pay a fixed coupon.'])
   })
 
   it('Type 5, scenario: the worked example, unnamed: which concept is demonstrated?', () => {
@@ -177,27 +200,36 @@ describe('the eligible pool', () => {
     for (const id of ['m1', 'm2', 't1', 't2', 't3', 'f3']) expect(trapTypes(deck, id)).not.toContain(8)
   })
 
-  it('a conditional or causal statement makes type 7 eligible; anything else omits it', () => {
+  it('type 7 needs no "if" or "when": a condition is asked both ways, any other sentence by element; a formula is not', () => {
     expect(parseConditional('Mitochondria produce ATP when oxygen is available.')).not.toBeNull()
-    for (const id of ['m1', 't2', 'f3']) expect(trapTypes(deck, id)).toContain(7)
-    for (const id of ['m2', 't3', 'f1', 'f2']) expect(trapTypes(deck, id)).not.toContain(7)
+    for (const id of ['m1', 't2', 'f3']) {
+      expect(trapTypes(deck, id)).toContain(7)
+      expect(questionKinds(deck, id)).toEqual(expect.arrayContaining(['conditional-outcome', 'conditional-condition']))
+    }
+    for (const id of ['m2', 't3']) {
+      expect(parseConditional(DECK.find((n) => n.id === id)!.statement)).toBeNull()
+      expect(questionKinds(deck, id)).toEqual(expect.arrayContaining(['element-subject', 'element-action', 'element-object']))
+    }
+    for (const id of ['f1', 'f2']) expect(trapTypes(deck, id)).not.toContain(7)
   })
 
-  it('an example makes type 5 eligible', () => {
+  it('type 5 needs no example marker: an example is shown as given, any other sentence as an observed case', () => {
     expect(parseScenario(DECK[3].statement)).toEqual({ example: 'a drop of ink spreading in water', claim: 'Diffusion moves particles down a concentration gradient' })
     expect(trapTypes(deck, 't1')).toContain(5)
-    expect(trapTypes(deck, 'm2')).not.toContain(5)
+    expect(parseScenario('Ribosomes synthesize proteins.')).toBeNull()
+    expect(trapTypes(deck, 'm2')).toContain(5)
+    for (const id of ['f1', 'f2']) expect(trapTypes(deck, id)).not.toContain(5)
   })
 
-  it('without a formula or a condition, falls back cleanly to cloze or concept mapping', () => {
-    const plain = prepareDeck([note('a', 'Ribosomes synthesize proteins.', ['Cell organelles'], ['org']), note('b', 'Lysosomes digest waste.', ['Cell parts'], ['parts'])])
+  it('a formula alone falls back cleanly to the types it supports', () => {
+    const plain = prepareDeck([note('a', 'v = s / t', ['Kinematics'], ['kin']), note('b', 'Lysosomes digest waste.', ['Cell parts'], ['parts'])])
     const types = trapTypes(plain, 'a')
     expect(types).not.toContain(7)
-    expect(types).not.toContain(8)
+    expect(types).not.toContain(5)
     expect(types.some((t) => t === 2 || t === 3)).toBe(true)
     // A typed seed for an ineligible type still builds a fair question of an eligible type.
-    const res = buildQuestion(plain, 'a', typedSeed(8, 'abc'))
-    expect(res.ok && res.question.trapType !== 8 && res.question.trapType !== null).toBe(true)
+    const res = buildQuestion(plain, 'a', typedSeed(7, 'abc'))
+    expect(res.ok && res.question.trapType !== 7 && res.question.trapType !== null).toBe(true)
   })
 
   it('every statement of the mixed tree has several types; across the tree all 8 are reachable', () => {

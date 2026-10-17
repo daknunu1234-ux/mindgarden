@@ -8,7 +8,8 @@
 // Every variant is a well-formed expression of the same shape as the original: no misspellings, no
 // lookalike words, no added negation.
 
-import { comparable } from './notePatterns'
+import { comparable, parsePair } from './notePatterns'
+import { ACTION_VERBS, CLAUSE_STARTERS, LINKING_WORDS, PREDICATE_MARKERS } from './trapDictionary'
 import { operatorVariants } from './trapEngine'
 
 const WORD = '[\\p{L}\\p{M}\\p{N}]'
@@ -164,4 +165,135 @@ export function formulaVariants(statement: string): string[] {
     seen.add(key)
     return true
   })
+}
+
+// ── Declarative statements: subject, action, object ──────────────────────────
+
+export type Parts = {
+  // What the statement is about: "Ribosomes", "Active transport", "Ty thể".
+  subject: string
+  // Everything after the subject, as written (leading space and final punctuation included): the
+  // statement is always subject + rest.
+  rest: string
+  // The predicate without final punctuation: "synthesize proteins".
+  predicate: string
+  // The verb as written ("synthesize", "sản sinh") and what follows it ("proteins"; '' when nothing).
+  action: string
+  object: string
+  // 'action': split at a known action verb, so action and object can be asked on their own.
+  // 'linking': split at a linking or auxiliary word ("is", "has", "can", "là", "có").
+  // 'guess': no known verb; the second word of a short sentence is taken as its verb (or, for a
+  // fragment under a root, the whole fragment as the predicate). Only the subject and the whole
+  // predicate are used then, always as written.
+  // 'note': shorthand, "Term: explanation" / "Term - explanation" / "Term (details)": the term is the
+  // subject and the explanation what is said about it (no verb, so no action or object).
+  kind: 'action' | 'linking' | 'guess' | 'note'
+}
+
+// Shorthand notes: "MBIs: người ngoài mua lại", "Mitochondria - powerhouse of the cell", "NADH
+// (electron carrier)". The term (A) is the subject, the explanation (B) its mechanism. Not an equation
+// ("v = s / t"), and the term is short (a label, not a clause).
+const PARENTHETICAL = /^([^():=]{1,60}?)\s*\(([^()]{3,})\)[.!]?$/u
+const MAX_TERM = 6
+export function parseShorthand(statement: string): Parts | null {
+  const text = statement.normalize('NFC').replace(/\s+/g, ' ').trim()
+  const pair = parsePair(text)
+  let subject: string | null = null
+  let predicate = ''
+  if (pair && (pair.joiner === ':' || pair.joiner === '–')) {
+    subject = pair.left
+    predicate = trimEnd(pair.right)
+  } else if (!pair) {
+    const m = PARENTHETICAL.exec(text)
+    if (m) {
+      subject = m[1].trim()
+      predicate = m[2].trim()
+    }
+  }
+  if (!subject || !predicate || subject.split(' ').length > MAX_TERM || !text.startsWith(subject)) return null
+  if (comparable(subject) === comparable(predicate)) return null
+  return { subject, rest: text.slice(subject.length), predicate, action: '', object: '', kind: 'note' }
+}
+
+const phraseBody = (p: string) => p.split(' ').map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')
+// Longest first, so "breaks down" wins over "breaks" and "làm tăng" over "tăng".
+const VERB_LIST = [...new Set([...PREDICATE_MARKERS, ...PROCESS_VERBS, ...ACTION_VERBS])].sort((a, b) => b.length - a.length)
+const VERBS = new RegExp(`(?<!${WORD})(?:${VERB_LIST.map(phraseBody).join('|')})(?!${WORD})`, 'giu')
+const LINKING = new Set(LINKING_WORDS)
+// A verb-like word right after one of these is a noun ("the control unit", "các điều khiển").
+const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'each', 'every', 'its', 'their', 'our', 'your', 'of', 'một', 'các', 'những', 'mỗi', 'sự', 'quá trình'])
+const CLAUSES = CLAUSE_STARTERS.map((c) => new RegExp(`^${phraseBody(c)}(?!${WORD})`, 'iu'))
+const VIETNAMESE = /[ăâđêôơưàảãáạằẳẵắặầẩẫấậèẻẽéẹềểễếệìỉĩíịòỏõóọồổỗốộờởỡớợùủũúụừửữứựỳỷỹýỵ]/iu
+// Words that never are the verb of a guessed split.
+const NOT_A_VERB = new Set(['of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from', 'and', 'or', 'the', 'a', 'an', 'that', 'which', 'as', 'than', 'between', 'into', 'during', 'per', 'via', 'not', 'also', 'only'])
+const MAX_SUBJECT = 6
+
+const lastWord = (s: string) => s.trim().split(/\s+/).pop()?.toLocaleLowerCase() ?? ''
+
+// Where the predicate of a plain sentence starts: the first known verb that is not part of the
+// subject. A verb right after a determiner is a noun; so is one followed straight away by another
+// verb ("Active transport | consumes ATP", "Unit tests | verify behaviour"), unless it is a linking
+// word ("TypeScript | was released").
+function verbCut(text: string): { at: number; end: number } | null {
+  const hits = [...text.matchAll(VERBS)].filter((m) => m.index > 0).map((m) => ({ at: m.index, end: m.index + m[0].length, linking: LINKING.has(m[0].toLocaleLowerCase()) }))
+  return (
+    hits.find((h) => {
+      if (DETERMINERS.has(lastWord(text.slice(0, h.at)))) return false
+      if (h.linking) return true
+      const gap = text.slice(h.end).match(/^\s+/)
+      const next = gap ? hits.find((o) => o.at === h.end + gap[0].length) : undefined
+      // …but a verb-like word that ends the sentence is the object ("Tariffs | restrict | imports.").
+      return !next || trimEnd(text.slice(next.end)) === ''
+    }) ?? null
+  )
+}
+
+// A written sentence with no known verb ("Lysosomes digest waste."): a capitalised one-word subject,
+// then the verb. Only for a short English sentence that ends with a full stop (a label such as
+// "Golgi apparatus" doesn't), so a noun phrase is never cut in two.
+function guessCut(text: string): { at: number; end: number } | null {
+  if (VIETNAMESE.test(text) || !/[.!]$/.test(text)) return null
+  const w = text.split(' ')
+  if (w.length < 3 || w.length > 8 || !/^\p{Lu}[\p{L}\p{N}-]*$/u.test(w[0]) || DETERMINERS.has(w[0].toLocaleLowerCase())) return null
+  if (!/^[a-z]{3,}$/.test(w[1]) || NOT_A_VERB.has(w[1])) return null
+  const at = w[0].length + 1
+  return { at, end: at + w[1].length }
+}
+
+// Splits a plain declarative statement into subject, action and object. No connector, example
+// marker or special formatting is needed. Null for anything that is not a subject followed by a
+// predicate: an equation, a clause ("When …"), a list, a label, a long or punctuated subject.
+// `forcedSubject`: the statement is known to start with this subject (a note that inherits its root).
+export function decompose(statement: string, forcedSubject?: string): Parts | null {
+  const text = statement.normalize('NFC').replace(/\s+/g, ' ').trim()
+  if (!text || /[=≈]/u.test(text)) return null
+  let cut: { at: number; end: number } | null
+  let guessed = false
+  if (forcedSubject) {
+    const subject = forcedSubject.normalize('NFC').replace(/\s+/g, ' ').trim()
+    if (!subject || !text.startsWith(`${subject} `)) return null
+    const at = subject.length + 1
+    VERBS.lastIndex = at
+    const m = VERBS.exec(text)
+    VERBS.lastIndex = 0
+    // A note that opens with a verb gives action and object; any other fragment under a root
+    // ("double membrane", "người ngoài mua lại") is taken whole, as what is said about the root.
+    cut = m && m.index === at ? { at, end: at + m[0].length } : { at, end: at }
+    guessed = cut.end === at
+  } else {
+    cut = verbCut(text)
+    if (!cut) {
+      cut = guessCut(text)
+      guessed = cut !== null
+    }
+  }
+  if (!cut) return null
+  const subject = text.slice(0, cut.at).trim()
+  if (!subject || (!forcedSubject && (/[,;:(]/.test(subject) || subject.split(' ').length > MAX_SUBJECT || CLAUSES.some((r) => r.test(subject))))) return null
+  const predicate = trimEnd(text.slice(cut.at))
+  const action = text.slice(cut.at, cut.end)
+  const object = trimEnd(text.slice(cut.end))
+  if (!predicate || comparable(predicate) === comparable(subject)) return null
+  const kind: Parts['kind'] = guessed ? 'guess' : LINKING.has(action.toLocaleLowerCase()) ? 'linking' : 'action'
+  return { subject, rest: text.slice(subject.length), predicate, action, object, kind }
 }

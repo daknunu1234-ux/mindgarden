@@ -4,7 +4,7 @@
 // question engine (questionEngine.ts) can always build a fair, server-gradable question.
 
 import { extractSubject } from './trapEngine'
-import { CLAUSE_STARTERS, PREDICATE_MARKERS } from './trapDictionary'
+import { ACTION_VERBS, CLAUSE_STARTERS, LINKING_WORDS, PREDICATE_MARKERS } from './trapDictionary'
 
 const WORD_CHAR = '[\\p{L}\\p{M}\\p{N}]'
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -22,7 +22,12 @@ export type Span = { start: number; end: number }
 
 export function stripMarks(statement: string): { text: string; marked: Span[] } {
   // Whitespace is collapsed first, so the spans found below are positions in the returned text.
-  const source = statement.normalize('NFC').replace(/\s+/g, ' ').trim()
+  // A leading bullet ("- Consumes ATP", "• nhanh hơn", "* x") is list formatting, not part of the note.
+  const source = statement
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[-–—•*+]\s+(?=\S)/u, '')
   const marked: Span[] = []
   let text = ''
   let last = 0
@@ -46,14 +51,41 @@ const isLowerStart = (t: string) => {
   return c !== c.toLocaleUpperCase() && c === c.toLocaleLowerCase()
 }
 
+// The verb lexicon (predicate markers + action verbs), longest phrase first.
+const VERB_BODY = [...new Set([...PREDICATE_MARKERS, ...ACTION_VERBS])]
+  .sort((a, b) => b.length - a.length)
+  .map((v) => words(v).map(escapeRegExp).join('\\s+'))
+  .join('|')
+const LEADING_VERB = new RegExp(`^(?:${VERB_BODY})(?!${WORD_CHAR})`, 'iu')
+const ANY_VERB = new RegExp(`(?<!${WORD_CHAR})(?:${VERB_BODY})(?!${WORD_CHAR})`, 'giu')
+const LINKING = new Set(LINKING_WORDS)
+
+// The verb a terse note opens with ("Consumes ATP" → "Consumes", "tiêu thụ oxy" → "tiêu thụ"), or null.
+export const leadingVerb = (text: string): string | null => LEADING_VERB.exec(text.trim())?.[0] ?? null
+
+// A verb of its own further on ("Exports | increase income"): the opening word is the subject then.
+const hasLaterVerb = (text: string, from: number) => [...text.matchAll(ANY_VERB)].some((m) => m.index >= from && !LINKING.has(m[0].toLocaleLowerCase()))
+
 // A predicate-only note has no subject of its own: it starts with a predicate word ("is a superset
 // of JavaScript", "sản sinh ATP"), or it's a lower-case fragment of 2+ words in which no subject can
-// be found ("compiles down to clean JavaScript"). Clauses ("khi nhiệt độ tăng…"), key–value notes
-// and notes with their own subject are left alone.
+// be found ("compiles down to clean JavaScript"), or a terse bullet that opens with a verb:
+//   • lower-case, any verb of the lexicon: "used for background tasks", "increases by 15%";
+//   • capitalised, a verb in a form a subject rarely has (-s, -ed, or a Vietnamese verb) and no other
+//     verb after it: "Consumes ATP", "Compressed before transfer", "Kích hoạt enzyme". "Exports increase
+//     income" and "Transfer RNA carries amino acids" keep their own subject.
+// Clauses ("khi nhiệt độ tăng…"), key–value notes and notes with their own subject are left alone.
 export function isPredicateOnly(text: string): boolean {
   const t = text.trim()
   if (!t || parsePair(t) || CLAUSE.some((starts) => starts(t))) return false
-  if (PREDICATE_MARKERS.some((m) => startsWithPhrase(t, m))) return true
+  const lead = leadingVerb(t)
+  // A capitalised action word followed by a verb of its own is a subject: "Transport proteins move ions".
+  const ownSubject = lead !== null && !isLowerStart(t) && !LINKING.has(lead.toLocaleLowerCase()) && hasLaterVerb(t, lead.length)
+  if (!ownSubject && PREDICATE_MARKERS.some((m) => startsWithPhrase(t, m))) return true
+  if (lead && words(t).length >= 2) {
+    if (isLowerStart(t)) return true
+    const verbForm = /(?:s|ed)$/i.test(lead) || !/^[a-z ]+$/i.test(lead)
+    if (verbForm && !hasLaterVerb(t, lead.length)) return true
+  }
   return isLowerStart(t) && words(t).length >= 2 && extractSubject(t) === null
 }
 
@@ -66,7 +98,10 @@ export function synthesizeProposition(statement: string, path: readonly string[]
   const { text } = stripMarks(statement)
   const subject = path.at(-1)?.trim()
   if (!subject || !isPredicateOnly(text)) return { text, inherited: false }
-  return { text: `${subject} ${text}`, inherited: true }
+  // "Consumes ATP" under "Active transport" reads "Active transport consumes ATP": a capital that only
+  // opened the bullet is dropped (never one inside a name: "ATP", "DNA").
+  const opensWithVerb = leadingVerb(text) !== null && /^\p{Lu}\p{Ll}/u.test(text)
+  return { text: `${subject} ${opensWithVerb ? text.charAt(0).toLocaleLowerCase() + text.slice(1) : text}`, inherited: true }
 }
 
 // ── Pairs: Key: Value, Key - Value, Key = Value, and definitions ─────────────

@@ -31,6 +31,10 @@ const KIND_TITLE: Record<DrillQuestion['kind'], string> = {
   'least-likely': 'Least likely',
   'conditional-outcome': 'Cause and effect',
   'conditional-condition': 'Cause and effect',
+  'element-subject': 'Which one?',
+  'element-action': 'What effect?',
+  'element-object': 'Acts on what?',
+  'element-predicate': 'What is true of it?',
   formula: 'Which formula?',
   exact: 'Spot your note',
 }

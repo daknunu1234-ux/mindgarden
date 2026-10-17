@@ -177,8 +177,11 @@ describe('plausible distractors', () => {
       const q = ask(deck, 's4', s)
       const wrong = q.choices.filter((c) => c.tag !== q.correctTag).map((c) => c.text)
       expect(wrong).not.toContain('TypeScript')
-      // A concept-mapping question asks for the topic: other topics are its wrong answers.
-      if (q.trapType !== 3) expect(wrong).not.toContain('Vật lý')
+      // A question that asks for the topic (concept mapping, and the scenario / subject questions of a
+      // note that inherits its root) has other topics as wrong answers; no other question does.
+      if (!['category', 'scenario', 'element-subject'].includes(q.kind)) expect(wrong).not.toContain('Vật lý')
+      // Those three hide the root from the badge, so the answer is never on screen.
+      else expect(q.context).not.toContain('TypeScript')
     }
   })
 })
@@ -218,8 +221,10 @@ describe('short phrases: recognition with sibling categories as distractors', ()
 describe('zero-drop fallback', () => {
   it('asks a note no other pattern fits by concept mapping: which topic it belongs to', () => {
     const deck = [note('f1', 'xem lại ghi chú này nha', ['Việc cần làm']), note('f2', 'Ty thể sản sinh ATP', ['Sinh học'])]
-    expect(questionKinds(prepareDeck(deck), 'f1')).toEqual(['category'])
-    const q = ask(deck, 'f1')
+    // A fragment with no pattern of its own is still asked about its root: which topic it belongs
+    // to, and (the root taken as its subject) by sibling swap, scenario and element.
+    expect(questionKinds(prepareDeck(deck), 'f1')).toEqual(['category', 'sibling', 'scenario', 'element-subject', 'element-predicate'])
+    const q = ask(deck, 'f1', 't3seed0')
     expect(q.prompt).toBe('xem lại ghi chú này nha')
     // The badge would give the topic away: only the parent breadcrumb (none here) is shown.
     expect(q.context).toEqual([])
@@ -229,10 +234,10 @@ describe('zero-drop fallback', () => {
   })
 
   it('alone in its deck, asks "spot your exact note" (front: the root, back: the note)', () => {
-    const q = ask([note('e1', 'ghi chú nhanh về bài', ['Ôn tập'])], 'e1')
+    const q = ask([note('e1', 'ghi chú ngắn về bài', ['Ôn tập'])], 'e1')
     expect(q.kind).toBe('exact')
     expect(q.context).toEqual(['Ôn tập'])
-    expect(answerOf(q)).toBe('ghi chú nhanh về bài')
+    expect(answerOf(q)).toBe('ghi chú ngắn về bài')
     expectWellFormed(q)
   })
 
@@ -303,11 +308,21 @@ describe('determinism and grading', () => {
           category: () => answer === root,
           recognize: () => answer === text,
           sibling: () => answer.endsWith(text),
-          scenario: () => text.includes(q.prompt.replace(/^Scenario: /, '').replace(/\.$/, '').toLocaleLowerCase()) || answer === root,
-          // The odd one out is a note from another root; the other three are filed under this one.
-          'least-likely': () => deck.some((m) => m.statement === answer && m.path.at(-1) !== root) && q.choices.filter((c) => c.text !== answer).every((c) => deck.some((m) => m.statement === c.text && m.path.at(-1) === root)),
+          // The note's own example, or its mechanism quoted as an observation: subject + mechanism = the note.
+          scenario: () => {
+            const mechanism = /“(.+)”/.exec(q.prompt)?.[1]
+            // (shorthand: term + explanation; a note under a root: the root + the note)
+            return mechanism ? text.endsWith(mechanism) && (text.startsWith(answer) || answer === root) : text.includes(q.prompt.replace(/^Scenario: /, '').replace(/\.$/, '').toLocaleLowerCase()) || answer === root
+          },
+          // The odd one out is no note of this root (a changed property of it, or another root's note); the rest are filed under it.
+          'least-likely': () => !deck.some((m) => m.statement === answer && m.path.at(-1) === root) &&q.choices.filter((c) => c.text !== answer).every((c) => deck.some((m) => m.statement === c.text && m.path.at(-1) === root)),
           'conditional-outcome': () => text.toLocaleLowerCase().includes(answer.replace(/\.$/, '').toLocaleLowerCase()),
           'conditional-condition': () => text.toLocaleLowerCase().includes(answer.toLocaleLowerCase()),
+          // One element of the note, as written.
+          'element-subject': () => text.startsWith(answer) || answer === root,
+          'element-action': () => text.includes(` ${answer} `),
+          'element-object': () => text.endsWith(answer),
+          'element-predicate': () => text.endsWith(answer),
           formula: () => answer.endsWith(text),
           exact: () => answer === text,
         }
