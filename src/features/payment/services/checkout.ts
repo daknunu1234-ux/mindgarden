@@ -6,7 +6,7 @@ import { CreatePaymentDto } from '../dto/PaymentDto'
 import { findProduct } from '../lib/plans'
 import { createCheckout, type Checkout } from './orders'
 
-// POST /api/payment/create: validate → auth → price from the catalogue → order + PayOS link.
+// POST /api/payment/create: validate → auth → price the coin pack from the catalogue → order + PayOS link.
 // `origin`: where PayOS sends the buyer back (APP_URL when set, else the request's own origin).
 export async function startCheckout(body: unknown, origin: string): Promise<ActionResult<Checkout>> {
   const parsed = CreatePaymentDto.safeParse(body)
@@ -14,7 +14,8 @@ export async function startCheckout(body: unknown, origin: string): Promise<Acti
   const user = await getRequestUser()
   if (!user) return fail('AUTH_UNAUTHORIZED', 'Sign in to buy')
   const product = findProduct(parsed.data.productId)
-  if (!product) return fail('VALIDATION_FAILED', 'Unknown product')
+  // Coin packs only (the DTO allows nothing else; the database refuses any other plan too).
+  if (!product || product.planType !== 'COIN_PACK') return fail('VALIDATION_FAILED', 'Only coin packs can be bought')
   return createCheckout(user.id, product, (process.env.APP_URL || origin).replace(/\/+$/, ''))
 }
 

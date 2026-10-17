@@ -673,10 +673,10 @@ Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × i
 
 ---
 
-### Payments with PayOS (payment)
+### Payments with PayOS: coin packs (payment)
 ```typescript
 // POST /api/payment/create   (Route Handler, Auth: Required, session cookie)
-// Body (CreatePaymentDto): { productId: 'pro-1m' | 'pro-lifetime' | 'coins-10' | 'coins-20' | 'coins-50' | 'coins-100' }
+// Body (CreatePaymentDto): { productId: 'coins-10' | 'coins-20' | 'coins-50' | 'coins-100' }   (coin packs only)
 // 200 → ActionResult<{ orderCode: number; productId; amount: number; description: string; checkoutUrl: string;
 //                      qrCode: string /* VietQR payload */; accountName; accountNumber; bin; expiresAt: string | null }>
 // Errors: 400 VALIDATION_FAILED, 401 AUTH_UNAUTHORIZED, 503 PAYMENT_UNAVAILABLE, 502 PAYMENT_FAILED, 500 INTERNAL_ERROR
@@ -687,14 +687,13 @@ Array<{ deckId: string; masteryPercent: number;            // Σ level / (5 × i
 // 400 invalid body or signature · 500 database failure (PayOS retries) · 503 PayOS not configured
 
 // getPaymentStatus({ orderCode })  (Server Action, Auth: Required) → { orderCode, status: 'PENDING' | 'PAID' | 'CANCELLED',
-//   productId, planType, amount, coins, totalCoins: number | null, membership: { isPro, lifetime, proUntil } }
+//   productId, amount, coins /* the pack */, totalCoins: number | null /* the purse */ }
 //   Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ORDER_NOT_FOUND, PAYMENT_UNAVAILABLE, INTERNAL_ERROR
-// getMembership()  (Server Action, Auth: Optional) → { isPro, lifetime, proUntil, paymentsEnabled }
 ```
-- **Prices**: from `payment/lib/plans.ts` only (Pro 1 month 49.000 ₫, Pro lifetime 499.000 ₫, the Coin Shop packages at their shop prices). The browser names a product; extra fields are dropped by Zod
+- **Prices**: from `payment/lib/plans.ts` only: the Coin Shop's four packs at their shop prices (10 🪙 10.000 ₫ … 100 🪙 68.000 ₫). The browser names a pack; extra fields are dropped by Zod, and any other id (the removed Pro plans included) is 400. The only entry point in the UI is the Coin Shop's "Buy Coins via VietQR"
 - **Checkout**: a PENDING `orders` row (service role; the order code is retried on a collision), then `payOS.paymentRequests.create({ orderCode, amount, description, items, returnUrl, cancelUrl, expiredAt })` (`@payos/node` 2.x; the link stays open 15 minutes; return and cancel URL `/payment/result`, `APP_URL` overrides the origin). PayOS failure cancels the order
-- **Webhook**: shape (Zod), then `payOS.webhooks.verify` (HMAC, `PAYOS_CHECKSUM_KEY`). Only `code === '00'` (top level and data) is fulfilled, through `fulfill_order()` (idempotent; DATABASE.md "Payments Feature")
-- **Return page** `/payment/result` (PayOS appends `?code&id&cancel&status&orderCode`): only `orderCode` is read; `getPaymentStatus` settles a PENDING order with PayOS (`paymentRequests.get`: PAID → fulfil, CANCELLED / EXPIRED / FAILED → cancel), so payments complete even where the webhook can't reach (localhost). The page and the modal poll every 3 s, then update the purse and `router.refresh()` the header (⭐ Pro)
+- **Webhook**: shape (Zod), then `payOS.webhooks.verify` (HMAC, `PAYOS_CHECKSUM_KEY`). Only `code === '00'` (top level and data) is fulfilled, through `fulfill_order()`, which credits the pack's coins once (DATABASE.md "Payments Feature")
+- **Return page** `/payment/result` (PayOS appends `?code&id&cancel&status&orderCode`): only `orderCode` is read; `getPaymentStatus` settles a PENDING order with PayOS (`paymentRequests.get`: PAID → fulfil, CANCELLED / EXPIRED / FAILED → cancel), so payments complete even where the webhook can't reach (localhost). The page and the modal poll every 3 s, then update the purse and `router.refresh()` the header's coin pill
 
 ## 7. Adding a New Endpoint
 

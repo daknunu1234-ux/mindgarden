@@ -1,25 +1,27 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { migratedDb } from '@/test/pglite'
+import { applyFrom, migratedDb } from '@/test/pglite'
 
-// Migration 20261021000000_payments.sql on a real PostgreSQL (PGlite): orders, fulfil exactly once,
-// coins and Pro granted, underpayment refused, cancel only a pending order, and who may do what.
+// Payments on a real PostgreSQL (PGlite): migrations 20261021000000_payments.sql and
+// 20261022000000_coin_only_payments.sql. Orders are coin packs only, fulfil_order credits the coins
+// exactly once, an underpayment is refused, cancel only touches a pending order, and who may do what.
 
 const BUYER = '11111111-1111-4111-8111-111111111111'
 const OTHER = '22222222-2222-4222-8222-222222222222'
+const COIN_ONLY = '20261022000000_coin_only_payments.sql'
 
 let db: PGlite
 let next = 1_760_000_000_000_000
 
-type Fulfilled = { fulfilled: boolean; status: string; user_id: string; plan_type: string; coins_added: number; total_coins: number; pro_until: string | null }
+type Fulfilled = { fulfilled: boolean; status: string; user_id: string; coins_added: number; total_coins: number }
 
-async function order(plan: 'PRO_1M' | 'PRO_LIFETIME' | 'COIN_PACK', amount: number, coins = 0, user = BUYER): Promise<number> {
+async function order(amount: number, coins: number, user = BUYER): Promise<number> {
   const code = ++next
-  await db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id, coins) values ($1, $2, $3, $4, $5, $6)`, [code, user, amount, plan, plan.toLowerCase(), coins])
+  await db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id, coins) values ($1, $2, $3, 'COIN_PACK', $4, $5)`, [code, user, amount, `coins-${coins}`, coins])
   return code
 }
 const fulfill = async (code: number, paid: number) => (await db.query<Fulfilled>(`select * from public.fulfill_order($1, $2)`, [code, paid])).rows[0]
-const buyer = async (id = BUYER) => (await db.query<{ coins: number; pro_until: Date | number | null }>(`select coins, pro_until from public.users where id = $1`, [id])).rows[0]
+const coinsOf = async (id = BUYER) => (await db.query<{ coins: number }>(`select coins from public.users where id = $1`, [id])).rows[0].coins
 const statusOf = async (code: number) => (await db.query<{ status: string; paid_at: Date | null }>(`select status, paid_at from public.orders where order_code = $1`, [code])).rows[0]
 
 beforeAll(async () => {
@@ -27,80 +29,95 @@ beforeAll(async () => {
   await db.query(`insert into auth.users (id, email) values ($1, 'buyer@test.dev'), ($2, 'other@test.dev')`, [BUYER, OTHER])
 }, 120_000)
 
-describe('fulfill_order', () => {
-  it('a coin pack adds its coins once, however many times PayOS calls back', async () => {
-    const before = (await buyer()).coins
-    const code = await order('COIN_PACK', 40_000, 50)
-    expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: true, status: 'PAID', plan_type: 'COIN_PACK', coins_added: 50, total_coins: before + 50 })
-    expect(await statusOf(code)).toMatchObject({ status: 'PAID' })
+describe('fulfill_order credits coin packs', () => {
+  it('adds the pack’s coins once, however many times PayOS calls back', async () => {
+    const before = await coinsOf()
+    const code = await order(40_000, 50)
+    expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: true, status: 'PAID', coins_added: 50, total_coins: before + 50 })
     expect((await statusOf(code)).paid_at).not.toBeNull()
     // A repeated webhook, then the return page: nothing more.
     expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: false, coins_added: 0, total_coins: before + 50 })
     expect(await fulfill(code, 40_000)).toMatchObject({ fulfilled: false })
-    expect((await buyer()).coins).toBe(before + 50)
+    expect(await coinsOf()).toBe(before + 50)
   })
 
-  it('a month of Pro adds 30 days, from today or from the end of the current month', async () => {
-    const first = await fulfill(await order('PRO_1M', 49_000), 49_000)
-    expect(first.fulfilled).toBe(true)
-    const end1 = new Date(first.pro_until!).getTime()
-    expect(end1 - Date.now()).toBeGreaterThan(29.9 * 864e5)
-    expect(end1 - Date.now()).toBeLessThan(30.1 * 864e5)
-    const second = await fulfill(await order('PRO_1M', 49_000), 49_000)
-    expect(new Date(second.pro_until!).getTime() - end1).toBeCloseTo(30 * 864e5, -5)
+  it('returns only coin fields (no membership)', async () => {
+    const row = await fulfill(await order(10_000, 10), 10_000)
+    expect(Object.keys(row).sort()).toEqual(['coins_added', 'fulfilled', 'status', 'total_coins', 'user_id'])
   })
 
-  it('lifetime Pro never ends, and a later month leaves it lifetime', async () => {
-    await fulfill(await order('PRO_LIFETIME', 499_000), 499_000)
-    const { rows } = await db.query<{ forever: boolean }>(`select pro_until = 'infinity'::timestamptz as forever from public.users where id = $1`, [BUYER])
-    expect(rows[0].forever).toBe(true)
-    await fulfill(await order('PRO_1M', 49_000), 49_000)
-    expect((await db.query<{ forever: boolean }>(`select pro_until = 'infinity'::timestamptz as forever from public.users where id = $1`, [BUYER])).rows[0].forever).toBe(true)
-  })
-
-  it('refuses an underpayment and an unknown order, granting nothing', async () => {
-    const before = await buyer(OTHER)
-    const code = await order('COIN_PACK', 68_000, 100, OTHER)
+  it('refuses an underpayment and an unknown order, crediting nothing', async () => {
+    const before = await coinsOf(OTHER)
+    const code = await order(68_000, 100, OTHER)
     await expect(fulfill(code, 10_000)).rejects.toThrow(/AMOUNT_MISMATCH/)
     expect(await statusOf(code)).toMatchObject({ status: 'PENDING' })
-    expect(await buyer(OTHER)).toEqual(before)
+    expect(await coinsOf(OTHER)).toBe(before)
     await expect(fulfill(9_999, 1)).rejects.toThrow(/ORDER_NOT_FOUND/)
     // Paying more than the price is still a payment.
     expect(await fulfill(code, 70_000)).toMatchObject({ fulfilled: true, coins_added: 100 })
   })
 
-  it('a cancelled order that PayOS reports paid after all is fulfilled (the money arrived)', async () => {
-    const code = await order('COIN_PACK', 10_000, 10)
+  it('a cancelled order that PayOS reports paid after all is credited (the money arrived)', async () => {
+    const code = await order(10_000, 10)
     expect((await db.query<{ s: string }>(`select public.cancel_order($1) as s`, [code])).rows[0].s).toBe('CANCELLED')
     expect(await fulfill(code, 10_000)).toMatchObject({ fulfilled: true, status: 'PAID' })
   })
 })
 
+describe('coin packs only', () => {
+  it('no Pro order can be created, and users have no Pro membership column', async () => {
+    for (const plan of ['PRO_1M', 'PRO_LIFETIME']) {
+      await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values ($1, $2, 49000, $3, 'pro')`, [++next, BUYER, plan])).rejects.toThrow(/orders_plan_type_check/)
+    }
+    const { rows } = await db.query(`select 1 from information_schema.columns where table_name = 'users' and column_name = 'pro_until'`)
+    expect(rows).toHaveLength(0)
+    const check = await db.query<{ def: string; valid: boolean }>(`select pg_get_constraintdef(oid) as def, convalidated as valid from pg_constraint where conname = 'orders_plan_type_check'`)
+    expect(check.rows[0]).toMatchObject({ valid: true })
+    expect(check.rows[0].def).toContain("'COIN_PACK'")
+  })
+
+  it('on a database that already sold Pro, the past is kept: paid Pro rows stay, pending ones are cancelled, pro_until stays', async () => {
+    const old = await migratedDb({ before: COIN_ONLY })
+    await old.query(`insert into auth.users (id, email) values ($1, 'pro@test.dev')`, [BUYER])
+    await old.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values (1, $1, 49000, 'PRO_1M', 'pro-1m'), (2, $1, 49000, 'PRO_1M', 'pro-1m')`, [BUYER])
+    await old.query(`select * from public.fulfill_order(1, 49000)`)
+    await applyFrom(old, COIN_ONLY)
+    const orders = await old.query<{ order_code: number; status: string }>(`select order_code, status from public.orders order by order_code`)
+    expect(orders.rows.map((o) => [Number(o.order_code), o.status])).toEqual([
+      [1, 'PAID'],
+      [2, 'CANCELLED'],
+    ])
+    // The check holds for new rows (not validated over the old ones).
+    expect((await old.query<{ valid: boolean }>(`select convalidated as valid from pg_constraint where conname = 'orders_plan_type_check'`)).rows[0].valid).toBe(false)
+    await expect(old.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values (3, $1, 49000, 'PRO_1M', 'pro-1m')`, [BUYER])).rejects.toThrow()
+    // The gardener's Pro record is not thrown away.
+    expect((await old.query(`select 1 from information_schema.columns where table_name = 'users' and column_name = 'pro_until'`)).rows).toHaveLength(1)
+    // An old Pro order can't be reopened, and can no longer be fulfilled.
+    await expect(old.query(`update public.orders set status = 'PENDING' where order_code = 2`)).rejects.toThrow(/orders_plan_type_check/)
+    await expect(old.query(`select * from public.fulfill_order(2, 49000)`)).rejects.toThrow(/NOT_A_COIN_PACK/)
+  }, 120_000)
+})
+
 describe('cancel_order', () => {
   it('cancels only a pending order and reports the status otherwise', async () => {
-    const pending = await order('PRO_1M', 49_000, 0, OTHER)
     const cancel = async (code: number) => (await db.query<{ s: string | null }>(`select public.cancel_order($1) as s`, [code])).rows[0].s
-    expect(await cancel(pending)).toBe('CANCELLED')
-    const paid = await order('COIN_PACK', 10_000, 10, OTHER)
+    expect(await cancel(await order(10_000, 10, OTHER))).toBe('CANCELLED')
+    const paid = await order(10_000, 10, OTHER)
     await fulfill(paid, 10_000)
     expect(await cancel(paid)).toBe('PAID')
-    expect(await statusOf(paid)).toMatchObject({ status: 'PAID' })
     expect(await cancel(123)).toBeNull()
   })
 })
 
 describe('who may do what', () => {
-  it('players read their orders only, write none, and can never set their own Pro or coins', async () => {
+  it('players read their orders only, write none, and can never set their own coins', async () => {
     const can = async (sql: string, ...args: string[]) => (await db.query<{ ok: boolean }>(sql, args)).rows[0].ok
     for (const p of ['insert', 'update', 'delete']) expect(await can(`select has_table_privilege('authenticated', 'public.orders', $1) as ok`, p), p).toBe(false)
-    expect(await can(`select has_column_privilege('authenticated', 'public.users', 'pro_until', 'update') as ok`)).toBe(false)
     expect(await can(`select has_column_privilege('authenticated', 'public.users', 'coins', 'update') as ok`)).toBe(false)
     const { rows } = await db.query<{ cmd: string; qual: string }>(`select cmd, qual from pg_policies where tablename = 'orders'`)
     expect(rows).toHaveLength(1)
     expect(rows[0].cmd).toBe('SELECT')
     expect(rows[0].qual).toContain('user_id')
-    const rls = await db.query<{ on: boolean }>(`select relrowsecurity as on from pg_class where oid = 'public.orders'::regclass`)
-    expect(rls.rows[0].on).toBe(true)
   })
 
   it('only the service role may call the two functions', async () => {
@@ -109,14 +126,15 @@ describe('who may do what', () => {
          from (values ('anon'), ('authenticated'), ('service_role')) r(role),
               (values ('public.fulfill_order(bigint, numeric)'), ('public.cancel_order(bigint)')) f(fn)`,
     )
+    expect(rows).toHaveLength(6)
     for (const row of rows) expect(row.ok, `${row.role} ${row.fn}`).toBe(row.role === 'service_role')
   })
 
-  it('an order code is unique and stays a JavaScript-safe integer; amounts are positive', async () => {
-    const code = await order('COIN_PACK', 10_000, 10)
+  it('an order code is unique and stays a JavaScript-safe integer; amounts and coins are positive', async () => {
+    const code = await order(10_000, 10)
     await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id, coins) values ($1, $2, 10000, 'COIN_PACK', 'coins-10', 10)`, [code, BUYER])).rejects.toThrow()
-    await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values (9007199254740992, $1, 1, 'PRO_1M', 'pro-1m')`, [BUYER])).rejects.toThrow()
-    await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values (5, $1, 0, 'PRO_1M', 'pro-1m')`, [BUYER])).rejects.toThrow()
+    await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id, coins) values (9007199254740992, $1, 1, 'COIN_PACK', 'coins-10', 10)`, [BUYER])).rejects.toThrow()
+    await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id, coins) values (5, $1, 0, 'COIN_PACK', 'coins-10', 10)`, [BUYER])).rejects.toThrow()
     await expect(db.query(`insert into public.orders (order_code, user_id, amount, plan_type, product_id) values (6, $1, 100, 'COIN_PACK', 'coins-10')`, [BUYER])).rejects.toThrow()
   })
 })

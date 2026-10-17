@@ -386,7 +386,7 @@ A streak that breaks and reaches 7 (or 30) again pays again, on its new day. The
 
 ---
 
-### Payments Feature (PayOS)
+### Payments Feature (PayOS: coin packs)
 
 **orders** (migration `20261021000000_payments.sql`): *one row per PayOS checkout. Written by the server (service role) only; the buyer reads their own*
 | Column | Type | Constraints | Description |
@@ -396,21 +396,21 @@ A streak that breaks and reaches 7 (or 30) again pays again, on its new day. The
 | user_id | UUID | FK → auth.users, NOT NULL, ON DELETE CASCADE | The buyer |
 | amount | NUMERIC(12,0) | NOT NULL, CHECK > 0 | Price in VND, from the server catalogue |
 | status | TEXT | NOT NULL, DEFAULT 'PENDING', CHECK 'PENDING' \| 'PAID' \| 'CANCELLED' | |
-| plan_type | TEXT | NOT NULL, CHECK 'PRO_1M' \| 'PRO_LIFETIME' \| 'COIN_PACK' | |
+| plan_type | TEXT | NOT NULL, CHECK 'COIN_PACK' (migration `20261022000000`; Pro plans were removed) | |
 | product_id | TEXT | NOT NULL, 1–40 chars | Catalogue id ('pro-1m', 'coins-50', …) |
-| coins | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0; > 0 exactly when plan_type = 'COIN_PACK' | Coins a coin pack adds |
+| coins | INT | NOT NULL, DEFAULT 0, CHECK ≥ 0; > 0 exactly when plan_type = 'COIN_PACK' (so always > 0) | Coins the pack adds |
 | payment_link_id | TEXT | NULLABLE | PayOS payment link id |
 | paid_at | TIMESTAMPTZ | NULLABLE | |
 | created_at / updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT now(); updated_at by trigger `orders_touch_updated_at` | |
 
-**users.pro_until** (TIMESTAMPTZ, NULLABLE, same migration): end of the ⭐ Pro membership; `'infinity'` = lifetime; NULL = never Pro. Players read it on their own row; nothing but `fulfill_order()` writes it (users UPDATE stays granted on `full_name`, `avatar_url` only).
+~~**users.pro_until**~~: added by `20261021000000` for a ⭐ Pro membership, dropped by `20261022000000_coin_only_payments.sql` (kept only on a database where some gardener already had Pro). Payments sell coin packs only.
 
 | Invariant | Enforced by |
 |-----------|-------------|
 | The price can't come from the browser | The checkout request carries a product id only (Zod); the server inserts the order with the catalogue's price (service role); players have no INSERT / UPDATE / DELETE on `orders` |
 | An order is granted once | `fulfill_order(order_code, amount_paid)` (SECURITY DEFINER, service role only) locks the order row; a PAID order returns `fulfilled = false` and grants nothing; PayOS retries and the return page are harmless |
 | A payment is real | The webhook's signature is verified with `PAYOS_CHECKSUM_KEY` before anything is read; the return page asks PayOS itself (`paymentRequests.get`); `fulfill_order` refuses an amount below the price (`AMOUNT_MISMATCH`) |
-| Pro and coins only from a paid order | `COIN_PACK` adds `orders.coins` to `users.coins`; `PRO_1M` sets `pro_until = greatest(pro_until, now()) + 30 days`; `PRO_LIFETIME` sets `'infinity'` (a later month leaves it there) |
+| Coins only from a paid coin pack | `fulfill_order()` (re-created by `20261022000000`) adds `orders.coins` to `users.coins` and nothing else; a non-coin order is refused (`NOT_A_COIN_PACK`); no player can write `users.coins` |
 | A cancelled order can still be honoured | `cancel_order()` only touches PENDING orders; `fulfill_order()` accepts a CANCELLED order PayOS reports paid (the money arrived) |
 
 ## ERD Diagram
@@ -582,6 +582,7 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
   | 12 | `20260930000000_farm_grid.sql` | `garden_placements` + RLS, `purchase_and_place_item()` (catalogue prices), `farm_coin_multiplier()` + `users.coin_carry` and a buffed `award_mastery_coin()`, `uproot_deck()` (Woodshop refund, capped at 50), backfill of existing trees onto the grid |
   | 13 | `20261001000000_ten_tree_species.sql` | Retired species rewritten to their successor (unknown → oak), then `decks_tree_type_check` limits `tree_type` to the ten ids |
   | 15 | `20261003000000_tree_fruit.sql` | `deck_practice_days` + `tree_harvests` (RLS: read own; server writes only), `harvest_tree_fruit()` (service role: 2 🪙 once per tree per day, only after practice the day before) |
+  | 34 | `20261022000000_coin_only_payments.sql` | Coin packs only: `orders.plan_type` check = 'COIN_PACK' (pending Pro orders cancelled; NOT VALID if paid Pro rows exist), `fulfill_order()` re-created to credit coins only (returns `fulfilled, status, user_id, coins_added, total_coins`; `NOT_A_COIN_PACK`), `users.pro_until` dropped when nobody has Pro. With the coin-only deploy |
   | 33 | `20261021000000_payments.sql` | PayOS payments: `orders` (RLS: buyer reads own; service role writes), `users.pro_until`, `fulfill_order()` / `cancel_order()` (service role). Any time after file 6, before or with the deploy |
   | 32 | `20261020000100_lock_progress_writes.sql` | Players lose INSERT / UPDATE / DELETE on `user_progress`; the "progress: insert own" / "progress: update own" policies are dropped (SELECT of own rows stays). Only **after** the deploy |
   | 31 | `20261020000000_progress_rpc.sql` | `record_practice_answer()` (one graded answer: ±1 under a row lock, `last_practiced_at`, mastery coin at 5/5; owner's statements only) and `touch_practised()` (Daily Rush watering), both `SECURITY DEFINER`, service role only. **Before or with** the deploy |
@@ -614,6 +615,7 @@ RLS picks **rows**; it cannot hide **columns**. Column privileges (migration `20
 - **File 13** runs after the ten-species code is deployed (that code renders both old and new ids and only writes new ones; older code would still write 'sakura' / 'bamboo' / 'apple' / 'saguaro' and hit the check).
 - **File 23** runs **with** the deploy of the content-node code, after file 22 (and 21): the old code reads `mindmap_nodes` / `knowledge_items`, which it renames, and the new code reads `content_nodes`, which it creates. Not re-runnable (it moves data); the rollback block at its end renames the legacy tables back. It re-creates `award_mastery_coin()`, `uproot_deck()`, `clone_deck()` and `record_tournament_answer()`: never re-run files 12, 18, 21 or 22 after it (they would point those functions at the old tables). Two never-shipped drafts (`20261011000000_convert_statements_roots`, `20261012000000_indent_rows`) were folded into it; it drops their functions if one was applied by hand
 - **File 24** only after file 23 has run and the app works on it: it drops the legacy tables (no rollback after that)
+- **File 34** (`20261022000000_coin_only_payments.sql`) after file 33, with the deploy of the coin-only payment code (the code before it reads `users.pro_until` and the old `fulfill_order()` result; the code after it reads the new result). Safe to re-run
 - **File 33** (`20261021000000_payments.sql`) any time after file 6 (`users.coins`), before or with the deploy of the payment code. Without it checkout answers `PAYMENT_UNAVAILABLE` and the log names the file. Safe to re-run; its rollback drops `users.pro_until` (every Pro membership)
 - **Files 31 and 32** (`20261020000000_progress_rpc.sql`, `20261020000100_lock_progress_writes.sql`) frame one deploy: run file 31 first (any time after 23; the old code ignores it), deploy the code that saves answers through `record_practice_answer()`, then run file 32. File 32 before the deploy would make the old code fail to save every answer. The new code without file 31 still saves: when `record_practice_answer()` is missing (PGRST202) or no service role key is set, it writes with the player session as before (`progress/services/practiceFallback.ts`; the log names the file to run). Until file 32 runs the app works but players can still write `mastery_level` themselves. Never run file 32 without file 31: then nothing can save (42501 in the log). Both are safe to re-run
 - **File 30** (`20261019000000_clone_rewards.sql`) after file 29, with the deploy of the matching code (the clone button shows the 50-statement requirement; the layout shows notifications). Safe to re-run. Never re-run file 23 after it (its `clone_deck()` has no gate or reward)

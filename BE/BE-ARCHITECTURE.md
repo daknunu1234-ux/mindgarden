@@ -101,7 +101,7 @@ features/[feature]/
 | `drill` | none (orchestrator) | `getDrillSession`, `checkDrillAnswer`: **owner only** (`FORBIDDEN_VISITOR_PRACTICE` for visitors and signed-out players) | `shared`, `decks/server`, `progress/server` |
 | `tournament` | `deck_tournament_participants`, `deck_tournament_item_progress` | `submitTournamentAnswer` (service role writes via `record_tournament_answer`), `getTournamentBoards` | `shared`, `decks/server` |
 | `rush` | `daily_rush_runs` (and `users.coins` through its RPCs) | `getDailyRushStatus`, `startDailyRush`, `answerDailyRush` (service role writes via `start_daily_rush` / `answer_daily_rush` / `settle_daily_rush`) | `shared`, `decks/server` |
-| `payment` | `orders`, `users.pro_until` (and `users.coins` through `fulfill_order`) | `POST /api/payment/create`, `POST /api/payment/webhook` (route handlers), `getPaymentStatus`, `getMembership` (service role writes via `fulfill_order` / `cancel_order`; PayOS signature verified) | `shared` |
+| `payment` | `orders` (coin packs; and `users.coins` through `fulfill_order`) | `POST /api/payment/create`, `POST /api/payment/webhook` (route handlers), `getPaymentStatus` (service role writes via `fulfill_order` / `cancel_order`; PayOS signature verified) | `shared` |
 | `garden` | `garden_placements` (the farm grid) | `getFarmPlacements`, `placeFarmItem`, `removeFarmPlacement` | `shared` |
 | `mindmap` | none (UI only) | none | `shared` |
 

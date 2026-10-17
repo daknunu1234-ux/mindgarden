@@ -7,7 +7,6 @@ import { GameButton, ParticleBurst } from '@/shared/components/game'
 import { useCoins } from '@/shared/stores/CoinsProvider'
 import type { ActionResult } from '@/shared/types/result'
 import { getPaymentStatus } from '../actions/getPaymentStatus'
-import { findProduct } from '../lib/plans'
 import type { PaymentStatus } from '../services/orders'
 import { POLL_MS } from './PaymentModal'
 
@@ -24,7 +23,7 @@ type PaymentResultProps = {
 
 // The page PayOS sends the buyer back to (/payment/result?orderCode=…): it settles the order on the
 // server (getPaymentStatus checks with PayOS), keeps checking a few times while the bank confirms,
-// then shows what arrived and refreshes the header (coins, ⭐ Pro).
+// then shows the coins that arrived and refreshes the header's purse.
 function PaymentResult({ orderCode, cancelledHint, initial }: PaymentResultProps) {
   const router = useRouter()
   const { setCoins } = useCoins()
@@ -56,12 +55,11 @@ function PaymentResult({ orderCode, cancelledHint, initial }: PaymentResultProps
     title = 'We could not find this order'
     body = status.error.code === 'AUTH_UNAUTHORIZED' ? 'Sign in with the account that paid to see it.' : `${status.error.message}.`
   } else if (state === 'PAID') {
-    const product = findProduct(status.data.productId)
-    title = status.data.planType === 'COIN_PACK' ? `+${status.data.coins} 🪙 added!` : '⭐ You are Pro!'
-    body = status.data.planType === 'COIN_PACK' ? `Your purse: ${status.data.totalCoins ?? '…'} 🪙.` : `${product?.name ?? 'Pro'} is active.`
+    title = `+${status.data.coins} 🪙 added!`
+    body = `Your purse: ${status.data.totalCoins ?? '…'} 🪙.`
   } else if (state === 'CANCELLED') {
     title = 'Payment cancelled'
-    body = 'Nothing was charged. You can pick a plan again any time.'
+    body = 'Nothing was charged. You can buy coins again any time from the Coin Shop.'
   } else {
     title = cancelledHint ? 'Payment cancelled' : 'Waiting for your bank…'
     body =

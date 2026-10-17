@@ -11,7 +11,7 @@ const BUYER = '11111111-1111-4111-8111-111111111111'
 type Order = { order_code: number; user_id: string; amount: number; status: 'PENDING' | 'PAID' | 'CANCELLED'; plan_type: string; product_id: string; coins: number; payment_link_id?: string | null }
 const db = {
   orders: [] as Order[],
-  users: new Map<string, { coins: number; pro_until: string | null }>(),
+  users: new Map<string, { coins: number }>(),
   insertErrors: [] as { code: string; message: string }[],
   rpc: [] as { fn: string; args: Record<string, unknown> }[],
   admin: true,
@@ -48,12 +48,12 @@ vi.mock('@/shared/lib/supabase/admin', () => ({
             }
             if (!order) return { data: null, error: { code: 'P0002', message: 'ORDER_NOT_FOUND' } }
             const user = db.users.get(order.user_id)!
-            if (order.status === 'PAID') return { data: [{ fulfilled: false, status: 'PAID', user_id: order.user_id, plan_type: order.plan_type, coins_added: 0, total_coins: user.coins, pro_until: user.pro_until }], error: null }
+            if (order.status === 'PAID') return { data: [{ fulfilled: false, status: 'PAID', user_id: order.user_id, coins_added: 0, total_coins: user.coins }], error: null }
+            if (order.plan_type !== 'COIN_PACK') return { data: null, error: { code: 'P0001', message: 'NOT_A_COIN_PACK' } }
             if ((args.p_amount_paid ?? 0) < order.amount) return { data: null, error: { code: 'P0001', message: 'AMOUNT_MISMATCH' } }
             order.status = 'PAID'
-            if (order.plan_type === 'COIN_PACK') user.coins += order.coins
-            else user.pro_until = order.plan_type === 'PRO_LIFETIME' ? 'infinity' : '2026-11-16T10:00:00+00:00'
-            return { data: [{ fulfilled: true, status: 'PAID', user_id: order.user_id, plan_type: order.plan_type, coins_added: order.plan_type === 'COIN_PACK' ? order.coins : 0, total_coins: user.coins, pro_until: user.pro_until }], error: null }
+            user.coins += order.coins
+            return { data: [{ fulfilled: true, status: 'PAID', user_id: order.user_id, coins_added: order.coins, total_coins: user.coins }], error: null }
           },
         }
       : null,
@@ -134,7 +134,7 @@ const webhook = (orderCode: number, amount: number, { code = '00', signature = '
 
 beforeEach(() => {
   db.orders = []
-  db.users = new Map([[BUYER, { coins: 300, pro_until: null }]])
+  db.users = new Map([[BUYER, { coins: 300 }]])
   db.insertErrors = []
   db.rpc = []
   db.admin = true
@@ -166,32 +166,43 @@ describe('POST /api/payment/create (startCheckout)', () => {
     expect(httpStatusOf(res)).toBe(200)
   })
 
-  it('a Pro month and lifetime carry no coins', async () => {
-    await startCheckout({ productId: 'pro-1m' }, 'https://mindgarden.vn')
-    await startCheckout({ productId: 'pro-lifetime' }, 'https://mindgarden.vn')
-    expect(db.orders.map((o) => [o.plan_type, o.amount, o.coins])).toEqual([
-      ['PRO_1M', 49_000, 0],
-      ['PRO_LIFETIME', 499_000, 0],
+  it('refuses Pro plans and anything that is not a coin pack: nothing is stored or sent to PayOS', async () => {
+    for (const productId of ['pro-1m', 'pro-lifetime', 'coins-1000']) {
+      const res = await startCheckout({ productId }, 'https://mindgarden.vn')
+      expect(res, productId).toMatchObject({ success: false, error: { code: 'VALIDATION_FAILED' } })
+      expect(httpStatusOf(res)).toBe(400)
+    }
+    expect(db.orders).toHaveLength(0)
+    expect(payos.created).toHaveLength(0)
+  })
+
+  it('every coin pack is priced from the catalogue', async () => {
+    for (const productId of ['coins-10', 'coins-20', 'coins-50', 'coins-100']) await startCheckout({ productId }, 'https://mindgarden.vn')
+    expect(db.orders.map((o) => [o.plan_type, o.product_id, o.amount, o.coins])).toEqual([
+      ['COIN_PACK', 'coins-10', 10_000, 10],
+      ['COIN_PACK', 'coins-20', 18_000, 20],
+      ['COIN_PACK', 'coins-50', 40_000, 50],
+      ['COIN_PACK', 'coins-100', 68_000, 100],
     ])
   })
 
   it('retries a colliding order code', async () => {
     db.insertErrors.push({ code: '23505', message: 'duplicate key' })
-    const res = await startCheckout({ productId: 'pro-1m' }, 'http://localhost:3000')
+    const res = await startCheckout({ productId: 'coins-20' }, 'http://localhost:3000')
     expect(res.success).toBe(true)
     expect(db.orders).toHaveLength(1)
   })
 
   it('refuses a signed-out buyer (401), an unknown product (400), and answers 503 when PayOS isn’t set up', async () => {
     db.user = null
-    const signedOut = await startCheckout({ productId: 'pro-1m' }, 'http://x')
+    const signedOut = await startCheckout({ productId: 'coins-20' }, 'http://x')
     expect(signedOut).toMatchObject({ success: false, error: { code: 'AUTH_UNAUTHORIZED' } })
     expect(httpStatusOf(signedOut)).toBe(401)
     db.user = BUYER
     const unknown = await startCheckout({ productId: 'everything-free' }, 'http://x')
     expect(httpStatusOf(unknown)).toBe(400)
     setPayOSForTests(null)
-    const off = await startCheckout({ productId: 'pro-1m' }, 'http://x')
+    const off = await startCheckout({ productId: 'coins-20' }, 'http://x')
     expect(off).toMatchObject({ success: false, error: { code: 'PAYMENT_UNAVAILABLE' } })
     expect(httpStatusOf(off)).toBe(503)
     expect(db.orders).toHaveLength(0)
@@ -221,10 +232,10 @@ describe('POST /api/payment/webhook (handlePayOSWebhook)', () => {
     expect(db.users.get(BUYER)!.coins).toBe(350)
   })
 
-  it('a Pro order upgrades the account', async () => {
-    const code = await pendingOrder('pro-lifetime')
-    await handlePayOSWebhook(webhook(code, 499_000))
-    expect(db.users.get(BUYER)!.pro_until).toBe('infinity')
+  it('a webhook for an order that is not a coin pack credits nothing', async () => {
+    db.orders.push({ order_code: 77, user_id: BUYER, amount: 49_000, status: 'PENDING', plan_type: 'PRO_1M', product_id: 'pro-1m', coins: 0 })
+    expect(await handlePayOSWebhook(webhook(77, 49_000))).toMatchObject({ status: 200, body: { success: true, message: 'Amount does not match the order' } })
+    expect(db.users.get(BUYER)!.coins).toBe(300)
   })
 
   it('an unsigned or tampered call is refused with 400 and changes nothing', async () => {
@@ -263,13 +274,13 @@ describe('the return page settles a pending order from PayOS (readPaymentStatus)
     const res = await startCheckout({ productId: 'coins-100' }, 'http://x')
     if (!res.success) throw new Error()
     payos.linkStatus.set(res.data.orderCode, { status: 'PAID', amountPaid: 68_000 })
-    const status = await readPaymentStatus(userClient(), BUYER, res.data.orderCode, new Date('2026-10-17T10:00:00Z'))
-    expect(status).toMatchObject({ success: true, data: { status: 'PAID', coins: 100, totalCoins: 400, planType: 'COIN_PACK', membership: { isPro: false } } })
+    const status = await readPaymentStatus(userClient(), BUYER, res.data.orderCode)
+    expect(status).toEqual({ success: true, data: { orderCode: res.data.orderCode, status: 'PAID', productId: 'coins-100', amount: 68_000, coins: 100, totalCoins: 400 } })
   })
 
   it('PayOS says cancelled or expired: the order is cancelled; still pending: left pending', async () => {
-    const a = await startCheckout({ productId: 'pro-1m' }, 'http://x')
-    const b = await startCheckout({ productId: 'pro-1m' }, 'http://x')
+    const a = await startCheckout({ productId: 'coins-20' }, 'http://x')
+    const b = await startCheckout({ productId: 'coins-20' }, 'http://x')
     if (!a.success || !b.success) throw new Error()
     payos.linkStatus.set(a.data.orderCode, { status: 'EXPIRED', amountPaid: 0 })
     payos.linkStatus.set(b.data.orderCode, { status: 'PENDING', amountPaid: 0 })
@@ -277,16 +288,16 @@ describe('the return page settles a pending order from PayOS (readPaymentStatus)
     expect(await readPaymentStatus(userClient(), BUYER, b.data.orderCode)).toMatchObject({ data: { status: 'PENDING' } })
   })
 
-  it('a Pro order reads back the membership; someone else’s order is not found', async () => {
-    const res = await startCheckout({ productId: 'pro-1m' }, 'http://x')
+  it('a paid coin pack reads back the new purse; someone else’s order is not found', async () => {
+    const res = await startCheckout({ productId: 'coins-20' }, 'http://x')
     if (!res.success) throw new Error()
-    await handlePayOSWebhook(webhook(res.data.orderCode, 49_000))
-    expect(await readPaymentStatus(userClient(), BUYER, res.data.orderCode, new Date('2026-10-17T10:00:00Z'))).toMatchObject({ data: { status: 'PAID', membership: { isPro: true, lifetime: false } } })
+    await handlePayOSWebhook(webhook(res.data.orderCode, 18_000))
+    expect(await readPaymentStatus(userClient(), BUYER, res.data.orderCode)).toMatchObject({ data: { status: 'PAID', coins: 20, totalCoins: 320 } })
     expect(await readPaymentStatus(userClient(), '99999999-9999-4999-8999-999999999999', res.data.orderCode)).toMatchObject({ success: false, error: { code: 'ORDER_NOT_FOUND' } })
   })
 
   it('PayOS unreachable: the database’s status is reported as it is', async () => {
-    const res = await startCheckout({ productId: 'pro-1m' }, 'http://x')
+    const res = await startCheckout({ productId: 'coins-20' }, 'http://x')
     if (!res.success) throw new Error()
     expect(await readPaymentStatus(userClient(), BUYER, res.data.orderCode)).toMatchObject({ data: { status: 'PENDING' } })
   })

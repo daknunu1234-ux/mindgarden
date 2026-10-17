@@ -5,7 +5,8 @@ import { Suspense } from "react";
 import { getCurrentUser, LoginDialog, ProfileButton } from "@/features/auth";
 import { FruitBadge, getFarmInventory } from "@/features/garden";
 import { NotificationToaster } from "@/features/notifications";
-import { getMembership, PaymentModal, UpgradeButton } from "@/features/payment";
+import { PaymentModal } from "@/features/payment";
+import { isPaymentConfigured } from "@/features/payment/server";
 import { CoinsBadge, getFarmHud, isDevTopUpAllowed, simulateCoinTopUp, StreakBadge } from "@/features/progress";
 import { CoinShopModal, GameButton } from "@/shared/components/game";
 import { LIGHTING_BOOT_SCRIPT } from "@/shared/lib/lightingBoot";
@@ -44,9 +45,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Streak and coins for the header (one load per request, shared with the page). Reading them
   // never grows the streak: only watering a tree does.
-  const [res, hudRes, inventoryRes, membershipRes] = await Promise.all([getCurrentUser(), getFarmHud(), getFarmInventory(), getMembership()]);
-  // ⭐ Pro membership and whether this server takes PayOS payments (the Upgrade button and dialog).
-  const membership = membershipRes.success ? membershipRes.data : { isPro: false, lifetime: false, proUntil: null, paymentsEnabled: false };
+  const [res, hudRes, inventoryRes] = await Promise.all([getCurrentUser(), getFarmHud(), getFarmInventory()]);
+  // Coin packs can be bought with PayOS (VietQR) when this server has the PayOS keys.
+  const paymentsEnabled = isPaymentConfigured();
   // The island's fruit for the header (beside the coins); null when signed out or unreadable.
   const inventory = inventoryRes.success ? inventoryRes.data : null;
   const user = res.success ? res.data : null;
@@ -96,7 +97,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                     <CoinsBadge coins={hud.coins} coinsAsOf={hud.coinsAsOf} />
                   </>
                 )}
-                {user && <UpgradeButton membership={membership} paymentsEnabled={membership.paymentsEnabled} className="hidden sm:flex" />}
                 <ProfileButton user={user} />
               </div>
             </div>
@@ -110,9 +110,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </Suspense>
           {/* One Coin Shop for the whole app (opened from the HUD "+" and "Get More Coins").
               The free top-up is wired only outside production builds. */}
-          <CoinShopModal signedIn={user !== null} simulateTopUp={isDevTopUpAllowed() ? simulateCoinTopUp : null} paymentsEnabled={membership.paymentsEnabled} />
-          {/* ⭐ Upgrade: Pro and coin packs paid with PayOS (VietQR), opened from the header and the Coin Shop. */}
-          <PaymentModal signedIn={user !== null} paymentsEnabled={membership.paymentsEnabled} membership={membership} />
+          <CoinShopModal signedIn={user !== null} simulateTopUp={isDevTopUpAllowed() ? simulateCoinTopUp : null} paymentsEnabled={paymentsEnabled} />
+          {/* Buying a coin pack with PayOS (VietQR): opened from the Coin Shop only. */}
+          <PaymentModal signedIn={user !== null} paymentsEnabled={paymentsEnabled} />
           </StreakProvider>
           </PaymentDialogProvider>
           </CoinShopProvider>

@@ -24,7 +24,7 @@ type CoinShopModalProps = {
 }
 
 // 🪙 Coin Shop: four packages priced in VND, bought with PayOS (VietQR) when the server is set up for
-// it ("Buy with VietQR" opens the payment dialog on the picked package). In development a
+// it ("Buy Coins via VietQR" opens the payment dialog on the picked package; the only way to pay). In development a
 // "Simulate Top-up" also credits the package without payment, bursts gold and updates the HUD live.
 function CoinShopModal({ signedIn, simulateTopUp, paymentsEnabled = false }: CoinShopModalProps) {
   const { isOpen, setOpen } = useCoinShop()
@@ -134,7 +134,7 @@ function ShopBody({ signedIn, simulateTopUp, paymentsEnabled, onDone }: CoinShop
                   openPayment(pack.id)
                 }}
               >
-                Buy with VietQR · {formatVnd(pack.priceVnd)}
+                Buy Coins via VietQR · {formatVnd(pack.priceVnd)}
               </GameButton>
             )}
             {simulateTopUp && (

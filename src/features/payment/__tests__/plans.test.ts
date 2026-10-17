@@ -3,43 +3,50 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { COIN_PACKAGES } from '@/shared/lib/economy'
 import { CreatePaymentDto, PaymentStatusDto } from '../dto/PaymentDto'
-import { COIN_PRODUCTS, findProduct, makeOrderCode, membershipOf, PAYMENT_PRODUCTS, PLAN_TYPES, PRO_MONTH_DAYS, PRO_PRODUCTS, RETURN_PATH } from '../lib/plans'
+import { COIN_PRODUCTS, findProduct, makeOrderCode, PAYMENT_PRODUCT_IDS, RETURN_PATH } from '../lib/plans'
 
-const SQL = readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', '20261021000000_payments.sql'), 'utf8')
+const migration = (name: string) => readFileSync(join(__dirname, '..', '..', '..', '..', 'supabase', 'migrations', name), 'utf8')
+const PAYMENTS = migration('20261021000000_payments.sql')
+const COIN_ONLY = migration('20261022000000_coin_only_payments.sql')
 
-describe('the catalogue', () => {
-  it('offers Pro for a month, Pro for life, and every Coin Shop package at its shop price', () => {
-    expect(PRO_PRODUCTS.map((p) => [p.id, p.planType])).toEqual([
-      ['pro-1m', 'PRO_1M'],
-      ['pro-lifetime', 'PRO_LIFETIME'],
-    ])
+describe('the catalogue: coin packs only', () => {
+  it('sells exactly the Coin Shop packages, at their shop prices', () => {
     expect(COIN_PRODUCTS.map((p) => [p.id, p.coins, p.amountVnd])).toEqual(COIN_PACKAGES.map((p) => [p.id, p.coins, p.priceVnd]))
-    expect(new Set(PAYMENT_PRODUCTS.map((p) => p.id)).size).toBe(PAYMENT_PRODUCTS.length)
+    expect(PAYMENT_PRODUCT_IDS).toEqual(['coins-10', 'coins-20', 'coins-50', 'coins-100'])
+    for (const p of COIN_PRODUCTS) expect(p.planType).toBe('COIN_PACK')
   })
 
-  it('prices are whole VND above PayOS’s minimum; descriptions fit every bank (9 characters)', () => {
-    for (const p of PAYMENT_PRODUCTS) {
-      expect(Number.isInteger(p.amountVnd), p.id).toBe(true)
-      expect(p.amountVnd, p.id).toBeGreaterThanOrEqual(2000)
-      expect(p.description.length, p.id).toBeLessThanOrEqual(9)
-      expect(p.description).toMatch(/^[A-Z0-9 ]+$/)
-      // Coins only for coin packs (the database checks the same).
-      expect(p.coins > 0, p.id).toBe(p.planType === 'COIN_PACK')
+  it('no Pro membership is sold any more', () => {
+    for (const id of ['pro-1m', 'pro-lifetime']) {
+      expect(findProduct(id)).toBeUndefined()
+      expect(CreatePaymentDto.safeParse({ productId: id }).success).toBe(false)
     }
   })
 
-  it('matches the migration: plan types, statuses and the 30 days of a month', () => {
-    expect(SQL).toContain(`check (plan_type in (${PLAN_TYPES.map((t) => `'${t}'`).join(', ')}))`)
-    expect(SQL).toContain("check (status in ('PENDING', 'PAID', 'CANCELLED'))")
-    expect(SQL).toContain(`interval '${PRO_MONTH_DAYS} days'`)
-    expect(SQL).toContain('check ((plan_type = \'COIN_PACK\') = (coins > 0))')
+  it('prices are whole VND above PayOS’s minimum; descriptions fit every bank (9 characters)', () => {
+    for (const p of COIN_PRODUCTS) {
+      expect(Number.isInteger(p.amountVnd), p.id).toBe(true)
+      expect(p.amountVnd, p.id).toBeGreaterThanOrEqual(2000)
+      expect(p.coins, p.id).toBeGreaterThan(0)
+      expect(p.description.length, p.id).toBeLessThanOrEqual(9)
+      expect(p.description).toMatch(/^[A-Z0-9 ]+$/)
+    }
   })
 
-  it('the browser can only name a product; amounts are never accepted', () => {
-    expect(CreatePaymentDto.parse({ productId: 'pro-1m', amount: 1, coins: 999999 })).toEqual({ productId: 'pro-1m' })
+  it('matches the migrations: orders take coin packs only, and fulfilling credits coins only', () => {
+    expect(PAYMENTS).toContain("check (status in ('PENDING', 'PAID', 'CANCELLED'))")
+    expect(COIN_ONLY).toContain("add constraint orders_plan_type_check check (plan_type = 'COIN_PACK')")
+    const start = COIN_ONLY.indexOf('create function public.fulfill_order')
+    const fulfil = COIN_ONLY.slice(start, COIN_ONLY.indexOf('$$;', start))
+    expect(fulfil).toContain('returns table (fulfilled boolean, status text, user_id uuid, coins_added integer, total_coins integer)')
+    expect(fulfil).toContain('set coins = u.coins + v_order.coins')
+    expect(fulfil).not.toMatch(/pro_until|PRO_1M|PRO_LIFETIME/)
+  })
+
+  it('the browser can only name a coin pack; amounts are never accepted', () => {
+    expect(CreatePaymentDto.parse({ productId: 'coins-50', amount: 1, coins: 999999 })).toEqual({ productId: 'coins-50' })
     expect(CreatePaymentDto.safeParse({ productId: 'free-stuff' }).success).toBe(false)
     expect(findProduct('coins-50')).toMatchObject({ planType: 'COIN_PACK', coins: 50, amountVnd: 40_000 })
-    expect(findProduct('nope')).toBeUndefined()
     expect(PaymentStatusDto.parse({ orderCode: '1760000000000123' })).toEqual({ orderCode: 1760000000000123 })
     expect(PaymentStatusDto.safeParse({ orderCode: '-5' }).success).toBe(false)
     expect(PaymentStatusDto.safeParse({ orderCode: '99999999999999999999' }).success).toBe(false)
@@ -52,21 +59,9 @@ describe('order codes', () => {
     const a = makeOrderCode(now, 7)
     expect(a).toBe(now * 1000 + 7)
     expect(Number.isSafeInteger(a)).toBe(true)
-    expect(a).toBeLessThan(Number.MAX_SAFE_INTEGER)
     expect(makeOrderCode(now, 8)).not.toBe(a)
     expect(makeOrderCode(now + 1, 0)).toBeGreaterThan(makeOrderCode(now, 999))
-    // Inside the database's range check too.
-    expect(SQL).toContain('check (order_code > 0 and order_code <= 9007199254740991)')
-  })
-})
-
-describe('membership', () => {
-  const now = new Date('2026-10-17T10:00:00Z')
-  it('is Pro until the end date, for life with infinity, and not without one', () => {
-    expect(membershipOf(null, now)).toEqual({ isPro: false, lifetime: false, proUntil: null })
-    expect(membershipOf('2026-11-16T10:00:00+00:00', now)).toMatchObject({ isPro: true, lifetime: false })
-    expect(membershipOf('2026-10-01T00:00:00+00:00', now)).toMatchObject({ isPro: false })
-    expect(membershipOf('infinity', now)).toEqual({ isPro: true, lifetime: true, proUntil: 'infinity' })
+    expect(PAYMENTS).toContain('check (order_code > 0 and order_code <= 9007199254740991)')
   })
 
   it('PayOS returns to a plain path (it appends its own query)', () => {

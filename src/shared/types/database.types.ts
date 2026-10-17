@@ -40,8 +40,6 @@ export type Database = {
           coin_carry: number
           avatar_url: string | null
           coins: number
-          // Migration 20261021000000: end of the Pro membership (ISO time, 'infinity' = lifetime, null = never).
-          pro_until: string | null
           created_at: string
         }
         Insert: {
@@ -620,7 +618,8 @@ export type Database = {
           user_id: string
           amount: number
           status: 'PENDING' | 'PAID' | 'CANCELLED'
-          plan_type: 'PRO_1M' | 'PRO_LIFETIME' | 'COIN_PACK'
+          // Coin packs only since migration 20261022000000.
+          plan_type: 'COIN_PACK'
           product_id: string
           coins: number
           payment_link_id: string | null
@@ -634,7 +633,7 @@ export type Database = {
           user_id: string
           amount: number
           status?: 'PENDING' | 'PAID' | 'CANCELLED'
-          plan_type: 'PRO_1M' | 'PRO_LIFETIME' | 'COIN_PACK'
+          plan_type: 'COIN_PACK'
           product_id: string
           coins?: number
           payment_link_id?: string | null
@@ -737,11 +736,11 @@ export type Database = {
         Args: { p_user_id: string; p_item_id: string }
         Returns: { coins_earned: number; total_coins: number }[]
       }
-      // Migration 20261021000000_payments.sql. Service role only: grant a paid order once; cancel a
-      // pending one (returns the order's status, null for an unknown order).
+      // Migrations 20261021000000 / 20261022000000. Service role only: credit a paid coin pack once;
+      // cancel a pending order (returns the order's status, null for an unknown order).
       fulfill_order: {
         Args: { p_order_code: number; p_amount_paid: number }
-        Returns: { fulfilled: boolean; status: string; user_id: string; plan_type: string; coins_added: number; total_coins: number; pro_until: string | null }[]
+        Returns: { fulfilled: boolean; status: string; user_id: string; coins_added: number; total_coins: number }[]
       }
       cancel_order: {
         Args: { p_order_code: number }

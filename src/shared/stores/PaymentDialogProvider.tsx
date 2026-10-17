@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 
 type PaymentDialogContextValue = {
   isOpen: boolean
-  // The product picked when the dialog opens ('pro-1m', 'coins-50', …); null = the dialog's default.
+  // The coin pack picked when the dialog opens ('coins-50', …); null = the dialog's default.
   productId: string | null
   open: (productId?: string) => void
   setOpen: (open: boolean) => void
@@ -12,8 +12,8 @@ type PaymentDialogContextValue = {
 
 const PaymentDialogContext = createContext<PaymentDialogContextValue | null>(null)
 
-// Lets the header's ⭐ Upgrade button and the Coin Shop open the payment dialog (payment feature's
-// PaymentModal, rendered once in the root layout) without importing it.
+// Lets the Coin Shop open the payment dialog (payment feature's PaymentModal, rendered once in the
+// root layout) without importing it.
 function PaymentDialogProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<{ isOpen: boolean; productId: string | null }>({ isOpen: false, productId: null })
   const value = useMemo(

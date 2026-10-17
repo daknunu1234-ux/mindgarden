@@ -7,8 +7,8 @@ import { PaymentStatusDto } from '../dto/PaymentDto'
 import { readPaymentStatus, type PaymentStatus } from '../services/orders'
 
 // Auth: Required (the buyer). The order's status, settled with PayOS when still pending (paid →
-// fulfilled, cancelled / expired → cancelled), plus the buyer's coins and Pro membership. Polled by
-// the payment modal and the return page. Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ORDER_NOT_FOUND,
+// coins credited, cancelled / expired → cancelled), plus the buyer's purse. Polled by the payment
+// modal and the return page. Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, ORDER_NOT_FOUND,
 // PAYMENT_UNAVAILABLE, INTERNAL_ERROR.
 export async function getPaymentStatus(input: unknown): Promise<ActionResult<PaymentStatus>> {
   const parsed = PaymentStatusDto.safeParse(input)

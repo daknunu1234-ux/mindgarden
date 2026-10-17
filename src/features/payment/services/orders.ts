@@ -5,11 +5,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/shared/lib/supabase/admin'
 import type { Database } from '@/shared/types/database.types'
 import { fail, ok, type ActionResult } from '@/shared/types/result'
-import { makeOrderCode, membershipOf, RETURN_PATH, type Membership, type PaymentProduct, type PlanType } from '../lib/plans'
+import { makeOrderCode, RETURN_PATH, type PaymentProduct } from '../lib/plans'
 import { getPayOS } from './payos'
 
 // Orders and their fulfilment (service role: players can read their orders but never write them, and
-// only fulfill_order() grants Pro or coins). Migration 20261021000000_payments.sql.
+// only fulfill_order() credits the coins). Migrations 20261021000000_payments.sql and
+// 20261022000000_coin_only_payments.sql (coin packs only).
 
 type Client = SupabaseClient<Database>
 const MIGRATION = 'supabase/migrations/20261021000000_payments.sql'
@@ -97,10 +98,11 @@ export async function createCheckout(userId: string, product: PaymentProduct, or
   }
 }
 
-export type Fulfilment = { fulfilled: boolean; userId: string; planType: PlanType; coinsAdded: number; totalCoins: number; proUntil: string | null }
+export type Fulfilment = { fulfilled: boolean; userId: string; coinsAdded: number; totalCoins: number }
 
-// Marks a paid order PAID and grants it, once (fulfill_order). Codes: ORDER_NOT_FOUND, PAYMENT_FAILED
-// (paid less than the order's price), PAYMENT_UNAVAILABLE, INTERNAL_ERROR.
+// Marks a paid order PAID and credits its coins to the buyer's purse, once (fulfill_order). Codes:
+// ORDER_NOT_FOUND, PAYMENT_FAILED (paid less than the order's price, or not a coin pack),
+// PAYMENT_UNAVAILABLE, INTERNAL_ERROR.
 export async function fulfillOrder(orderCode: number, amountPaid: number): Promise<ActionResult<Fulfilment>> {
   const admin = createAdminClient()
   if (!admin) {
@@ -111,6 +113,10 @@ export async function fulfillOrder(orderCode: number, amountPaid: number): Promi
   if (error) {
     const message = error.message ?? ''
     if (message.includes('ORDER_NOT_FOUND')) return fail('ORDER_NOT_FOUND', 'No such order')
+    if (message.includes('NOT_A_COIN_PACK')) {
+      console.error(`[payment] order ${orderCode} is not a coin pack: not fulfilled`)
+      return fail('PAYMENT_FAILED', 'Only coin packs can be fulfilled')
+    }
     if (message.includes('AMOUNT_MISMATCH')) {
       console.error(`[payment] order ${orderCode} paid ${amountPaid}, less than its price: not fulfilled`)
       return fail('PAYMENT_FAILED', 'The amount paid does not match the order')
@@ -121,35 +127,27 @@ export async function fulfillOrder(orderCode: number, amountPaid: number): Promi
   }
   const row = Array.isArray(data) ? data[0] : data
   if (!row) return fail('INTERNAL_ERROR', 'Could not record the payment')
-  return ok({
-    fulfilled: row.fulfilled,
-    userId: row.user_id,
-    planType: row.plan_type as PlanType,
-    coinsAdded: row.coins_added,
-    totalCoins: row.total_coins,
-    proUntil: row.pro_until,
-  })
+  return ok({ fulfilled: row.fulfilled, userId: row.user_id, coinsAdded: row.coins_added, totalCoins: row.total_coins })
 }
 
 export type PaymentStatus = {
   orderCode: number
   status: OrderStatus
   productId: string
-  planType: PlanType
   amount: number
+  // Coins the pack adds; totalCoins: the purse now (null if unreadable).
   coins: number
   totalCoins: number | null
-  membership: Membership
 }
 
 // The buyer's view of an order (their session, RLS: own orders only). A PENDING order is checked
 // with PayOS first: the webhook can't reach a local machine, and can lag, so the return page settles
 // it from PayOS's own record (paid → fulfil; cancelled / expired / failed → cancel). Nothing the
 // browser says about the payment is trusted.
-export async function readPaymentStatus(supabase: Client, userId: string, orderCode: number, now: Date = new Date()): Promise<ActionResult<PaymentStatus>> {
+export async function readPaymentStatus(supabase: Client, userId: string, orderCode: number): Promise<ActionResult<PaymentStatus>> {
   const { data: order, error } = await supabase
     .from('orders')
-    .select('order_code, status, plan_type, product_id, coins, amount')
+    .select('order_code, status, product_id, coins, amount')
     .eq('order_code', orderCode)
     .eq('user_id', userId)
     .maybeSingle()
@@ -179,23 +177,6 @@ export async function readPaymentStatus(supabase: Client, userId: string, orderC
     }
   }
 
-  const { data: user } = await supabase.from('users').select('coins, pro_until').eq('id', userId).maybeSingle()
-  return ok({
-    orderCode,
-    status,
-    productId: order.product_id,
-    planType: order.plan_type as PlanType,
-    amount: Number(order.amount),
-    coins: order.coins,
-    totalCoins: user?.coins ?? null,
-    membership: membershipOf(user?.pro_until ?? null, now),
-  })
-}
-
-// The gardener's Pro membership (their own users row).
-export async function readMembership(supabase: Client, userId: string, now: Date = new Date()): Promise<Membership> {
-  const { data, error } = await supabase.from('users').select('pro_until').eq('id', userId).maybeSingle()
-  // Before the migration the column doesn't exist: nobody is Pro yet.
-  if (error) return membershipOf(null, now)
-  return membershipOf(data?.pro_until ?? null, now)
+  const { data: user } = await supabase.from('users').select('coins').eq('id', userId).maybeSingle()
+  return ok({ orderCode, status, productId: order.product_id, amount: Number(order.amount), coins: order.coins, totalCoins: user?.coins ?? null })
 }

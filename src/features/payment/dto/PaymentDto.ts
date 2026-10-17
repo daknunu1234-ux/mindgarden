@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { PAYMENT_PRODUCT_IDS } from '../lib/plans'
 
-// POST /api/payment/create: only a product id. The amount, plan and coins come from the server's
-// catalogue (lib/plans.ts), never from the browser.
+// POST /api/payment/create: only a coin pack id. The amount and coins come from the server's
+// catalogue (lib/plans.ts), never from the browser; anything but a coin pack is refused.
 export const CreatePaymentDto = z.object({ productId: z.enum(PAYMENT_PRODUCT_IDS) })
 export type CreatePaymentInput = z.infer<typeof CreatePaymentDto>
 
