@@ -1,6 +1,6 @@
 # MindGarden: Project Status
 
-> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-08.
+> Snapshot of what is built, how the pieces connect, and what has shipped. Last updated: 2026-10-22.
 >
 > **Rule: update this file before or alongside every commit.** If a commit adds, removes or changes a
 > feature, a migration, a price, a buff or the core loop, the same commit updates the matching section
@@ -993,7 +993,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(payment): update coin pack pricing to 10k, 15k, 30k, and 45k VND (`shared/lib/economy` `COIN_PACKAGES`: 10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫; the Coin Shop now shows Save 25 / 40 / 55%) |
+| (pending) | fix(auth): support APP_URL override for magic-link redirect and add Google OAuth test suite (the magic link returns to `APP_URL` when set, else the request origin; a test that the Google sign-in button is always shown) |
+| 940d924 | feat(payment): update coin pack pricing to 10k, 15k, 30k, and 45k VND (`shared/lib/economy` `COIN_PACKAGES`: 10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫; the Coin Shop now shows Save 25 / 40 / 55%) |
 | 2456b48 | feat(payment): sell coin packs only: remove the ⭐ Pro membership and the header's Upgrade button; the Coin Shop's "Buy Coins via VietQR" is the only entry point (migration 34: `plan_type` 'COIN_PACK' only, `fulfill_order()` credits coins only, `users.pro_until` dropped) |
 | 185d261 | feat(payment): implement PayOS VietQR payments for Pro tiers and Coin packs (⭐ Pro month / lifetime and coin packs; `orders` + `users.pro_until`, migration 33; `POST /api/payment/create`, signed `POST /api/payment/webhook`, `getPaymentStatus` reconcile with PayOS, `PaymentModal`, `UpgradeButton`, `/payment/result`; Coin Shop "Buy with VietQR"). Also carries: an explicit `display: swap` on the Baloo 2 font |
 | b233303 | feat(mindmap): redesign root cards with minimalist idle state and hover-to-reveal controls (`RootChart`: larger, darker titles; status, statement count, practice and owner tools revealed on hover / focus / selection; card 208 × 104) |

@@ -25,7 +25,7 @@ Sign-in (Google 1-click OAuth, email magic link) and the header profile button.
 `src/proxy.ts` → `shared/lib/supabase/proxy.ts` `updateSession` (`getClaims()` refreshes tokens on every non-asset request).
 
 ## Setup (Supabase dashboard)
-- Authentication → URL Configuration → Redirect URLs: add `http://localhost:3000/auth/callback` (and the production URL)
+- Authentication → URL Configuration → Redirect URLs: add `http://localhost:3000/auth/callback` and `https://mindgarden-k1lf.vercel.app/auth/callback`; Site URL: the production URL. Both sign-ins return to the site the player is on: Google uses `window.location.origin`, the magic link the Server Action's request origin (or `APP_URL` when set, server only). The Google button is always shown (no environment check; `__tests__/googleSignIn.test.ts`)
 - Authentication → Providers → Google: enabled with the OAuth client id and secret (done)
 - The built-in mailer is rate-limited; set up custom SMTP before real users
 

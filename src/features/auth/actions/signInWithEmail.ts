@@ -11,10 +11,12 @@ export async function signInWithEmail(input: unknown): Promise<ActionResult<{ se
   const parsed = SignInWithEmailDto.safeParse(input)
   if (!parsed.success) return fail('VALIDATION_FAILED', parsed.error.issues[0].message)
 
-  // Next.js checks that a Server Action's Origin matches the host, so it is safe to reuse.
-  // Supabase also rejects redirect URLs that are not in the project's allow list.
+  // The link returns to the site the player is on: localhost in development, the Vercel domain in
+  // production. Next.js checks that a Server Action's Origin matches the host, so it is safe to reuse;
+  // APP_URL (optional, server only) overrides it behind a proxy. Supabase also rejects redirect URLs
+  // that are not in the project's allow list.
   const h = await headers()
-  const origin = h.get('origin') ?? `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`
+  const origin = (process.env.APP_URL || h.get('origin') || `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`).replace(/\/+$/, '')
 
   const supabase = await createClient()
   return sendMagicLink(supabase, parsed.data, origin)
