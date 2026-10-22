@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { GamePanel, InlineNameEdit } from '@/shared/components/game'
-import { DeckDangerZone, DeckEditor, DeckShareToggle, TournamentHostToggle, type Deck, type DeckEditorData } from '@/features/decks'
+import { DeckDangerZone, DeckEditor, DeckShareToggle, OutlineStagingEditor, TournamentHostToggle, type Deck, type DeckEditorData } from '@/features/decks'
+import { OutlineImportButton } from '@/features/mindmap'
 
 type DeckWorkshopProps = {
   deck: Deck
@@ -49,6 +50,13 @@ export function DeckWorkshop({ deck, editor, onRename, start = false }: DeckWork
             ? 'Your new tree is planted! Name its first root below, then press Enter for the next.'
             : 'Grow your roots right here: pick a root, type statements and sub-roots inline, Enter for the next, Tab to nest.'}
         </p>
+        {/* A Word / PowerPoint / PDF outline into this tree: read in the browser, edited in the
+            Workshop's own editor (in memory), imported on Done. */}
+        <div className="mb-3 flex justify-center">
+          <OutlineImportButton
+            renderReview={(review) => <OutlineStagingEditor deckId={deck.id} treeType={editor.treeType} lines={review.lines} onBack={review.back} onDone={review.close} />}
+          />
+        </div>
         <DeckEditor
           editor={editor}
           start={start}

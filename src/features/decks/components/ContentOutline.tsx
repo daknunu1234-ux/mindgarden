@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { HoverActionButton, HoverActions } from '@/shared/components/game'
 import { useToast } from '@/shared/stores/ToastProvider'
@@ -35,7 +35,10 @@ const STEP = 18
 // Every change goes through the deck draft (lib/contentTree.ts, the database's own rules): 0 ms on
 // screen, saved in the background. Only deletes confirm.
 // `start`: the tree was just bought and placed: open on a new top-level root line, focused.
-export function ContentOutline({ editor, start = false }: { editor: DeckEditor; start?: boolean }) {
+// `issues`: row id → why it can't be saved (the document import's staging editor): an amber ⚠️ on
+// the row and on its root's chip.
+export function ContentOutline({ editor, start = false, issues }: { editor: DeckEditor; start?: boolean; issues?: ReadonlyMap<string, string> }) {
+  const headingId = useId()
   const { addNode, editNode, indentNode, toggleType, isPending, resolveId } = useDeckDraftActions()
   const { toast } = useToast()
   const rows = editor.rows
@@ -332,6 +335,7 @@ export function ContentOutline({ editor, start = false }: { editor: DeckEditor; 
           row,
           top: row.depth === 0,
           pending: isPending(row.id),
+          issue: issues?.get(row.id) ?? null,
           hasChildren,
           collapsed: isCollapsed,
           hiddenCount: hidden ? hidden.statements + hidden.roots : null,
@@ -374,12 +378,23 @@ export function ContentOutline({ editor, start = false }: { editor: DeckEditor; 
   // Statement counts on the root chips: once per outline change, not per render.
   const chipCounts = useMemo(() => new Map(rows.filter((r) => r.depth === 0).map((r) => [r.id, branchCounts(rows, r.id).statements])), [rows])
   const statementsUnder = (id: string) => chipCounts.get(id) ?? 0
+  // Rows with an issue under each top-level root (only when issues are given).
+  const chipIssues = useMemo(() => {
+    const counts = new Map<string, number>()
+    if (!issues || issues.size === 0) return counts
+    let top: string | null = null
+    for (const r of rows) {
+      if (r.depth === 0) top = r.id
+      if (top && issues.has(r.id)) counts.set(top, (counts.get(top) ?? 0) + 1)
+    }
+    return counts
+  }, [rows, issues])
   const lastTop = tops.at(-1)?.id ?? null
 
   return (
-    <section aria-labelledby="outline-heading" className="rounded-[20px] border-[3px] border-[#dcb98c] bg-[#fffaf0] p-3 text-amber-950 shadow-[inset_0_2px_0_#fff,0_4px_0_#c89b64] sm:p-4">
+    <section aria-labelledby={headingId} className="rounded-[20px] border-[3px] border-[#dcb98c] bg-[#fffaf0] p-3 text-amber-950 shadow-[inset_0_2px_0_#fff,0_4px_0_#c89b64] sm:p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 id="outline-heading" className="font-game text-base font-extrabold">
+        <h3 id={headingId} className="font-game text-base font-extrabold">
           🌱 Roots &amp; statements
         </h3>
       </div>
@@ -392,19 +407,25 @@ export function ContentOutline({ editor, start = false }: { editor: DeckEditor; 
               {tops.map((r) => {
                 const active = selected?.id === r.id
                 const count = statementsUnder(r.id)
+                const flagged = chipIssues.get(r.id) ?? 0
                 return (
                   <li key={r.id}>
                     <button
                       type="button"
                       onClick={() => setSelectedId(r.id)}
                       aria-current={active ? 'true' : undefined}
-                      title={`${r.content}: ${count} ${count === 1 ? 'statement' : 'statements'}`}
+                      title={`${r.content}: ${count} ${count === 1 ? 'statement' : 'statements'}${flagged ? `, ${flagged} to fix` : ''}`}
                       className={cn(
                         'flex h-7 max-w-52 items-center gap-1.5 rounded-full border-2 px-2.5 text-xs font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-emerald-300 focus-visible:outline-none',
                         active ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-amber-800/20 bg-white hover:bg-amber-50',
                         isPending(r.id) && 'border-dashed',
                       )}
                     >
+                      {flagged > 0 && (
+                        <span role="img" aria-label={`${flagged} to fix`} className="shrink-0 text-[10px]">
+                          ⚠️
+                        </span>
+                      )}
                       <span className="truncate">{r.content}</span>
                       <span className={cn('shrink-0 rounded-full px-1.5 text-[10px] leading-4 tabular-nums', active ? 'bg-white/25' : 'bg-amber-100 text-amber-900')}>{count}</span>
                     </button>
@@ -465,6 +486,8 @@ type RowState = {
   row: ContentRow
   top: boolean
   pending: boolean
+  // Why the row can't be saved as it stands (the import's staging editor), or null.
+  issue: string | null
   hasChildren: boolean
   collapsed: boolean
   hiddenCount: number | null
@@ -496,6 +519,7 @@ export function rowEqual(a: RowLineProps, b: RowLineProps): boolean {
     a.guide === b.guide &&
     a.top === b.top &&
     a.pending === b.pending &&
+    a.issue === b.issue &&
     a.hasChildren === b.hasChildren &&
     a.collapsed === b.collapsed &&
     a.hiddenCount === b.hiddenCount &&
@@ -564,7 +588,7 @@ function OutlineLine({
 
 // One node: ▾ / ▸ when it has children, its icon (🌱 a top-level root, 🌿 a root, • a statement), its
 // text (double-click to edit), a status badge for statements, and the owner's hover tools.
-function OutlineRow({ row, top, pending, hasChildren, collapsed, hiddenCount, editor, actions }: RowState & { actions: RowActions }) {
+function OutlineRow({ row, top, pending, issue, hasChildren, collapsed, hiddenCount, editor, actions }: RowState & { actions: RowActions }) {
   const editing = editor !== null
   const onToggleCollapse = () => actions.toggleCollapse(row.id)
   const onEdit = () => actions.edit(row.id)
@@ -599,6 +623,7 @@ function OutlineRow({ row, top, pending, hasChildren, collapsed, hiddenCount, ed
               'min-w-0 whitespace-pre-wrap',
               isRoot ? (top ? 'font-game text-sm font-extrabold' : 'text-[13px] font-semibold') : 'flex-1 text-xs leading-4',
               pending && 'text-amber-900/60',
+              issue && 'text-amber-800 underline decoration-orange-400 decoration-wavy underline-offset-2',
             )}
             onDoubleClick={() => !pending && onEdit()}
             title={pending ? undefined : 'Double-click to edit'}
@@ -614,6 +639,11 @@ function OutlineRow({ row, top, pending, hasChildren, collapsed, hiddenCount, ed
             >
               +{hiddenCount} {hiddenCount === 1 ? 'item' : 'items'}
             </button>
+          )}
+          {issue && (
+            <span role="img" aria-label={issue} title={issue} className="shrink-0 text-[10px] leading-4">
+              ⚠️
+            </span>
           )}
           {status && (
             <span

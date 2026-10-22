@@ -1,6 +1,7 @@
 export { MasteryRing } from './components/MasteryRing'
 export { NodePill, StatementCard } from './components/MindmapCards'
 export { NodeInspector } from './components/NodeInspector'
+export { OutlineImportButton, type OutlineImportLine, type OutlineReview } from './components/OutlineImportDialog'
 export { RootChart } from './components/RootChart'
 export { RootMap } from './components/RootMap'
 export { allNodeIds, collapsibleNodeIds, indexNodes } from './hooks/collapse'

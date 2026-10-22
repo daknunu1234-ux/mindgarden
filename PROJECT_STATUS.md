@@ -195,6 +195,28 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
   Seaport; a gloss black locomotive with a glowing lantern and big cartoon smoke, and candy crates with
   ribbons and gold coins.
 
+### Import an outline from Word, PowerPoint or PDF 📄
+
+- **Where**: "📄 Import from a document" in the Tree Workshop. Pick or drop a .docx, .pptx or .pdf (10 MB
+  at most): it becomes roots, sub-roots and statements of the open tree, after its existing roots.
+- **Zero upload, zero storage, zero AI**: the file is read in the browser's memory (jszip for Word and
+  PowerPoint, pdf.js for PDF, both loaded only when a file is picked); only the confirmed outline
+  (text + level) is sent to the server. No Supabase Storage, no model calls.
+- **How levels are found**: Word heading styles and list numbering (I / A / 1 / 1.1), slide titles and
+  bullet levels, PDF font sizes, spacing and indentation, bold short lines. The strongest kind of
+  heading in the document makes roots, the next one sub-roots, everything else statements.
+  Running headers, footers and page numbers are dropped; wrapped PDF lines are rejoined.
+- **Review in the Tree Workshop's own editor**: the parsed outline opens in the very same outline
+  editor as the Workshop (decks `OutlineStagingEditor` renders `ContentOutline` under an in-memory
+  staging draft), so Enter, Shift+Enter, Tab, Shift+Tab, Alt (Root ↔ Statement), Ctrl+Enter bulk add,
+  Esc, the hover tools, chips and badges all behave identically, at any depth. Nothing is saved while
+  editing; rows the server would refuse (statements 5–500 characters, root names 1–150, plain text,
+  at most 9 levels) get an amber ⚠️, and "✅ Done" waits until there are none. Only ✕ closes the dialog
+  while reviewing (Esc and clicks outside never drop the staged edits). Shorthand ("Term:
+  explanation") is kept, so the drill engine's terse-note parsing applies to imported statements.
+- **Safe write**: `importOutline` (decks) takes the rows as `{ depth, type, text }` and inserts them depth
+  by depth; if a step fails, what was added is removed again. The page then refreshes in place.
+
 ### Buying coins with PayOS (VietQR) 🪙
 
 - **What can be bought** (`src/features/payment`, prices in `lib/plans.ts`): the Coin Shop's four coin
@@ -993,7 +1015,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | fix(auth): support APP_URL override for magic-link redirect and add Google OAuth test suite (the magic link returns to `APP_URL` when set, else the request origin; a test that the Google sign-in button is always shown) |
+| (pending) | feat(mindmap): import an outline from Word, PowerPoint or PDF into the open tree, read in the browser (no upload, no storage, no AI): `lib/outlineParser` (docx / pptx / pdf → visual lines → three levels), reviewed in the Tree Workshop's own outline editor (decks `OutlineStagingEditor`: `ContentOutline` over an in-memory staging draft, same keys and tools, ⚠️ on rows the server would refuse, imported on Done), decks `importOutline` (`{ depth, type, text }` rows, depth-by-depth insert with rollback); `jszip`, `pdfjs-dist` (legacy build). |
+| 5578375 | fix(auth): support APP_URL override for magic-link redirect and add Google OAuth test suite (the magic link returns to `APP_URL` when set, else the request origin; a test that the Google sign-in button is always shown) |
 | 940d924 | feat(payment): update coin pack pricing to 10k, 15k, 30k, and 45k VND (`shared/lib/economy` `COIN_PACKAGES`: 10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫; the Coin Shop now shows Save 25 / 40 / 55%) |
 | 2456b48 | feat(payment): sell coin packs only: remove the ⭐ Pro membership and the header's Upgrade button; the Coin Shop's "Buy Coins via VietQR" is the only entry point (migration 34: `plan_type` 'COIN_PACK' only, `fulfill_order()` credits coins only, `users.pro_until` dropped) |
 | 185d261 | feat(payment): implement PayOS VietQR payments for Pro tiers and Coin packs (⭐ Pro month / lifetime and coin packs; `orders` + `users.pro_until`, migration 33; `POST /api/payment/create`, signed `POST /api/payment/webhook`, `getPaymentStatus` reconcile with PayOS, `PaymentModal`, `UpgradeButton`, `/payment/result`; Coin Shop "Buy with VietQR"). Also carries: an explicit `display: swap` on the Baloo 2 font |
@@ -1060,7 +1083,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 115 files, 1174 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 120 files, 1223 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

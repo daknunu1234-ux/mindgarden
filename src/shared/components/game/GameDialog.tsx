@@ -30,11 +30,12 @@ type GameDialogContentProps = Omit<React.ComponentProps<typeof DialogPrimitive.C
   description?: React.ReactNode
   tone?: PanelTone
   ribbon?: RibbonTone
-  size?: 'sm' | 'md' | 'lg'
+  // 'xl': a wide editor (the document import's staging outline).
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   showClose?: boolean
 }
 
-const WIDTHS = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg' }
+const WIDTHS = { sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg', xl: 'sm:max-w-4xl' }
 
 function GameDialogContent({
   title,

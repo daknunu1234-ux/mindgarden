@@ -104,6 +104,7 @@ Client ──► Server Action / Route Handler ──► Zod DTO ──► featu
 | Progress | `simulateCoinTopUp` | Action/POST | Development only: credit a Coin Shop package without payment | Required |
 | Decks | `createMindmapNode` | Action/POST | Add a root to an owned deck | Required |
 | Decks | `createKnowledgeItems` | Action/POST | Bulk import pasted statements (bullets / lines) into one root in a single insert | Required |
+| Decks | `importOutline` | Action/POST | Import a document outline staged and edited in the browser (in the Tree Workshop editor); the file is never uploaded | Required (owner) |
 | Decks | `createKnowledgeItem` | Action/POST | Add a plain-text statement to a root | Required |
 | Decks | `getDeckEditor` | Action | Owner-only roots + true statements for the editor | Required |
 | Decks | `getDeckReader` | Action | Read-only roots + true statements of a public tree (or your own), for visitors | Optional |
@@ -324,6 +325,19 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 // Both are createContentNode underneath. Errors: as createContentNode, plus ITEM_NOT_FOUND (parentItemId not in the tree)
 ```
 - Authors never see or send trap rules. Zero drop: every note gets a question in one of 8 conceptual trap types (antonym, cloze / recall, concept mapping, sibling swap, scenario, least likely, condition, formula), balanced over a round and never the same type twice within 2 questions; only a lone note no type fits gets "spot your exact note" (backend/ARCHITECTURE.md §7), so fragments, key–value notes and bullets are all drillable. The mindmap's `AddRootDialog` and ⚙️ Manage dialog call these and `router.refresh()`
+
+### `importOutline` (decks)
+```typescript
+// Input (ImportOutlineDto): { deckId: uuid; items: { depth: 0–8; type: 'root' | 'statement'; text: string }[] }   // 1–1000 rows
+//   Rows in outline order (the Tree Workshop's shape): the first at depth 0; depth 0 = a top-level root; each row at most
+//   one level below the row above it, under the nearest row above it one level up (any node under any node).
+//   Text cleaned; roots 1–150 chars, statements 5–500, plain text (lib/outlinePlan, shared with the staging editor).
+// data: { slug: string; roots: number; subRoots: number; statements: number }
+// Errors: VALIDATION_FAILED, AUTH_UNAUTHORIZED, AUTH_FORBIDDEN (not the owner), DECK_NOT_FOUND, INTERNAL_ERROR
+```
+- **No file on the server**: Word / PowerPoint / PDF files are read in the browser (mindmap `lib/outlineParser`, 10 MB at most) and only the confirmed outline is sent; nothing is stored in Supabase Storage, and no AI service is used
+- **Placement**: top-level roots after the tree's existing ones; every other row under the nearest row above it one level up, in order (one sort order per parent, roots and statements shared). `roots` counts top-level roots, `subRoots` the roots below them, `statements` every statement
+- **Write**: one insert per depth (top-level roots, then depth 1, …) with the owner's session (RLS); if a later depth fails, the top-level roots just added are deleted (their branches by cascade), so the tree never keeps half an import
 
 ### `createKnowledgeItems` (decks)
 ```typescript

@@ -34,6 +34,8 @@ export type StatementPlace = { parentId?: string | null; afterId?: string | null
 export type NewNode = { parentId: string | null; afterId?: string | null; type: NodeType; content: string }
 
 export type DeckDraftActions = {
+  // The document import's staging editor (OutlineStagingEditor): edits stay in memory until "Done".
+  staging?: boolean
   // Show the new species at once; updateDeck in the background, rolled back with a toast on error
   // (a pricier species charges the difference: a short purse is such an error).
   changeSpecies: (treeType: string) => void

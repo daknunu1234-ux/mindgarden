@@ -135,7 +135,7 @@ export type NodeToDelete = { id: string; text: string; type: 'root' | 'statement
 // "Delete": any node of the Tree Workshop's outline, with its whole branch and everyone's progress on
 // the statements in it. Goes at once (the deck draft removes it everywhere, the server catches up).
 function DeleteNodeDialog({ node, onClose }: { node: NodeToDelete | null; onClose: (deleted: boolean) => void }) {
-  const { removeNode } = useDeckDraftActions()
+  const { removeNode, staging } = useDeckDraftActions()
   const parts = node
     ? [node.statements > 0 && `${node.statements} ${node.statements === 1 ? 'statement' : 'statements'}`, node.roots > 0 && `${node.roots} ${node.roots === 1 ? 'sub-root' : 'sub-roots'}`].filter(Boolean)
     : []
@@ -153,7 +153,8 @@ function DeleteNodeDialog({ node, onClose }: { node: NodeToDelete | null; onClos
     >
       <p>
         Delete this {node?.type === 'root' ? 'root' : 'statement'}
-        {parts.length > 0 ? ` and the ${parts.join(' and ')} under it` : ''}? Everyone&apos;s progress on them goes too. This cannot be undone.
+        {parts.length > 0 ? ` and the ${parts.join(' and ')} under it` : ''}?{' '}
+        {staging ? 'It is left out of the import.' : <>Everyone&apos;s progress on them goes too. This cannot be undone.</>}
       </p>
       {node && <p className="rounded-xl bg-white/70 px-2.5 py-1.5 font-medium whitespace-pre-wrap text-stone-800">“{node.text}”</p>}
     </ConfirmDelete>
