@@ -19,9 +19,9 @@ export type InlineInputProps = {
   onCancel?: (text: string) => void
   // Edits save when the field loses focus; new-item inputs keep their text instead.
   onBlurSave?: (text: string) => void
-  // Alt (statement ↔ root) and Ctrl+Enter (bulk); true = handled (the row moves on), false = the
-  // field stays as it is (a refused conversion).
-  onCommand?: (command: 'toggle' | 'bulk', text: string) => boolean
+  // Alt (statement ↔ root), Ctrl+Enter (bulk) and Backspace / Delete on an empty field (delete the
+  // line); true = handled (the row moves on), false = the field stays as it is (a refused conversion).
+  onCommand?: (command: 'toggle' | 'bulk' | 'delete', text: string) => boolean
   // Every change of the text (edits keep it above the row, so a remounted row picks it up).
   onTextChange?: (text: string) => void
   // Select the starting text on focus (edits opened with ✏️), else put the caret at its end.
@@ -66,7 +66,7 @@ export function InlineInput({
 
   const onKeyEvent = (e: KeyboardEvent<HTMLInputElement>, type: 'keydown' | 'keyup') => {
     const verdict = rowKey(
-      { type, key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, repeat: e.repeat, isComposing: e.nativeEvent.isComposing },
+      { type, key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, repeat: e.repeat, isComposing: e.nativeEvent.isComposing, empty: value === '' },
       altArmed.current,
     )
     altArmed.current = verdict.altArmed
@@ -79,7 +79,7 @@ export function InlineInput({
       onClose(value)
       return
     }
-    if (command === 'toggle' || command === 'bulk') {
+    if (command === 'toggle' || command === 'bulk' || command === 'delete') {
       if (!onCommand?.(command, value)) return
       // The row is converted / saved elsewhere: its blur must not save it again.
       finished.current = true
@@ -105,7 +105,7 @@ export function InlineInput({
         maxLength={maxLength}
         placeholder={placeholder}
         aria-label={label}
-        aria-keyshortcuts="Enter Shift+Enter Tab Shift+Tab Alt Alt+Enter Control+Enter Escape"
+        aria-keyshortcuts="Enter Shift+Enter Tab Shift+Tab Alt Alt+Enter Control+Enter Escape Backspace Delete"
         enterKeyHint="next"
         onChange={(e) => {
           setValue(e.target.value)

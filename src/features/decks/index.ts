@@ -31,7 +31,6 @@ export { DeckDraftProvider, useDeckDraft, useDeckDraftActions, type DeckDraftAct
 export { isPendingItemId } from './lib/draft'
 export { DeckShareToggle } from './components/DeckShareToggle'
 export { DeckDangerZone, DeleteDeckDialog } from './components/DeleteDeckDialog'
-export { DeleteNodeDialog, DeleteRootDialog, DeleteStatementDialog, type NodeToDelete, type RootToDelete, type StatementToDelete } from './components/DeleteDialogs'
 export { EditRootDialog, EditStatementDialog, type RootToEdit, type StatementToEdit } from './components/EditDialogs'
 export { MoveStatementDialog, type StatementToMove } from './components/MoveStatementDialog'
 export { OutlineStagingEditor } from './components/OutlineStagingEditor'

@@ -7,10 +7,14 @@ import { cn } from '@/shared/utils/cn'
 // navigation (e.g. uprooting a tree, then the redirect to the farm) stays on screen across it.
 
 export type ToastTone = 'leaf' | 'amber' | 'farewell'
-type Toast = { id: number; message: string; icon: string; tone: ToastTone }
-type ToastInput = { message: string; icon?: string; tone?: ToastTone }
+// `action`: one button on the toast (e.g. "Undo"); pressing it also dismisses the toast.
+// `placement`: 'bottom' for quiet, actionable notes that must not cover the page's header.
+export type ToastAction = { label: string; onClick: () => void }
+type Toast = { id: number; message: string; icon: string; tone: ToastTone; action?: ToastAction; placement: 'top' | 'bottom' }
+type ToastInput = { message: string; icon?: string; tone?: ToastTone; action?: ToastAction; placement?: 'top' | 'bottom' }
 
-type ToastContextValue = { toast: (input: ToastInput) => void }
+// `toast` returns the toast's id, for `dismiss`.
+type ToastContextValue = { toast: (input: ToastInput) => number; dismiss: (id: number) => void }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
 
@@ -28,11 +32,12 @@ function ToastProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(0)
 
   const dismiss = useCallback((id: number) => setToasts((all) => all.filter((t) => t.id !== id)), [])
-  const toast = useCallback(({ message, icon = '🌿', tone = 'leaf' }: ToastInput) => {
+  const toast = useCallback(({ message, icon = '🌿', tone = 'leaf', action, placement = 'top' }: ToastInput) => {
     const id = ++nextId.current
-    setToasts((all) => [...all, { id, message, icon, tone }].slice(-MAX_VISIBLE))
+    setToasts((all) => [...all, { id, message, icon, tone, action, placement }].slice(-MAX_VISIBLE))
+    return id
   }, [])
-  const value = useMemo(() => ({ toast }), [toast])
+  const value = useMemo(() => ({ toast, dismiss }), [toast, dismiss])
 
   return (
     <ToastContext.Provider value={value}>
@@ -43,9 +48,22 @@ function ToastProvider({ children }: { children: ReactNode }) {
         aria-atomic="false"
         className="pointer-events-none fixed inset-x-0 top-[max(4.5rem,env(safe-area-inset-top))] z-[60] flex flex-col items-center gap-3 px-4"
       >
-        {toasts.map((t) => (
-          <ToastPod key={t.id} toast={t} onDone={dismiss} />
-        ))}
+        {toasts
+          .filter((t) => t.placement === 'top')
+          .map((t) => (
+            <ToastPod key={t.id} toast={t} onDone={dismiss} />
+          ))}
+      </div>
+      <div
+        aria-live="polite"
+        aria-atomic="false"
+        className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-3 px-4"
+      >
+        {toasts
+          .filter((t) => t.placement === 'bottom')
+          .map((t) => (
+            <ToastPod key={t.id} toast={t} onDone={dismiss} />
+          ))}
       </div>
     </ToastContext.Provider>
   )
@@ -69,6 +87,18 @@ function ToastPod({ toast, onDone }: { toast: Toast; onDone: (id: number) => voi
         {toast.icon}
       </span>
       <span className="min-w-0 flex-1">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            toast.action!.onClick()
+            onDone(toast.id)
+          }}
+          className="shrink-0 rounded-full border-2 border-current/40 bg-white/80 px-3 py-0.5 text-sm font-extrabold underline-offset-2 hover:bg-white hover:underline focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDone(toast.id)}

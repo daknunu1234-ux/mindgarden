@@ -100,8 +100,9 @@ export async function loadDeckReader(supabase: Client, userId: string | null, de
 // ─── Order among siblings ───────────────────────────────────────────────────────────────────────
 
 // sort_order for a new child of `parentId`: right after sibling `afterId` (the midpoint with the
-// next sibling), else after the last one. Roots and statements share one order.
-async function orderFor(supabase: Client, deckId: string, parentId: string | null, afterId?: string | null): Promise<ActionResult<number>> {
+// next sibling), else before the first one when `first`, else after the last one. Roots and
+// statements share one order.
+async function orderFor(supabase: Client, deckId: string, parentId: string | null, afterId?: string | null, first = false): Promise<ActionResult<number>> {
   let q = supabase.from('content_nodes').select('id, sort_order').eq('deck_id', deckId)
   q = parentId ? q.eq('parent_id', parentId) : q.is('parent_id', null)
   const { data, error } = await q
@@ -111,6 +112,7 @@ async function orderFor(supabase: Client, deckId: string, parentId: string | nul
   }
   const orders = (data as { id: string; sort_order: number }[]).map((r) => r.sort_order).sort((a, b) => a - b)
   const anchor = afterId ? (data as { id: string; sort_order: number }[]).find((r) => r.id === afterId) : undefined
+  if (!anchor && first) return ok(orders.length > 0 ? orders[0] - 1 : 1)
   if (!anchor) return ok(orders.length > 0 ? orders[orders.length - 1] + 1 : 1)
   const next = orders.find((o) => o > anchor.sort_order)
   return ok(next === undefined ? anchor.sort_order + 1 : anchor.sort_order + (next - anchor.sort_order) / 2)
@@ -121,11 +123,11 @@ async function orderFor(supabase: Client, deckId: string, parentId: string | nul
 export type CreatedNode = { id: string; drillable: boolean; slug: string }
 
 // One new root or statement under `parentId` (null = a top-level root), right after sibling `afterId`
-// (else last). The Tree Workshop's lines.
+// (else first when `first`, else last). The Tree Workshop's lines, and undone deletes.
 export async function createNode(
   supabase: Client,
   userId: string,
-  { deckId, parentId, type, content, afterId = null }: CreateContentNodeInput,
+  { deckId, parentId, type, content, afterId = null, first = false }: CreateContentNodeInput,
 ): Promise<ActionResult<CreatedNode>> {
   const owner = await checkDeckOwner(supabase, deckId, userId)
   if (!owner.success) return owner
@@ -134,7 +136,7 @@ export async function createNode(
     if (!parent.success) return parent
     if (!parent.data || parent.data.deck_id !== deckId) return fail('NODE_NOT_FOUND', 'Its parent is not in this tree')
   }
-  const order = await orderFor(supabase, deckId, parentId, afterId)
+  const order = await orderFor(supabase, deckId, parentId, afterId, first)
   if (!order.success) return order
   const { data, error } = await supabase
     .from('content_nodes')

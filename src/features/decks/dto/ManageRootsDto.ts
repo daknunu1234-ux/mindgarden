@@ -37,7 +37,8 @@ export const MoveKnowledgeItemDto = z.object({
 })
 
 // One new node of either type (the Tree Workshop's lines): under `parentId` (null = a top-level
-// root), right after sibling `afterId` (else last). Roots: 1–150 characters; statements: 1–500, plain
+// root), right after sibling `afterId`, else first among the siblings when `first` (an undone delete
+// going back to its place), else last. Roots: 1–150 characters; statements: 1–500, plain
 // text.
 export const CreateContentNodeDto = z
   .object({
@@ -46,6 +47,7 @@ export const CreateContentNodeDto = z
     type: NodeType,
     content: z.string().trim().min(1, 'Write something first').max(500, 'Keep it under 500 characters'),
     afterId: z.uuid('Invalid position').nullish(),
+    first: z.boolean().optional(),
   })
   .refine((v) => v.type === 'statement' || [...v.content].length <= 150, { message: 'Root name is too long', path: ['content'] })
   .refine((v) => v.type === 'root' || !LATEX_COMMAND.test(v.content), { message: 'Use plain text, not LaTeX (no \\commands)', path: ['content'] })

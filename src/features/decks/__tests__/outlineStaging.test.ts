@@ -233,4 +233,18 @@ describe('OutlineStagingEditor: the Tree Workshop editor, in memory', () => {
     ])
   })
 
+  it('🗑️ removes a line at once (no dialog); Ctrl+Z puts it back with its children, Ctrl+Shift+Z removes it again', () => {
+    mount(DOC)
+    const before = shown()
+    act(() => (host.querySelector('button[aria-label="Delete Bào quan"]') as HTMLButtonElement).click())
+    expect(shown()).toEqual(['# Tế bào', '  - Mọi sinh vật đều cấu tạo từ tế bào.'])
+    expect(document.querySelector('[role="dialog"], [role="alertdialog"]')).toBeNull()
+    expect(calls.toasts.at(-1)).toBe('Removed “Bào quan” from the import. Press Ctrl+Z or Undo to restore.')
+    const page = (mods: KeyboardEventInit) => act(() => void document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true, cancelable: true, ctrlKey: true, ...mods })))
+    page({})
+    expect(shown()).toEqual(before)
+    page({ shiftKey: true })
+    expect(shown()).toHaveLength(2)
+    expect(calls.imports).toEqual([])
+  })
 })

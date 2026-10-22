@@ -307,8 +307,10 @@ type DeckTreeNode = { id: string; title: string; sortOrder: number;
 //   type: 'root' | 'statement'
 //   content: string              /* 1–500 (a root ≤ 150), statements plain text (no \commands) */
 //   afterId?: string | null      /* right below this sibling (the Tree Workshop's Enter key); else last */
+//   first?: boolean              /* no afterId: first among the siblings (an undone delete going back) */
 // }
-// Server sets: sort_order = the midpoint between afterId and the next sibling (else max + 1),
+// Server sets: sort_order = the midpoint between afterId and the next sibling (else min − 1 when first,
+//   else max + 1),
 //   trap_rules = { negate: true } for a statement ({} for a root)
 // data: { id: string; drillable: boolean /* a statement the question engine can ask */ }
 // Errors: VALIDATION_FAILED (also: a top-level statement), AUTH_UNAUTHORIZED, AUTH_FORBIDDEN, DECK_NOT_FOUND,

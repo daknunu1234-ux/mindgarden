@@ -14,7 +14,8 @@ export type DeckOp =
   | { key: string; kind: 'title'; title: string; settled?: boolean }
   // One new node: under `parentId` (null = a top-level root), right after sibling `afterId` (else
   // last). `confirmedId` = the server's id. parentId / afterId may be temp ids (confirmAdd retargets).
-  | { key: string; kind: 'add'; tempId: string; parentId: string | null; afterId: string | null; type: NodeType; content: string; confirmedId?: string }
+  // `first`: first among the parent's children when there is no `afterId` (an undone delete).
+  | { key: string; kind: 'add'; tempId: string; parentId: string | null; afterId: string | null; first?: boolean; type: NodeType; content: string; confirmedId?: string }
   // Several statements appended under one node (the bulk importer). `confirmed` = what the server
   // created (statements it skipped as duplicates simply aren't in it).
   | { key: string; kind: 'addMany'; parentId: string; items: { tempId: string; content: string }[]; confirmed?: { id: string; statement: string }[] }
@@ -66,7 +67,7 @@ export function applyDeckOps(detail: DeckDetail, editor: DeckEditor | null, ops:
       case 'add': {
         const id = op.confirmedId ?? op.tempId
         if (!op.confirmedId) pendingIds.add(id)
-        rows = keep(rows, insertRow(rows, { id, parentId: op.parentId, type: op.type, content: op.content }, op.afterId))
+        rows = keep(rows, insertRow(rows, { id, parentId: op.parentId, type: op.type, content: op.content }, op.afterId, op.first))
         break
       }
       case 'addMany': {

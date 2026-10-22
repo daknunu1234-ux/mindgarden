@@ -1,6 +1,6 @@
 'use client'
 
-import { useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { GameButton } from '@/shared/components/game'
 import { useToast } from '@/shared/stores/ToastProvider'
@@ -8,8 +8,10 @@ import { importOutline } from '../actions/importOutline'
 import { editRow, indentRow, insertRow, moveRow, removeRow, toEditorNodes, toggleRow } from '../lib/contentTree'
 import { isDrillable } from '../lib/drillable'
 import { addStagedStatements, importLines, STAGED_PREFIX, stagedRows, stagingBlocker, stagingIssues, type DocumentLine } from '../lib/outlineStaging'
+import { HISTORY_LIMIT } from '../lib/history'
 import { ContentOutline } from './ContentOutline'
 import { DeckDraftProvider, type DeckDraftActions } from './DeckDraft'
+import { useUndoShortcuts } from './useUndoShortcuts'
 import type { ContentRow, DeckEditor } from '../types'
 
 type OutlineStagingEditorProps = {
@@ -30,12 +32,26 @@ const ISSUES_SHOWN = 5
 // An edit that can't apply leaves the rows as they are (the Workshop shows the same hint first).
 const keep = (rows: ContentRow[], next: ContentRow[] | string): ContentRow[] => (typeof next === 'string' ? rows : next)
 
+// The outline and its undo / redo snapshots (everything is in memory, so a snapshot is exact).
+type Staged = { rows: ContentRow[]; past: ContentRow[][]; future: ContentRow[][] }
+
 // The deck draft's actions over an in-memory outline: the Tree Workshop's editor (ContentOutline)
 // runs on them unchanged, so the import is edited with exactly the Workshop's keys, tools and rules
-// (lib/contentTree), and nothing reaches the server until "Done".
+// (lib/contentTree), and nothing reaches the server until "Done". Deletes go at once with an Undo
+// toast, and Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo (this editor takes the keys while open).
 export function useStagingDraft(initial: readonly ContentRow[]): { rows: ContentRow[]; actions: DeckDraftActions } {
   const { toast } = useToast()
-  const [rows, setRows] = useState<ContentRow[]>(() => [...initial])
+  const [staged, setStaged] = useState<Staged>(() => ({ rows: [...initial], past: [], future: [] }))
+  const rows = staged.rows
+  // Every change is one step back; an edit that changes nothing is not one.
+  const setRows = useCallback(
+    (change: (rows: ContentRow[]) => ContentRow[]) =>
+      setStaged((s) => {
+        const next = change(s.rows)
+        return next === s.rows ? s : { rows: next, past: [...s.past, s.rows].slice(-HISTORY_LIMIT), future: [] }
+      }),
+    [],
+  )
   const current = useRef(rows)
   useLayoutEffect(() => {
     current.current = rows
@@ -44,7 +60,12 @@ export function useStagingDraft(initial: readonly ContentRow[]): { rows: Content
 
   const actions = useMemo<DeckDraftActions>(() => {
     const makeId = () => `${STAGED_PREFIX}new-${nextId.current++}`
-    const removeNode: DeckDraftActions['removeNode'] = ({ id }) => setRows((r) => removeRow(r, id))
+    const undo = () => setStaged((s) => (s.past.length ? { rows: s.past.at(-1)!, past: s.past.slice(0, -1), future: [...s.future, s.rows] } : s))
+    const redo = () => setStaged((s) => (s.future.length ? { rows: s.future.at(-1)!, past: [...s.past, s.rows], future: s.future.slice(0, -1) } : s))
+    const removeNode: DeckDraftActions['removeNode'] = ({ id, text }) => {
+      setRows((r) => removeRow(r, id))
+      toast({ message: `Removed “${text.length > 40 ? `${text.slice(0, 39)}…` : text}” from the import. Press Ctrl+Z or Undo to restore.`, icon: '🗑️', tone: 'farewell', placement: 'bottom', action: { label: 'Undo', onClick: undo } })
+    }
     const moveNode: DeckDraftActions['moveNode'] = ({ id }, to) => setRows((r) => keep(r, moveRow(r, id, to)))
     const addNode: DeckDraftActions['addNode'] = ({ parentId, afterId = null, type, content }) => {
       const id = makeId()
@@ -71,7 +92,7 @@ export function useStagingDraft(initial: readonly ContentRow[]): { rows: Content
         setRows((r) => addStagedStatements(r, nodeId, statements, fixedIds()).rows)
         return { success: true, data: { created: preview.created.map((c) => ({ ...c, drillable: isDrillable(c.statement) })), skipped: preview.skipped } }
       },
-      editNode: (id, content) => setRows((r) => editRow(r, id, content.trim())),
+      editNode: (id, content) => setRows((r) => (r.find((x) => x.id === id)?.content === content.trim() ? r : editRow(r, id, content.trim()))),
       removeNode,
       moveNode,
       indentNode: (id, dir) => setRows((r) => keep(r, indentRow(r, id, dir))),
@@ -80,12 +101,15 @@ export function useStagingDraft(initial: readonly ContentRow[]): { rows: Content
         setRows((r) => keep(r, toggleRow(r, id)))
         toast({ message: becomes === 'root' ? 'Converted to Root' : 'Converted to Statement', icon: becomes === 'root' ? '🌿' : '📜' })
       },
+      undo,
+      redo,
       isPending: () => false,
       resolveId: (id) => id,
       removeStatement: removeNode,
       moveStatement: moveNode,
     }
-  }, [toast])
+  }, [toast, setRows])
+  useUndoShortcuts(actions)
 
   return { rows, actions }
 }

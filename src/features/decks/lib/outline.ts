@@ -7,6 +7,8 @@
 //   Alt          → node_type root ↔ statement, in place (contentTree toggleRow / toggleSlot)
 //   Ctrl+Enter   → save, then open the bulk importer for the line's parent
 //   Esc          → close
+//   ⌫ / Del      → on an empty line: delete it (an edited row goes at once; Ctrl+Z brings it back)
+//   Ctrl+Z       → undo (Ctrl+Shift+Z / Ctrl+Y redo), anywhere on the page except inside a text field
 
 export type OutlineKey = 'enter' | 'shift-enter' | 'tab' | 'shift-tab'
 
@@ -15,9 +17,10 @@ export type EditEnd = OutlineKey | 'escape' | 'blur' | 'cancel'
 
 export const OUTLINE_LIMITS = { node: 150, statement: 500 } as const
 
-export type OutlineCommand = OutlineKey | 'toggle' | 'bulk' | 'escape'
+export type OutlineCommand = OutlineKey | 'toggle' | 'bulk' | 'escape' | 'delete'
 
-type KeyLike = { key: string; shiftKey: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; isComposing?: boolean }
+// `empty`: the field holds no text (Backspace / Delete there delete the line instead of a letter).
+type KeyLike = { key: string; shiftKey: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; isComposing?: boolean; empty?: boolean }
 
 // Which command a keydown is (null for any other key, or while an IME is composing: Vietnamese
 // Telex / VNI input confirms its letters with Enter-like keys).
@@ -30,6 +33,16 @@ export function outlineKey(e: KeyLike): OutlineCommand | null {
   }
   if (e.key === 'Tab') return e.shiftKey ? 'shift-tab' : 'tab'
   if (e.key === 'Escape') return 'escape'
+  if ((e.key === 'Backspace' || e.key === 'Delete') && e.empty && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) return 'delete'
+  return null
+}
+
+// The page-wide undo keys: Ctrl+Z / ⌘Z undo; Ctrl+Shift+Z / ⌘⇧Z / Ctrl+Y redo. Alt (AltGr) never.
+export function undoKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }): 'undo' | 'redo' | null {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null
+  const key = e.key.toLowerCase()
+  if (key === 'z') return e.shiftKey ? 'redo' : 'undo'
+  if (key === 'y' && !e.shiftKey) return 'redo'
   return null
 }
 
@@ -79,6 +92,8 @@ export const OUTLINE_SHORTCUTS: readonly OutlineShortcut[] = [
   },
   { badge: 'Ctrl+↵', label: 'Bulk add', hint: 'Ctrl+Enter (⌘+Enter on Mac): bulk add statements', combos: [['Ctrl', 'Enter'], ['⌘', 'Enter']] },
   { badge: 'Esc', label: 'Done', hint: 'Esc: done, save changes without a new line', combos: [['Esc']] },
+  { badge: '⌫', label: 'Delete', hint: 'Backspace or Delete on an empty line: delete it (Ctrl+Z brings it back)', combos: [['Backspace'], ['Delete']] },
+  { badge: 'Ctrl+Z', label: 'Undo', hint: 'Ctrl+Z (⌘+Z on Mac): undo; Ctrl+Shift+Z or Ctrl+Y: redo', combos: [['Ctrl', 'Z'], ['⌘', 'Z']] },
 ]
 
 // Whether an edit that ends this way saves what was typed (only ✕ discards).

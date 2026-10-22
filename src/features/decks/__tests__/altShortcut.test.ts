@@ -3,13 +3,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { toggleRow, toggleSlot } from '../lib/contentTree'
 import { applyDeckOps, type DeckOp } from '../lib/draft'
-import { OUTLINE_SHORTCUTS, outlineKey, rowKey, type RowKeyEvent, type RowKeyResult } from '../lib/outline'
+import { OUTLINE_SHORTCUTS, outlineKey, rowKey, undoKey, type RowKeyEvent, type RowKeyResult } from '../lib/outline'
 import type { ContentRow, DeckDetail, DeckEditor } from '../types'
 
 // The Workshop row editor's keyboard (DeckEditor InlineInput applies lib/outline rowKey verbatim:
 // preventDefault / stopPropagation / the command), replayed here event by event.
 
-type Mods = Partial<Pick<RowKeyEvent, 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey' | 'repeat' | 'isComposing'>>
+type Mods = Partial<Pick<RowKeyEvent, 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey' | 'repeat' | 'isComposing' | 'empty'>>
 const down = (key: string, mods: Mods = {}): RowKeyEvent => ({ type: 'keydown', key, shiftKey: false, ...mods })
 const up = (key: string, mods: Mods = {}): RowKeyEvent => ({ type: 'keyup', key, shiftKey: false, ...mods })
 
@@ -156,7 +156,7 @@ describe('Alt on a row: node_type flips in place (no row moved, added or removed
 describe('the Workshop cheat sheet', () => {
   const combos = (s: (typeof OUTLINE_SHORTCUTS)[number]) => s.combos.map((c) => c.join('+')).join(' or ')
 
-  it('lists six compact badge + 1–2 word label rows, Alt highlighted', () => {
+  it('lists eight compact badge + 1–2 word label rows, Alt highlighted', () => {
     expect(OUTLINE_SHORTCUTS.map((s) => [s.badge, s.label])).toEqual([
       ['Enter', 'New item'],
       ['Tab', 'Indent'],
@@ -164,17 +164,21 @@ describe('the Workshop cheat sheet', () => {
       ['Alt', 'Root ↔ Stmt'],
       ['Ctrl+↵', 'Bulk add'],
       ['Esc', 'Done'],
+      ['⌫', 'Delete'],
+      ['Ctrl+Z', 'Undo'],
     ])
     for (const s of OUTLINE_SHORTCUTS) expect(s.label.split(/\s+/).filter((w) => w !== '↔').length, s.label).toBeLessThanOrEqual(2)
     expect(OUTLINE_SHORTCUTS.filter((s) => s.highlight).map((s) => s.badge)).toEqual(['Alt'])
   })
 
   it('keeps the alternative keys the badges leave out in the hover hint', () => {
-    expect(OUTLINE_SHORTCUTS.map(combos)).toEqual(['Enter', 'Tab', 'Shift+Tab', 'Alt or Alt+Enter', 'Ctrl+Enter or ⌘+Enter', 'Esc'])
+    expect(OUTLINE_SHORTCUTS.map(combos)).toEqual(['Enter', 'Tab', 'Shift+Tab', 'Alt or Alt+Enter', 'Ctrl+Enter or ⌘+Enter', 'Esc', 'Backspace or Delete', 'Ctrl+Z or ⌘+Z'])
     const hint = (badge: string) => OUTLINE_SHORTCUTS.find((s) => s.badge === badge)!.hint
     expect(hint('Alt')).toContain('Alt+Enter')
     expect(hint('Ctrl+↵')).toContain('⌘+Enter')
     expect(hint('⇧Tab')).toContain('Shift+Tab')
+    expect(hint('Ctrl+Z')).toContain('Ctrl+Shift+Z or Ctrl+Y: redo')
+    expect(hint('⌫')).toContain('empty line')
   })
 
   it('every listed key combo is one the row editor actually handles, as the command it describes', () => {
@@ -187,11 +191,32 @@ describe('the Workshop cheat sheet', () => {
       'Ctrl+Enter': [down('Enter', { ctrlKey: true })],
       '⌘+Enter': [down('Enter', { metaKey: true })],
       Esc: [down('Escape')],
+      Backspace: [down('Backspace', { empty: true })],
+      Delete: [down('Delete', { empty: true })],
     }
-    const expected = ['enter', 'tab', 'shift-tab', 'toggle', 'bulk', 'escape']
-    OUTLINE_SHORTCUTS.forEach((shortcut, i) => {
+    const expected = ['enter', 'tab', 'shift-tab', 'toggle', 'bulk', 'escape', 'delete']
+    OUTLINE_SHORTCUTS.slice(0, expected.length).forEach((shortcut, i) => {
       for (const combo of shortcut.combos) expect(commands(asEvents[combo.join('+')]), combo.join('+')).toEqual([expected[i]])
     })
+    // Undo is the page's key (useUndoShortcuts), not a row's.
+    const z = { key: 'z', shiftKey: false, ctrlKey: false, metaKey: false, altKey: false }
+    expect(undoKey({ ...z, ctrlKey: true })).toBe('undo')
+    expect(undoKey({ ...z, metaKey: true })).toBe('undo')
+  })
+
+  it('Backspace / Delete delete a line only when it is empty and unmodified; the undo keys', () => {
+    expect(commands([down('Backspace')])).toEqual([])
+    expect(commands([down('Delete', { empty: false })])).toEqual([])
+    expect(commands([down('Backspace', { empty: true, ctrlKey: true })])).toEqual([])
+    expect(commands([down('Backspace', { empty: true, isComposing: true })])).toEqual([])
+    const k = (key: string, mods: Partial<{ shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }> = {}) =>
+      undoKey({ key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, ...mods })
+    expect(k('z', { ctrlKey: true, shiftKey: true })).toBe('redo')
+    expect(k('Z', { metaKey: true, shiftKey: true })).toBe('redo')
+    expect(k('y', { ctrlKey: true })).toBe('redo')
+    expect(k('z')).toBeNull()
+    expect(k('z', { ctrlKey: true, altKey: true })).toBeNull() // AltGr
+    expect(k('x', { ctrlKey: true })).toBeNull()
   })
 
   it('the panel is English only (no Vietnamese diacritics in its copy)', () => {

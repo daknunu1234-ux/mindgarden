@@ -132,24 +132,27 @@ export function branchCounts(rows: readonly ContentRow[], id: string): { stateme
 
 // ─── Edits ──────────────────────────────────────────────────────────────────────────────────────
 
-// Where a new child of `parentId` goes: right after sibling `afterId`'s branch, else at the end of
-// the parent's branch (the end of the outline for a new top-level root).
-export function insertIndex(rows: readonly ContentRow[], parentId: string | null, afterId?: string | null): number {
+// Where a new child of `parentId` goes: right after sibling `afterId`'s branch, else first among
+// the children when `first` (an undone delete of a first child), else at the end of the parent's
+// branch (the end of the outline for a new top-level root).
+export function insertIndex(rows: readonly ContentRow[], parentId: string | null, afterId?: string | null, first = false): number {
   const after = afterId ? rows.findIndex((r) => r.id === afterId && r.parentId === parentId) : -1
   if (after >= 0) return branchEnd(rows, after)
-  if (parentId === null) return rows.length
+  if (parentId === null) return first ? 0 : rows.length
   const parent = rows.findIndex((r) => r.id === parentId)
-  return parent < 0 ? -1 : branchEnd(rows, parent)
+  if (parent < 0) return -1
+  return first ? parent + 1 : branchEnd(rows, parent)
 }
 
 export function insertRow(
   rows: readonly ContentRow[],
   node: { id: string; parentId: string | null; type: NodeType; content: string },
   afterId?: string | null,
+  first = false,
 ): ContentRow[] | string {
   if (rows.some((r) => r.id === node.id)) return [...rows]
   if (node.parentId === null && node.type !== 'root') return 'A top-level node is a root'
-  const at = insertIndex(rows, node.parentId, afterId)
+  const at = insertIndex(rows, node.parentId, afterId, first)
   if (at < 0) return 'Its parent is gone'
   const parent = node.parentId === null ? null : rows.find((r) => r.id === node.parentId)
   const row: ContentRow = { ...node, depth: parent ? parent.depth + 1 : 0 }

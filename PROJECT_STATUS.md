@@ -426,8 +426,14 @@ drill overlay, inspector, profile); a test fails if 💎, a gem icon or a gems c
 - **Bulk import**: paste notes into a root (Markdown, Unicode or numbered bullets); each bullet or line
   becomes a statement, with a live preview, de-duplication and a 100-item cap per import.
 - **Cascading delete**: deleting a statement, a whole root branch or a tree relies on database
-  `ON DELETE CASCADE` (sub-roots, statements, `user_progress`, tournament progress, farm tile), always
-  behind a confirmation dialog that says what goes.
+  `ON DELETE CASCADE` (sub-roots, statements, `user_progress`, tournament progress, farm tile). A tree
+  delete confirms; roots and statements go at once, without asking (see *Undo / redo* below).
+- **Undo / redo** (deck page and the import's staging editor): Ctrl+Z / ⌘Z, Ctrl+Shift+Z / Ctrl+Y,
+  outside text fields, over the last 50 adds, deletes (whole branches), text edits, Tab / Shift+Tab
+  and Alt. 🗑️ or Backspace / Delete on an empty line delete at once with a bottom "Deleted ‘X’. Press
+  Ctrl+Z or Undo to restore." toast. The server delete waits 5 s, so an early undo loses nothing;
+  after that, undo re-creates the branch in its old place as new nodes (practice progress on them
+  starts over, and the toast says so). Waiting deletes are sent when the page is left.
 - **Edit**: `updateKnowledgeItem` rewrites a statement's text; trap rules and every player's progress
   (personal and tournament) are kept.
 - **Tree Workshop outline** (deck page, owner only, the section under the mindmap): the roots are edited
@@ -1015,7 +1021,8 @@ next commit replaces that with the real hash.
 
 | Commit | Summary |
 |--------|---------|
-| (pending) | feat(mindmap): import an outline from Word, PowerPoint or PDF into the open tree, read in the browser (no upload, no storage, no AI): `lib/outlineParser` (docx / pptx / pdf → visual lines → three levels), reviewed in the Tree Workshop's own outline editor (decks `OutlineStagingEditor`: `ContentOutline` over an in-memory staging draft, same keys and tools, ⚠️ on rows the server would refuse, imported on Done), decks `importOutline` (`{ depth, type, text }` rows, depth-by-depth insert with rollback); `jszip`, `pdfjs-dist` (legacy build). |
+| (pending) | feat(decks): delete roots and statements at once (no confirmation dialogs) with a bottom Undo toast, and undo / redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y; last 50 adds, deletes, edits, Tab / Shift+Tab, Alt) on the deck page and in the import's staging editor; deletes reach the server after a 5 s grace period, so an early undo keeps ids and progress; later undos re-create the branch in place (`createContentNode` `first`); Backspace / Delete on an empty line deletes it; toasts gain an action button and a bottom placement |
+| 670a5b8 | feat(mindmap): import an outline from Word, PowerPoint or PDF into the open tree, read in the browser (no upload, no storage, no AI): `lib/outlineParser` (docx / pptx / pdf → visual lines → three levels), reviewed in the Tree Workshop's own outline editor (decks `OutlineStagingEditor`: `ContentOutline` over an in-memory staging draft, same keys and tools, ⚠️ on rows the server would refuse, imported on Done), decks `importOutline` (`{ depth, type, text }` rows, depth-by-depth insert with rollback); `jszip`, `pdfjs-dist` (legacy build). |
 | 5578375 | fix(auth): support APP_URL override for magic-link redirect and add Google OAuth test suite (the magic link returns to `APP_URL` when set, else the request origin; a test that the Google sign-in button is always shown) |
 | 940d924 | feat(payment): update coin pack pricing to 10k, 15k, 30k, and 45k VND (`shared/lib/economy` `COIN_PACKAGES`: 10 🪙 10.000 ₫, 20 🪙 15.000 ₫, 50 🪙 30.000 ₫, 100 🪙 45.000 ₫; the Coin Shop now shows Save 25 / 40 / 55%) |
 | 2456b48 | feat(payment): sell coin packs only: remove the ⭐ Pro membership and the header's Upgrade button; the Coin Shop's "Buy Coins via VietQR" is the only entry point (migration 34: `plan_type` 'COIN_PACK' only, `fulfill_order()` credits coins only, `users.pro_until` dropped) |
@@ -1083,7 +1090,7 @@ next commit replaces that with the real hash.
 
 ## Health
 
-- `npm test`: 120 files, 1223 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
+- `npm test`: 122 files, 1238 tests passing (DOM tests use happy-dom: `// @vitest-environment happy-dom` per file) (`testTimeout` 20 s). `npx tsc --noEmit`, `npm run lint` and `npm run build` clean.
 - Every migration applies in order on PGlite (`src/test/pglite.ts`): `decks/__tests__/contentNodesMigration.test.ts` builds a tree
   in the old schema and checks migration 23 row by row; `indentContentNodeDb.test.ts` checks `indent_content_node()`. PGlite
   does not exercise RLS or column grants.

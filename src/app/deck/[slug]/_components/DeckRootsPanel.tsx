@@ -4,8 +4,6 @@ import { useMemo, useState, type ReactNode } from 'react'
 import {
   AddRootDialog,
   branchImpact,
-  DeleteRootDialog,
-  DeleteStatementDialog,
   EditRootDialog,
   EditStatementDialog,
   MoveStatementDialog,
@@ -13,9 +11,7 @@ import {
   type DeckEditorData,
   type DeckTreeNode,
   type ManagedNode,
-  type RootToDelete,
   type RootToEdit,
-  type StatementToDelete,
   type StatementToEdit,
   type StatementToMove,
   useDeckDraftActions,
@@ -64,16 +60,14 @@ export function DeckRootsPanel({
 }: DeckRootsPanelProps) {
   const [manageId, setManageId] = useState<string | null>(null)
   const [addRootOpen, setAddRootOpen] = useState(false)
-  // Owner deletes from the root drawer (decks' confirmation dialogs). A deleted root that is open in
-  // the drawer or the manage dialog closes by itself after the refresh (its id no longer resolves).
-  const [deletingStatement, setDeletingStatement] = useState<StatementToDelete | null>(null)
   const [editingStatement, setEditingStatement] = useState<StatementToEdit | null>(null)
   const [movingStatement, setMovingStatement] = useState<StatementToMove | null>(null)
   const [editingRoot, setEditingRoot] = useState<RootToEdit | null>(null)
-  const [deletingRootId, setDeletingRootId] = useState<string | null>(null)
   const launch = useSessionLaunch()
   // Statements still saving (deck draft) have no server id yet: their edit / delete wait for it.
-  const { isPending, toggleType } = useDeckDraftActions()
+  // Deletes go at once through the deck draft (no confirmation): a bottom toast offers Undo and
+  // Ctrl+Z works; a deleted root open in the drawer or the manage dialog closes by itself.
+  const { isPending, toggleType, removeNode } = useDeckDraftActions()
   const practice: MindmapPractice | null = useMemo(
     () => (practiceMode && launch ? { mode: practiceMode, onPractice: (request) => launch.open(request) } : null),
     [practiceMode, launch],
@@ -110,22 +104,19 @@ export function DeckRootsPanel({
       editor
         ? {
             onEditStatement: (s: StatementToEdit) => !isPending(s.id) && setEditingStatement(s),
-            onDeleteStatement: (s: StatementToDelete) => !isPending(s.id) && setDeletingStatement(s),
+            onDeleteStatement: (s: { id: string; text: string }) => !isPending(s.id) && removeNode({ id: s.id, text: s.text }),
             onMoveStatement: (s: StatementToMove) => !isPending(s.id) && setMovingStatement(s),
             // ⇄ root ↔ statement in place (a top-level root stays a root: the drawer and cards hide it there).
             onToggleType: (n: { id: string }) => !isPending(n.id) && toggleType(n.id),
             onEditRoot: setEditingRoot,
-            onDeleteRoot: setDeletingRootId,
+            onDeleteRoot: (rootId: string) => {
+              if (isPending(rootId)) return
+              removeNode({ id: rootId, text: editor.nodes.find((n) => n.id === rootId)?.title ?? 'root' })
+            },
           }
         : undefined,
-    [editor, isPending, toggleType],
+    [editor, isPending, toggleType, removeNode],
   )
-  const rootToDelete: RootToDelete | null = useMemo(() => {
-    if (!deletingRootId) return null
-    const title = editor?.nodes.find((n) => n.id === deletingRootId)?.title
-    const impact = branchImpact(tree, deletingRootId)
-    return title && impact ? { id: deletingRootId, title, ...impact } : null
-  }, [deletingRootId, editor, tree])
 
   return (
     <>
@@ -149,9 +140,7 @@ export function DeckRootsPanel({
           <AddRootDialog deckId={deckId} open={addRootOpen} onOpenChange={setAddRootOpen} />
           <EditStatementDialog deckId={deckId} statement={editingStatement} onClose={() => setEditingStatement(null)} />
           <EditRootDialog root={editingRoot} onClose={() => setEditingRoot(null)} />
-          <DeleteStatementDialog deckId={deckId} statement={deletingStatement} onClose={() => setDeletingStatement(null)} />
           <MoveStatementDialog nodes={editor.nodes} statement={movingStatement} onClose={() => setMovingStatement(null)} />
-          <DeleteRootDialog deckId={deckId} root={rootToDelete} onClose={() => setDeletingRootId(null)} />
         </>
       )}
     </>

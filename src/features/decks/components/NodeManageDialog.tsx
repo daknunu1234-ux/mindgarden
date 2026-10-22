@@ -22,7 +22,6 @@ import { createMindmapNode } from '../actions/createMindmapNode'
 import { updateMindmapNode } from '../actions/updateMindmapNode'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { useDeckDraftActions } from './DeckDraft'
-import { DeleteRootDialog, DeleteStatementDialog, type StatementToDelete } from './DeleteDialogs'
 import { EditStatementDialog, type StatementToEdit } from './EditDialogs'
 import type { EditorItem } from '../types'
 
@@ -65,16 +64,14 @@ function NodeManageDialog({ deckId, node, onOpenChange }: NodeManageDialogProps)
 
 function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNode; onClose: () => void }) {
   const router = useRouter()
-  const { addStatement: addToDraft, isPending: isSaving } = useDeckDraftActions()
+  const { addStatement: addToDraft, isPending: isSaving, removeNode } = useDeckDraftActions()
   const [isPending, startTransition] = useTransition()
   const [title, setTitle] = useState(node.title)
   const [branch, setBranch] = useState('')
   const [statement, setStatement] = useState('')
   const [notice, setNotice] = useState<Notice>(null)
   // Confirmation dialogs (DeleteDialogs): a statement, or this whole root branch.
-  const [deleting, setDeleting] = useState<StatementToDelete | null>(null)
   const [editing, setEditing] = useState<StatementToEdit | null>(null)
-  const [deletingRoot, setDeletingRoot] = useState(false)
 
   // Run an action, show its result, refresh the page data in place.
   const run = (action: () => Promise<{ success: boolean; error?: { message: string } }>, done: string, after?: () => void) => {
@@ -174,7 +171,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
                     {!isSaving(item.id) && (
                       <HoverActions label={`Tools for statement ${i + 1}`} className="shrink-0">
                         <HoverActionButton icon="✏️" label={`Edit statement ${i + 1}`} tone="edit" onClick={() => setEditing({ id: item.id, text: item.statement })} />
-                        <HoverActionButton icon="🗑️" label={`Delete statement ${i + 1}`} tone="delete" onClick={() => setDeleting({ id: item.id, text: item.statement })} />
+                        <HoverActionButton icon="🗑️" label={`Delete statement ${i + 1}`} tone="delete" onClick={() => removeNode({ id: item.id, text: item.statement })} />
                       </HoverActions>
                     )}
                   </GameSlab>
@@ -220,7 +217,15 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
               Deletes this root, {node.subRoots > 0 ? `its ${node.subRoots} ${node.subRoots === 1 ? 'sub-root' : 'sub-roots'}, ` : ''}
               {node.branchStatements} {node.branchStatements === 1 ? 'statement' : 'statements'} and everyone&apos;s progress on them.
             </p>
-            <GameButton tone="danger" size="sm" onClick={() => setDeletingRoot(true)}>
+            {/* At once, no confirmation: the bottom toast's Undo (or Ctrl+Z) puts the branch back. */}
+            <GameButton
+              tone="danger"
+              size="sm"
+              onClick={() => {
+                removeNode({ id: node.id, text: node.title })
+                onClose()
+              }}
+            >
               <Trash2 className="size-4" /> Delete Root
             </GameButton>
           </div>
@@ -247,23 +252,7 @@ function ManageBody({ deckId, node, onClose }: { deckId: string; node: ManagedNo
         statement={editing}
         onClose={() => setEditing(null)}
       />
-      <DeleteStatementDialog
-        deckId={deckId}
-        statement={deleting}
-        onClose={(deleted) => {
-          setDeleting(null)
-          if (deleted) setNotice({ tone: 'gold', text: 'Statement deleted' })
-        }}
-      />
-      <DeleteRootDialog
-        deckId={deckId}
-        root={deletingRoot ? { id: node.id, title: node.title, statements: node.branchStatements, subRoots: node.subRoots } : null}
-        onClose={(deleted) => {
-          setDeletingRoot(false)
-          // The root is gone: close the manage dialog too (the page refresh removes it from the map).
-          if (deleted) onClose()
-        }}
-      />
+
     </div>
   )
 }

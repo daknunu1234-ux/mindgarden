@@ -11,7 +11,6 @@ import { editSaves, OUTLINE_LIMITS, type EditEnd, type OutlineKey } from '../lib
 import { treeGuides, type TreeGuide } from '../lib/treeGuides'
 import { BulkStatementImporter } from './BulkStatementImporter'
 import { useDeckDraftActions } from './DeckDraft'
-import { DeleteNodeDialog, type NodeToDelete } from './DeleteDialogs'
 import { InlineInput } from './InlineInput'
 import { MoveStatementDialog, type StatementToMove } from './MoveStatementDialog'
 import { ShortcutPanel } from './ShortcutPanel'
@@ -31,15 +30,17 @@ const STEP = 18
 //   Shift+Tab    outdent: up a level right below its old parent (the rows below it become its children)
 //   Alt          root ↔ statement in place (a top-level root stays a root)
 //   Ctrl+Enter   save, then bulk-add statements (under a root row; beside a statement row)
+//   ⌫ / Del      on an empty line: delete it (a row goes at once, with its branch; Ctrl+Z undoes)
+//   🗑️           deletes at once too (no confirmation): a bottom toast offers Undo
 // The same keys work on a new, unsaved line (it moves or switches type; nothing is saved until Enter).
 // Every change goes through the deck draft (lib/contentTree.ts, the database's own rules): 0 ms on
-// screen, saved in the background. Only deletes confirm.
+// screen, saved in the background, and undoable (Ctrl+Z / Ctrl+Shift+Z, the draft's history).
 // `start`: the tree was just bought and placed: open on a new top-level root line, focused.
 // `issues`: row id → why it can't be saved (the document import's staging editor): an amber ⚠️ on
 // the row and on its root's chip.
 export function ContentOutline({ editor, start = false, issues }: { editor: DeckEditor; start?: boolean; issues?: ReadonlyMap<string, string> }) {
   const headingId = useId()
-  const { addNode, editNode, indentNode, toggleType, isPending, resolveId } = useDeckDraftActions()
+  const { addNode, editNode, indentNode, toggleType, removeNode, isPending, resolveId } = useDeckDraftActions()
   const { toast } = useToast()
   const rows = editor.rows
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -55,7 +56,6 @@ export function ContentOutline({ editor, start = false, issues }: { editor: Deck
   // The edit field's text as typed (a remounted row picks it up instead of the saved text).
   const [editDraft, setEditDraft] = useState<string | null>(null)
   const [bulkFor, setBulkFor] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<NodeToDelete | null>(null)
   const [moving, setMoving] = useState<{ statement: StatementToMove; excluded: ReadonlySet<string> } | null>(null)
   // Collapsed nodes: view state only (never saved).
   const [rawCollapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
@@ -144,8 +144,13 @@ export function ContentOutline({ editor, start = false, issues }: { editor: Deck
     const id = save(liveSlot, typed)
     showSlot(key === 'enter' ? { ...liveSlot, afterId: id } : null)
   }
-  const onSlotCommand = (command: 'toggle' | 'bulk', text: string): boolean => {
+  const onSlotCommand = (command: 'toggle' | 'bulk' | 'delete', text: string): boolean => {
     if (!liveSlot) return false
+    // Backspace / Delete on the empty new line: it closes (nothing was saved).
+    if (command === 'delete') {
+      showSlot(null)
+      return true
+    }
     if (command === 'toggle') {
       const next = toggleSlot(liveSlot)
       if (!next) {
@@ -186,9 +191,15 @@ export function ContentOutline({ editor, start = false, issues }: { editor: Deck
     setRawEditing(null)
     if (end === 'enter') showSlot({ parentId: row.parentId, afterId: row.id, type: row.type })
   }
-  const onEditCommand = (command: 'toggle' | 'bulk', text: string): boolean => {
+  const onEditCommand = (command: 'toggle' | 'bulk' | 'delete', text: string): boolean => {
     const row = byId(editingId)
     if (!row) return false
+    // Backspace / Delete on an emptied row: the row (and its branch) goes at once; Ctrl+Z / Undo.
+    if (command === 'delete') {
+      setRawEditing(null)
+      removeNode({ id: row.id, text: row.content })
+      return true
+    }
     const typed = text.trim()
     if (command === 'toggle') {
       const next = toggleRow(rows, row.id)
@@ -248,7 +259,8 @@ export function ContentOutline({ editor, start = false, issues }: { editor: Deck
     },
     remove: (id: string) => {
       const row = byId(id)
-      if (row) setDeleting({ id: row.id, text: row.content, type: row.type, ...branchCounts(rows, row.id) })
+      // At once, no confirmation: the toast's Undo (or Ctrl+Z) puts it back.
+      if (row) removeNode({ id: row.id, text: row.content })
     },
   }
   const latestHandlers = useRef(handlers)
@@ -472,7 +484,6 @@ export function ContentOutline({ editor, start = false, issues }: { editor: Deck
         <ShortcutPanel />
       </div>
 
-      <DeleteNodeDialog node={deleting} onClose={() => setDeleting(null)} />
       <MoveStatementDialog nodes={editor.nodes} statement={moving?.statement ?? null} excluded={moving?.excluded} onClose={() => setMoving(null)} />
     </section>
   )
