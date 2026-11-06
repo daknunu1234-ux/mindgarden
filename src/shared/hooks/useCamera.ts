@@ -8,10 +8,12 @@ const DRAG_THRESHOLD = 6
 export const FLIGHT_MS = 520
 
 export type CameraOptions = {
-  // Where to look once the viewport is first measured (after the default fit-and-centre): the camera
-  // flies there (FLIGHT_MS, ease-out). null = stay on the default view. Called once, with the
-  // measured viewport.
+  // Where to look once the viewport is first measured. null = stay on the default fit-and-centre view.
+  // Called once, with the measured viewport.
   initialShot?: (view: Size) => CameraShot | null
+  // true (default): fit-and-centre first, then fly to the initial shot (FLIGHT_MS, ease-out).
+  // false: jump straight to it, for heavy canvases that should not rescale every frame.
+  animateInitialShot?: boolean
 }
 
 type Pointer = { x: number; y: number }
@@ -41,6 +43,7 @@ export function useCamera(
   // The running flight's animation frame (0 = none).
   const flight = useRef(0)
   const initialShot = useRef(options.initialShot)
+  const animateInitialShot = useRef(options.animateInitialShot !== false)
   // Latest values for native listeners (wheel) without re-subscribing.
   const live = useRef({ zoom, view, world })
   useEffect(() => {
@@ -151,15 +154,20 @@ export function useCamera(
     }
   }, [cancelFlight, fit, focus, scrollRef, zoom])
 
-  // First measurement: fit the whole world and centre it, then fly to the initial shot if there is one.
+  // First measurement: jump directly to the initial shot when requested, otherwise fit
+  // the world before the usual camera flight.
   useEffect(() => {
     if (!initialised.current && view.w > 0) {
       initialised.current = true
-      resetView()
       const shot = initialShot.current?.(view)
-      if (shot) flyTo(shot)
+      if (shot && !animateInitialShot.current) {
+        showShot(shot)
+      } else {
+        resetView()
+        if (shot) flyTo(shot)
+      }
     }
-  }, [view, resetView, flyTo])
+  }, [view, resetView, flyTo, showShot])
 
   // Ctrl/⌘ + wheel (and trackpad pinch) zooms at the cursor; a plain wheel keeps scrolling.
   useEffect(() => {

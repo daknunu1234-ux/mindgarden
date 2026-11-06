@@ -168,10 +168,11 @@ function FarmIslandView({
   const world = useMemo(() => ({ w: FARM_WORLD.w, h: FARM_WORLD.h }), [])
   const focus = useMemo(() => ({ x: FARM_WORLD.w / 2, y: FARM_WORLD.h / 2 + 40 }), [])
   const scrollRef = useRef<HTMLDivElement>(null)
-  // On arrival the camera settles on the trees (lib/farmFocus: one tree close up, several framed
-  // together), flying there from the island overview; no trees: the overview stays. Touching the farm
-  // stops the flight.
+  // On arrival the camera starts on the trees (lib/farmFocus: one tree close up, several framed
+  // together), jumping straight there: flying in would rescale the whole farm every frame. No trees:
+  // the island overview stays.
   const camera = useCamera(scrollRef, world, focus, world, {
+    animateInitialShot: false,
     initialShot: (measured) => {
       const scales = new Map(plots.map((p) => [p.id, treeScale(p.treeType, p.itemCount)]))
       return farmFocus(placements, measured, (deckId) => scales.get(deckId))

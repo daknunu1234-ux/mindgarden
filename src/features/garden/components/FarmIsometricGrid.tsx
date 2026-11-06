@@ -8,12 +8,9 @@ import { treeBuff, type TreeBuff } from '../lib/farmBuffs'
 import { catalogFor, type FarmItemType } from '../lib/farmCatalog'
 import {
   depthOf,
-  fenceLinks,
   footprintCenter,
   freeTiles,
   GRID_SIZE,
-  neighbourLinks,
-  streamLinks,
   TILE_H,
   TILE_W,
   tileToScreen,
@@ -50,6 +47,24 @@ export { FARM_WORLD }
 
 // Animate at most this many trees (particles, bees): keeps big farms light.
 const MAX_ANIMATED = 12
+
+// Auto-tiling reads four neighbours for every road, stream, fence and tree. Index the
+// occupied top tiles once per layout instead of scanning all placements for each side.
+const tileKey = (itemType: FarmItemType, x: number, y: number) => `${itemType}:${x}:${y}`
+const tileIndex = (placements: readonly Placement[]) =>
+  new Set(placements.map((p) => tileKey(p.itemType, p.x, p.y)))
+// The farm while `movingId` is lifted: at (x, y) on a green spot, else gone from its old tile.
+// No move: the farm as it stands.
+const liftedLayout = (placements: readonly Placement[], movingId: string | null, x: number | null, y: number | null): readonly Placement[] => {
+  if (!movingId) return placements
+  return x !== null && y !== null ? withMoved(placements, movingId, { x, y }) : placements.filter((p) => p.id !== movingId)
+}
+const tileLinks = (index: ReadonlySet<string>, itemType: FarmItemType, tile: { x: number; y: number }) => ({
+  north: index.has(tileKey(itemType, tile.x, tile.y - 1)),
+  east: index.has(tileKey(itemType, tile.x + 1, tile.y)),
+  south: index.has(tileKey(itemType, tile.x, tile.y + 1)),
+  west: index.has(tileKey(itemType, tile.x - 1, tile.y)),
+})
 
 export type BuildGhost = {
   footprint: Pick<Footprint, 'width' | 'height'>
@@ -209,62 +224,110 @@ function FarmIsometricGridImpl({
   // A stream or Farmer's House being placed or moved to a free spot: preview the buffs it would give.
   const auraKind = build && (build.itemType === 'stream' || build.itemType === 'farmer_house') ? build.itemType : null
 
-  // Everything derived from the tiles, recomputed only when the farm or the ghost's spot changes.
-  const scene = useMemo(() => {
-    const spot = ghostX !== null && ghostY !== null ? { x: ghostX, y: ghostY, width: ghostW, height: ghostH } : null
-    // Move mode: everything else stays; the moved thing has left its old tile and, on a green spot, is
-    // already at the new one, so neighbouring streams, fences and tree beds retile live at both places.
-    const others = movingId ? placements.filter((p) => p.id !== movingId) : placements
-    const layout: readonly Placement[] = movingId && spot && ghostOk ? withMoved(placements, movingId, spot) : others
-    const withGhost: readonly Placement[] = movingId
-      ? layout
-      : spot && ghostOk && auraKind
-        ? [...placements, { id: 'ghost', itemType: auraKind, deckId: null, x: spot.x, y: spot.y, width: spot.width, height: spot.height, variant: null }]
-        : placements
-    const powered = poweredMap(placements)
-    const trees = placements.flatMap((p) => {
+  // Power, delivery routes and the standing trees do not change when only the ghost moves.
+  const powered = useMemo(() => poweredMap(placements), [placements])
+  const deliveries = useMemo(() => roadLinks(placements, (p) => powered.get(p.id) !== false), [placements, powered])
+  const trees = useMemo(
+    () => placements.flatMap((p) => {
       const plot = p.itemType === 'tree' && p.deckId ? plotsByDeck.get(p.deckId) : undefined
       return plot ? [{ placement: p, plot }] : []
+    }),
+    [placements, plotsByDeck],
+  )
+  const currentBuffs = useMemo(
+    () => new Map(trees.map(({ placement }) => [placement.id, treeBuff(placement.x, placement.y, placements)])),
+    [placements, trees],
+  )
+
+  const animated = useMemo(
+    () =>
+      new Set(
+        trees
+          // Withered trees stand still: no bees, no falling leaves.
+          .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3 && !plot.withered)
+          .slice(0, MAX_ANIMATED)
+          .map(({ placement }) => placement.id),
+      ),
+    [trees],
+  )
+
+  // Move mode: everything else stays; the moved thing has left its old tile and, on a green spot, is
+  // already at the new one, so neighbouring streams, fences and tree beds retile live at both places.
+  // Each layer only follows a move of its own kind, keyed on plain numbers, so dragging the ghost
+  // (or placing something new) keeps the other layers' arrays and their memoised SVG untouched.
+  const movingType = useMemo(() => (movingId ? (placements.find((p) => p.id === movingId)?.itemType ?? null) : null), [placements, movingId])
+  const landX = movingId && ghostOk ? ghostX : null
+  const landY = movingId && ghostOk ? ghostY : null
+  const moveOf = (kind: FarmItemType) => (movingType === kind ? ([movingId, landX, landY] as const) : ([null, null, null] as const))
+  const [treeMoveId, treeX, treeY] = moveOf('tree')
+  const [streamMoveId, streamX, streamY] = moveOf('stream')
+  const [roadMoveId, roadX, roadY] = moveOf('road')
+  const [fenceMoveId, fenceX, fenceY] = moveOf('fence')
+
+  // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
+  const treeBeds = useMemo(() => {
+    const index = tileIndex(liftedLayout(placements, treeMoveId, treeX, treeY))
+    return trees
+      .filter(({ placement: p }) => p.id !== treeMoveId)
+      .map(({ placement: p }): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: tileLinks(index, 'tree', p) }))
+  }, [placements, trees, treeMoveId, treeX, treeY])
+  const streams = useMemo(() => {
+    const index = tileIndex(liftedLayout(placements, streamMoveId, streamX, streamY))
+    return placements
+      .filter((p) => p.itemType === 'stream' && p.id !== streamMoveId)
+      .map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: tileLinks(index, 'stream', p) }))
+  }, [placements, streamMoveId, streamX, streamY])
+  // Streams are painted as one network; each tile still gets its own (invisible) button.
+  const streamHits = useMemo(() => placements.filter((p) => p.itemType === 'stream' && p.id !== streamMoveId), [placements, streamMoveId])
+  // Roads: drawn flat in the ground layer, joined to the roads beside them; each tile gets an
+  // invisible button like a stream's.
+  const roads = useMemo(() => {
+    const layout = liftedLayout(placements, roadMoveId, roadX, roadY)
+    const index = tileIndex(layout)
+    return layout.filter((p) => p.itemType === 'road').map((p): RoadCell => ({ key: p.id, x: p.x, y: p.y, links: tileLinks(index, 'road', p) }))
+  }, [placements, roadMoveId, roadX, roadY])
+  const roadHits = useMemo(() => placements.filter((p) => p.itemType === 'road' && p.id !== roadMoveId), [placements, roadMoveId])
+
+  // Standing things, back to front; only a moved fence retiles them.
+  const standing = useMemo(
+    () => placements.filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree' && p.itemType !== 'road').sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x),
+    [placements],
+  )
+  const items = useMemo(() => {
+    const index = tileIndex(liftedLayout(placements, fenceMoveId, fenceX, fenceY))
+    // The lifted fence itself still joins only what is left around its old tile.
+    const othersIndex = fenceMoveId ? tileIndex(liftedLayout(placements, fenceMoveId, null, null)) : index
+    return standing.map((p) => ({
+      placement: p,
+      links: p.itemType === 'fence' ? linksKey(tileLinks(p.id === fenceMoveId ? othersIndex : index, 'fence', p)) : '',
+      // Buildings that need power: on or off (lib/powerGrid); undefined for everything else.
+      powered: powered.get(p.id),
+    }))
+  }, [placements, standing, powered, fenceMoveId, fenceX, fenceY])
+
+  // Buff previews: only a stream or Farmer's House (placed or moved) changes them, so only then do
+  // the trees follow the ghost.
+  const buffPreview = auraKind !== null || movingType === 'stream' || movingType === 'farmer_house'
+  const auraMoveId = buffPreview ? movingId : null
+  const auraPlaceKind = buffPreview && !movingId ? auraKind : null
+  const auraX = buffPreview && ghostOk ? ghostX : null
+  const auraY = buffPreview && ghostOk ? ghostY : null
+  const auraW = buffPreview ? ghostW : 1
+  const auraH = buffPreview ? ghostH : 1
+  const treeViews = useMemo(() => {
+    let withGhost: readonly Placement[] | null = null
+    if (auraMoveId) withGhost = liftedLayout(placements, auraMoveId, auraX, auraY)
+    else if (auraPlaceKind && auraX !== null && auraY !== null)
+      withGhost = [...placements, { id: 'ghost', itemType: auraPlaceKind, deckId: null, x: auraX, y: auraY, width: auraW, height: auraH, variant: null }]
+    return trees.map(({ placement, plot }) => {
+      const current = currentBuffs.get(placement.id)!
+      const next = withGhost ? treeBuff(placement.x, placement.y, withGhost) : current
+      return { placement, plot, animate: animated.has(placement.id), buffs: buffKey(current, next) }
     })
-    const animated = new Set(
-      trees
-        // Withered trees stand still: no bees, no falling leaves.
-        .filter(({ plot }) => getTreeStage(plot.masteryPercent) >= 3 && !plot.withered)
-        .slice(0, MAX_ANIMATED)
-        .map(({ placement }) => placement.id),
-    )
-    return {
-      // Auto-tiling: tree beds join the tree beds beside them, streams the streams beside them.
-      treeBeds: trees
-        .filter(({ placement: p }) => p.id !== movingId)
-        .map(({ placement: p }): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'tree', p) })),
-      streams: others.filter((p) => p.itemType === 'stream').map((p): LinkedTile => ({ key: p.id, x: p.x, y: p.y, links: streamLinks(layout, p) })),
-      // Streams are painted as one network; each tile still gets its own (invisible) button.
-      streamHits: placements.filter((p) => p.itemType === 'stream' && p.id !== movingId),
-      // Roads: drawn flat in the ground layer, joined to the roads beside them; each tile gets an
-      // invisible button like a stream's.
-      roads: layout
-        .filter((p) => p.itemType === 'road')
-        .map((p): RoadCell => ({ key: p.id, x: p.x, y: p.y, links: neighbourLinks(layout, 'road', p) })),
-      roadHits: placements.filter((p) => p.itemType === 'road' && p.id !== movingId),
-      // A Delivery Truck for every working factory a road links to a working Seaport (lib/roads).
-      deliveries: roadLinks(placements, (p) => powered.get(p.id) !== false),
-      trees: trees.map(({ placement, plot }) => {
-        const current = treeBuff(placement.x, placement.y, placements)
-        const next = withGhost === placements ? current : treeBuff(placement.x, placement.y, withGhost)
-        return { placement, plot, animate: animated.has(placement.id), buffs: buffKey(current, next) }
-      }),
-      items: placements
-        .filter((p) => p.itemType !== 'stream' && p.itemType !== 'tree' && p.itemType !== 'road')
-        .sort((a, b) => depthOf(a) - depthOf(b) || a.x - b.x)
-        .map((p) => ({
-          placement: p,
-          links: p.itemType === 'fence' ? linksKey(fenceLinks(p.id === movingId ? others : layout, p)) : '',
-          // Buildings that need power: on or off (lib/powerGrid); undefined for everything else.
-          powered: powered.get(p.id),
-        })),
-    }
-  }, [placements, plotsByDeck, movingId, ghostX, ghostY, ghostW, ghostH, ghostOk, auraKind])
+  }, [placements, trees, currentBuffs, animated, auraMoveId, auraPlaceKind, auraX, auraY, auraW, auraH])
+
+  // A Delivery Truck for every working factory a road links to a working Seaport (lib/roads).
+  const scene = { treeBeds, streams, streamHits, roads, roadHits, deliveries, trees: treeViews, items }
 
   // Power fields to show: while placing (or moving) a power building, every field on the farm plus the
   // one the ghost would make; while inspecting a windmill, its own; a building that needs power, all.
