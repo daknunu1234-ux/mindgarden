@@ -37,9 +37,12 @@ const hrefFor = (view: View, page = 1) => {
 // with this moment (72 h).
 async function loadProgress(decks: Deck[]): Promise<{ map: Map<string, DeckProgress>; at: number }> {
   const map = new Map<string, DeckProgress>()
-  for (let i = 0; i < decks.length; i += 50) {
-    const res = await getProgressByDecks({ deckIds: decks.slice(i, i + 50).map((d) => d.id) })
-    if (res.success) for (const p of res.data) map.set(p.deckId, p)
+  const batches: string[][] = []
+  for (let i = 0; i < decks.length; i += 50) batches.push(decks.slice(i, i + 50).map((d) => d.id))
+  // Each progress action makes several database reads; keep at most two in flight.
+  for (let i = 0; i < batches.length; i += 2) {
+    const results = await Promise.all(batches.slice(i, i + 2).map((deckIds) => getProgressByDecks({ deckIds })))
+    for (const res of results) if (res.success) for (const p of res.data) map.set(p.deckId, p)
   }
   return { map, at: Date.now() }
 }
@@ -51,8 +54,10 @@ async function loadAllOwnDecks(): Promise<Awaited<ReturnType<typeof getDecks>>> 
   if (!first.success) return first
   const decks = [...first.data]
   const pages = Math.min(FARM_DECK_PAGES, Math.ceil((first.meta?.total ?? 0) / 50))
-  for (let page = 2; page <= pages; page++) {
-    const next = await getDecks({ limit: 50, page })
+  const remaining = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) => getDecks({ limit: 50, page: index + 2 }))
+  )
+  for (const next of remaining) {
     if (next.success) decks.push(...next.data)
   }
   return { ...first, data: decks }
@@ -98,6 +103,13 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   // Visiting yourself is just your own garden.
   const visitOwnerId = view === 'farm' && typeof rawVisit === 'string' && UUID.test(rawVisit) && rawVisit !== userId ? rawVisit : null
 
+  // These reads only need the viewer/visit identity, so start them while decks load.
+  const visited = visitedRes.success ? visitedRes.data : []
+  const namesPromise = getDisplayNames({
+    userIds: [...new Set([...visited.map((t) => t.ownerId), ...(visitOwnerId ? [visitOwnerId] : []), ...(userId && !visitOwnerId ? [userId] : [])])],
+  })
+  const placementsPromise = view === 'farm' ? getFarmPlacements(visitOwnerId ? { ownerId: visitOwnerId } : {}) : null
+
   // Farm: every own tree (or the neighbour's shared ones) + the farm's placements. Grid: one page.
   const res =
     view === 'farm'
@@ -106,19 +118,16 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
         : await loadAllOwnDecks()
       : await getDecks({ page: typeof page === 'string' ? page : undefined })
   const decks = res.success ? res.data : []
-  const [{ map: progress, at: progressAt }, placementsRes] = await Promise.all([
+  const [{ map: progress, at: progressAt }, placementsRes, namesRes] = await Promise.all([
     loadProgress(decks),
-    view === 'farm' ? getFarmPlacements(visitOwnerId ? { ownerId: visitOwnerId } : {}) : null,
+    placementsPromise,
+    namesPromise,
   ])
   const placements = placementsRes?.success ? placementsRes.data : []
   const currentPage = res.success ? (res.meta?.page ?? 1) : 1
   // Visited Gardens drawer: shared trees this player opened. A failed load shows an empty drawer.
   // Gardeners show by their chosen Garden Name, else their pseudonym.
-  const visited = visitedRes.success ? visitedRes.data : []
   // Your own name too: the farm's top banner shows it.
-  const namesRes = await getDisplayNames({
-    userIds: [...new Set([...visited.map((t) => t.ownerId), ...(visitOwnerId ? [visitOwnerId] : []), ...(userId && !visitOwnerId ? [userId] : [])])],
-  })
   const names = namesRes.success ? namesRes.data : {}
   const visitedGardens = groupVisitedGardens(visited, userId, names)
   const visitName = visitOwnerId ? publicName(names[visitOwnerId], visitOwnerId) : null
